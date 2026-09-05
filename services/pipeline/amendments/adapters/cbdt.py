@@ -4,7 +4,7 @@ Official Government of India source. The portal was rebuilt on Liferay in 2026 a
 every request goes through `amendments.browser` (a real Chromium). The site exposes clean JSON APIs which its own
 pages use; this adapter calls exactly those:
 
-  POST /o/search/v1.0/search   blueprint CIRCULAR_BP_ERC     structure 36057 = notifications, 36050 = circulars
+  POST /o/search/v1.0/search   blueprint CIRCULAR_NOTIFICATION_BP_ERC + structure_key -> notifications / circulars
   POST /o/search/v1.0/search   blueprint ACT_SECTIONS_BP_ERC act_id + year_id -> sections of an Act (text inline)
   GET  /o/c/actassetcategories/                              -> Acts and their act_id
   GET  /o/c/yearassetcategories/                             -> "as amended by Finance Act <year>" ids
@@ -26,13 +26,22 @@ log = logging.getLogger(__name__)
 HOME = "https://www.incometaxindia.gov.in/notifications"
 BASE = "https://www.incometaxindia.gov.in"
 SEARCH = "/o/search/v1.0/search?nestedFields=embedded&page={page}&pageSize={size}&restrictFields=embedded.actions%2Cembedded.creator"
+SEARCH_Q = SEARCH + "&search={query}"
 
-STRUCTURE_NOTIFICATION = "36057"
-STRUCTURE_CIRCULAR = "36050"
+# The portal's search returns at most ~1,900 results for one query, so the listing is sliced by year: every
+# notification/circular number carries its year ("No. 12/2024"), which the text search matches.
+RESULT_WINDOW_PAGES = 18
+
+# Both listings live in structure 36050; `structure_key` is what separates them (as the portal's own pages do).
+STRUCTURE_ID = "36050"
+KEY_NOTIFICATION = "NOTIFICATION_KEY"
+KEY_CIRCULAR = "CIRCULAR_KEY"
 
 
 def _sess():
-    return session(HOME)
+    s = session(HOME)
+    s.delay = max(s.delay, 1.1)   # the portal rejects rapid paging; keep about one request a second
+    return s
 
 
 def _fields(item: dict) -> dict[str, str]:
@@ -59,35 +68,53 @@ def _iso_date(value: str | None) -> date | None:
         return None
 
 
-def _search(structure_id: str, page: int, size: int) -> dict:
+def _search(structure_key: str, page: int, size: int, query: str | None = None) -> dict:
     body = {
         "attributes": {
             "search.empty.search": True,
-            "search.experiences.blueprint.external.reference.code": "CIRCULAR_BP_ERC",
-            "search.experiences.structure_id": structure_id,
-            "search.experiences.sortOrder": "desc",
+            "search.experiences.blueprint.external.reference.code": "CIRCULAR_NOTIFICATION_BP_ERC",
+            "search.experiences.structure_id": STRUCTURE_ID,
+            "search.experiences.structure_key": structure_key,
         }
     }
-    return _sess().post_json(SEARCH.format(page=page, size=size), body)
+    url = SEARCH_Q.format(page=page, size=size, query=query) if query else SEARCH.format(page=page, size=size)
+    return _sess().post_json(url, body)
 
 
 class _CbdtBase(Adapter):
     regulator_code = "CBDT"
-    structure_id = ""
+    needs_browser = True
+    browser_home = HOME
+    structure_key = ""
     doc_type = ""
     page_size = 100
     max_pages = 200
+    slice_by_year = True
 
     def discover(self, *, since_year: int | None = None) -> list[DiscoveredDocument]:
         cutoff = since_year or 2014
         out: list[DiscoveredDocument] = []
         seen: set[str] = set()
-        # The listing is not reliably date-ordered, so page through everything and filter by date.
-        for page in range(1, self.max_pages + 1):
-            data = _search(self.structure_id, page, self.page_size)
+        this_year = date.today().year
+        if self.slice_by_year:
+            # One query per year keeps each result set inside the portal's result window.
+            for query in [str(y) for y in range(cutoff - 1, this_year + 2)]:
+                self._collect(query, cutoff, out, seen)
+        else:
+            self._collect(None, cutoff, out, seen)
+        log.info("%s: %d documents since %d", self.name, len(out), cutoff)
+        return out
+
+    def _collect(self, query: str | None, cutoff: int, out: list[DiscoveredDocument], seen: set[str]) -> None:
+        for page in range(1, RESULT_WINDOW_PAGES + 1):
+            try:
+                data = _search(self.structure_key, page, self.page_size, query)
+            except Exception as exc:
+                log.warning("%s: query %s page %d failed: %s", self.name, query, page, str(exc)[:120])
+                return
             items = data.get("items") or []
             if not items:
-                break
+                return
             for item in items:
                 f = _fields(item)
                 issued = _iso_date(f.get("circularNotificationDate") or f.get("uploadDate"))
@@ -112,9 +139,7 @@ class _CbdtBase(Adapter):
                     )
                 )
             if len(items) < self.page_size:
-                break
-        log.info("%s: %d documents since %d", self.name, len(out), cutoff)
-        return out
+                return
 
     def fetch(self, doc: DiscoveredDocument) -> FetchedDocument:
         item = _sess().get_json(doc.source_url + "?nestedFields=embedded&fields=contentFields,title,datePublished")
@@ -154,13 +179,14 @@ class _CbdtBase(Adapter):
 
 class CbdtNotifications(_CbdtBase):
     name = "cbdt_notifications"
-    structure_id = STRUCTURE_NOTIFICATION
+    structure_key = KEY_NOTIFICATION
     doc_type = "notification"
 
 
 class CbdtCirculars(_CbdtBase):
     name = "cbdt_circulars"
-    structure_id = STRUCTURE_CIRCULAR
+    slice_by_year = False
+    structure_key = KEY_CIRCULAR
     doc_type = "circular"
 
 
@@ -203,19 +229,43 @@ def _clean_text(html_or_text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
-def _sections(act_id: int, year_id: int, *, blueprint: str = "ACT_SECTIONS_BP_ERC", extra: dict | None = None) -> list[ParsedProvision]:
+def _rule_sections(rule_cat_id: int) -> list[ParsedProvision]:
+    """Rules of one Rule set (blueprint used by the portal's own Rules page)."""
+    return _sections(
+        rule_cat_id,
+        0,
+        blueprint="RULE_CONTENT_LIST_BP_ERC",
+        extra={
+            "search.experiences.rule_id": rule_cat_id,
+            "search.experiences.rule_category_id": rule_cat_id,
+            "search.experiences.year_id": "",
+            "search.experiences.free_text": "",
+        },
+        drop_act_keys=True,
+    )
+
+
+def _sections(
+    act_id: int,
+    year_id: int,
+    *,
+    blueprint: str = "ACT_SECTIONS_BP_ERC",
+    extra: dict | None = None,
+    drop_act_keys: bool = False,
+) -> list[ParsedProvision]:
     """Every section/rule of an Act or Rule set, with its text, from the portal's own listing API."""
     provisions: list[ParsedProvision] = []
     seen: set[str] = set()
     page, size = 1, 100
     while page <= 60:
-        attrs = {
+        attrs: dict = {
             "search.empty.search": True,
             "search.experiences.blueprint.external.reference.code": blueprint,
-            "search.experiences.act_id": act_id,
-            "search.experiences.year_id": year_id,
-            "search.experiences.free_text": "",
         }
+        if not drop_act_keys:
+            attrs["search.experiences.act_id"] = act_id
+            attrs["search.experiences.year_id"] = year_id
+            attrs["search.experiences.free_text"] = ""
         attrs.update(extra or {})
         data = _sess().post_json(SEARCH.format(page=page, size=size), {"attributes": attrs})
         items = data.get("items") or []
@@ -285,10 +335,7 @@ def official_text(instrument: dict, cfg: dict) -> tuple[list[ParsedProvision], d
     """Seeder for the Income-tax Acts and Rules: returns provisions directly (text comes section-wise)."""
     year_id, year_label = _latest_year_id()
     if cfg.get("kind") == "rules":
-        cat = _rule_id(cfg["match"])
-        provisions = _sections(cat, year_id, blueprint=cfg.get("blueprint", "RULES_BP_ERC"))
-        if not provisions:
-            provisions = _sections(cat, year_id, blueprint="ACT_SECTIONS_BP_ERC")
+        provisions = _rule_sections(_rule_id(cfg["match"]))
     else:
         cat = _act_id(cfg["match"])
         provisions = _sections(cat, year_id if cfg.get("use_year", True) else 0)

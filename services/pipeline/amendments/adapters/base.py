@@ -41,6 +41,8 @@ class FetchedDocument:
 class Adapter(ABC):
     name: str                       # matches document.source_adapter
     regulator_code: str
+    needs_browser: bool = False     # True when the site refuses plain HTTP clients (files must go via the browser)
+    browser_home: str = ""          # page the browser session anchors on when needs_browser is True
 
     @abstractmethod
     def discover(self, *, since_year: int | None = None) -> list[DiscoveredDocument]:

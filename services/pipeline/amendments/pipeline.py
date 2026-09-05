@@ -243,9 +243,14 @@ def fetch_document(doc_id: int, *, republished: bool = False) -> None:
         pending = db.fetch_all(conn, "SELECT * FROM attachment WHERE document_id = %s AND storage_key IS NULL", (doc_id,))
 
     store = storage()
+    fetch_bytes = get_bytes
+    if getattr(adapter, "needs_browser", False):
+        from .browser import session as browser_session
+
+        fetch_bytes = browser_session(adapter.browser_home).get_bytes
     for att in pending:
         try:
-            data, ctype = get_bytes(att["source_url"])
+            data, ctype = fetch_bytes(att["source_url"])
         except Exception as exc:
             log.warning("attachment download failed %s: %s", att["source_url"], exc)
             continue
