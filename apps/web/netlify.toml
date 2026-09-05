@@ -1,10 +1,11 @@
 [build]
   command = "npm run build"
+  publish = ".next"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
-# Set in the Netlify UI (Site configuration > Environment variables):
+# Set in the Netlify UI (Project configuration > Environment variables):
 #   DATABASE_URL        Neon pooled connection string
 #   SITE_PASSCODE       shared team passcode (leave unset to disable the gate)
 #   R2_PUBLIC_BASE_URL  public base URL of the R2 bucket, so file links go straight to R2
