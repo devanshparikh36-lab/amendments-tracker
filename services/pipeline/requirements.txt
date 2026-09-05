@@ -1,4 +1,5 @@
 httpx>=0.28
+certifi
 beautifulsoup4>=4.12
 lxml>=5
 pymupdf>=1.24

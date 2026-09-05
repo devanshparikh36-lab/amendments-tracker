@@ -391,7 +391,12 @@ def tag_document(doc_id: int) -> None:
 def _tag_document_by_rules(doc: dict, text: str, instruments: list[dict]) -> None:
     """Zero-cost tagging from the document's own wording (see rules.py). Records tags and effects; never merges text."""
     doc_id = doc["id"]
-    result = rules.tag({"doc_type": doc["doc_type"], "title": doc["title"]}, text, [dict(i) for i in instruments])
+    result = rules.tag(
+        {"doc_type": doc["doc_type"], "title": doc["title"], "number": doc.get("number"), "source_url": doc.get("source_url"),
+         "regulator_code": doc.get("regulator_code")},
+        text,
+        [dict(i) for i in instruments],
+    )
     tag_names: list[str] = []
     with db.transaction() as conn:
         by_slug = {i["slug"]: i for i in db.fetch_all(conn, "SELECT id, slug, title, kind FROM instrument")}

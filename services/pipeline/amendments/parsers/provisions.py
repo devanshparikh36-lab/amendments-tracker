@@ -27,6 +27,9 @@ _INDEX = re.compile(r"^(INDEX|CONTENTS|TABLE OF CONTENTS|ACRONYMS|ABBREVIATIONS|
 _DELETED_RANGE = re.compile(r"^(?P<a>\d{1,3}(?:\.\d{1,3})*)\s+to\s+(?P<b>\d{1,3}(?:\.\d{1,3})*)\s+\d*\s*\[Deleted\]", re.I)
 _FOOTNOTE_LINE = re.compile(r"^(?P<n>\d{1,3})\s+(?=[A-Z“\"'(])")
 _FOOTNOTE_VERB = re.compile(r"^\d{1,3}\s+(Inserted|Deleted|Substituted|Amended|Modified|Omitted|Renumbered|Prior to|Replaced|Updated|Added)\b", re.I)
+# "1. Inserted by section 118 of ..." / "5. Omitted “or section 43A” (w.e.f. ...) by s. 100 of ..." - a footnote printed
+# under its own section (CBIC section pages). A real section heading never starts with one of these verbs.
+_INLINE_FOOTNOTE = re.compile(r"^\d{1,3}\.\s+(Inserted|Deleted|Substituted|Amended|Modified|Omitted|Renumbered|Replaced|Updated|Added)\b", re.I)
 
 
 @dataclass
@@ -210,6 +213,13 @@ def split_provisions(text: str, *, style: str = "auto") -> list[ParsedProvision]
             num = f"{m_del.group('a')} to {m_del.group('b')}"
             start(ParsedProvision(number=num, heading=None, text=line, level="para", raw_number=num))
             body_paras += 1
+            continue
+
+        if current is not None and style != "master_direction" and _INLINE_FOOTNOTE.match(line):
+            # CBIC section pages print each section's footnotes right after it ("1. Inserted by section 118 of ...");
+            # they stay with that section instead of opening a provision numbered "1".
+            current.footnotes.append(line)
+            append(line)
             continue
 
         if body_paras >= 5 and _FOOTNOTE_VERB.match(line):
