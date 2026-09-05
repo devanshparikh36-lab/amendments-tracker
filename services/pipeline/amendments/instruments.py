@@ -109,6 +109,53 @@ PHASE1_INSTRUMENTS: list[dict] = CBDT_INSTRUMENTS + [
         "official_url": "https://www.rbi.org.in/Scripts/BS_ViewMasDirections.aspx?id=10191",
         "seed": {"adapter": "rbi_master_directions", "rbi_md_id": 10191, "style": "master_direction"},
     },
+    # GST (CBIC). Text comes from the section-wise "as amended" pages of CBIC's tax-information portal
+    # (see adapters/cbic_gst.py); act_id / rule_id are the portal's identifiers for taxId 1000001 (GST).
+    {
+        "slug": "cgst-act-2017",
+        "short_code": "CGST",
+        "title": "Central Goods and Services Tax Act, 2017",
+        "kind": "act",
+        "regulator": "CBIC",
+        "official_url": "https://taxinformation.cbic.gov.in/api/cbic-act-section-msts/findByActId/1000006",
+        "seed": {"adapter": "cbic_gst", "style": "act", "act_id": 1000006},
+    },
+    {
+        "slug": "igst-act-2017",
+        "short_code": "IGST",
+        "title": "Integrated Goods and Services Tax Act, 2017",
+        "kind": "act",
+        "regulator": "CBIC",
+        "official_url": "https://taxinformation.cbic.gov.in/api/cbic-act-section-msts/findByActId/1000015",
+        "seed": {"adapter": "cbic_gst", "style": "act", "act_id": 1000015},
+    },
+    {
+        "slug": "utgst-act-2017",
+        "short_code": "UTGST",
+        "title": "Union Territory Goods and Services Tax Act, 2017",
+        "kind": "act",
+        "regulator": "CBIC",
+        "official_url": "https://taxinformation.cbic.gov.in/api/cbic-act-section-msts/findByActId/1000016",
+        "seed": {"adapter": "cbic_gst", "style": "act", "act_id": 1000016},
+    },
+    {
+        "slug": "gst-compensation-act-2017",
+        "short_code": "GST-COMP",
+        "title": "Goods and Services Tax (Compensation to States) Act, 2017",
+        "kind": "act",
+        "regulator": "CBIC",
+        "official_url": "https://taxinformation.cbic.gov.in/api/cbic-act-section-msts/findByActId/1000013",
+        "seed": {"adapter": "cbic_gst", "style": "act", "act_id": 1000013},
+    },
+    {
+        "slug": "cgst-rules-2017",
+        "short_code": "CGST-RULES",
+        "title": "Central Goods and Services Tax Rules, 2017",
+        "kind": "rules",
+        "regulator": "CBIC",
+        "official_url": "https://taxinformation.cbic.gov.in/api/cbic-rule-section-msts/findSectionByRuleId/1000006",
+        "seed": {"adapter": "cbic_gst", "style": "regulations", "rule_id": 1000006},
+    },
 ]
 
 # Extra Master Directions are appended at seed time from the RBI listing when their title matches these patterns,

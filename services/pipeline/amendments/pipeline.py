@@ -400,6 +400,8 @@ def _tag_document_by_rules(doc: dict, text: str, instruments: list[dict]) -> Non
         {
             "doc_type": doc["doc_type"],
             "title": doc["title"],
+            "number": doc.get("number"),
+            "source_url": doc.get("source_url"),
             "regulator_code": doc.get("regulator_code"),
             "source_adapter": doc.get("source_adapter", ""),
         },

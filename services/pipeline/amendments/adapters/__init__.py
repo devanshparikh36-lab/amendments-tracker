@@ -4,10 +4,11 @@ from __future__ import annotations
 from datetime import date
 
 from .base import Adapter
+from .cbic_gst import CbicGstCirculars, CbicGstNotifications
 from .rbi_apdir import RbiApDirCirculars
 from .rbi_fema_notifications import RbiFemaNotifications
 from .rbi_master_directions import RbiMasterDirections
-from . import rbi_master_directions, rbi_fema_act, cbdt
+from . import cbdt, cbic_gst, rbi_fema_act, rbi_master_directions
 from .cbdt import CbdtCirculars, CbdtNotifications
 
 registry: dict[str, Adapter] = {
@@ -18,6 +19,8 @@ registry: dict[str, Adapter] = {
         RbiMasterDirections(),
         CbdtNotifications(),
         CbdtCirculars(),
+        CbicGstNotifications(),
+        CbicGstCirculars(),
     )
 }
 
@@ -48,6 +51,7 @@ _OFFICIAL_TEXT_SOURCES = {
     "rbi_master_directions": rbi_master_directions.official_text,
     "rbi_fema_act": rbi_fema_act.official_text,
     "cbdt_act": cbdt.official_text,
+    "cbic_gst": cbic_gst.official_text,
     "document_text": _document_text,
 }
 
