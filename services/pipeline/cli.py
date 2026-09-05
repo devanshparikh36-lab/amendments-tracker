@@ -32,6 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     p_work = sub.add_parser("work")
     p_work.add_argument("--limit", type=int, default=500)
     sub.add_parser("digest")
+    sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
     p_run = sub.add_parser("run")
     p_run.add_argument("--limit", type=int, default=500)
     p_back = sub.add_parser("backfill")
@@ -77,6 +78,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "digest":
         print("sent" if pipeline.send_daily_digest() else "not sent (check RESEND_API_KEY / DIGEST_TO)")
+        return 0
+
+    if args.cmd == "retag":
+        with db.transaction() as conn:
+            rows = db.fetch_all(
+                conn,
+                "SELECT id FROM document WHERE tag_status IN ('skipped','failed') AND doc_type <> 'master_direction' ORDER BY id",
+            )
+            for r in rows:
+                db.execute(conn, "UPDATE document SET tag_status = 'pending' WHERE id = %s", (r["id"],))
+                pipeline.enqueue(conn, "tag_document", {"document_id": r["id"]})
+        print(f"queued tagging for {len(rows)} documents; run 'work' to process")
         return 0
 
     if args.cmd == "run":
