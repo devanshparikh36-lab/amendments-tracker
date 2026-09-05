@@ -163,7 +163,22 @@ def _ensure_md_instrument(conn: psycopg.Connection, reg_id: int, d: DiscoveredDo
     )
 
 
+def is_before_cutoff(doc_type: str, title: str | None, date_issued: date | None) -> bool:
+    """True if the document falls before MIN_DOCUMENT_YEAR and is not a base text we must keep."""
+    y = settings.min_document_year
+    if not y or not date_issued or date_issued.year >= y:
+        return False
+    if doc_type in MASTER_DIRECTION_TYPES:
+        return False
+    # original (non-amending) regulations / rules are base texts: keep them whatever their year
+    if doc_type in ("notification", "gsr", "rules", "regulations") and not re.search(r"\bAmendment\b|\bamend", title or "", re.I):
+        return False
+    return True
+
+
 def _upsert_discovered(conn: psycopg.Connection, reg_id: int, adapter: str, d: DiscoveredDocument) -> bool:
+    if is_before_cutoff(d.doc_type, d.title, d.date_issued):
+        return False
     if d.doc_type in MASTER_DIRECTION_TYPES:
         _ensure_md_instrument(conn, reg_id, d)
     existing = db.fetch_one(conn, "SELECT id, title FROM document WHERE source_url = %s", (d.source_url,))
@@ -647,6 +662,37 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
 
 def _slugify(number: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", number).strip("-").lower()
+
+
+# ----------------------------------------------------------------------------- prune
+
+def prune_before_cutoff() -> dict[str, int]:
+    """Delete already-stored documents that fall before MIN_DOCUMENT_YEAR (same keep-rules as discovery),
+    including their files in storage and any pending jobs."""
+    if not settings.min_document_year:
+        raise RuntimeError("MIN_DOCUMENT_YEAR is not set")
+    with db.transaction() as conn:
+        docs = db.fetch_all(conn, "SELECT id, doc_type, title, date_issued FROM document WHERE date_issued < %s", (date(settings.min_document_year, 1, 1),))
+    victims = [d for d in docs if is_before_cutoff(d["doc_type"], d["title"], d["date_issued"])]
+    store = storage()
+    files = 0
+    for d in victims:
+        with db.transaction() as conn:
+            keys = [a["storage_key"] for a in db.fetch_all(conn, "SELECT storage_key FROM attachment WHERE document_id = %s AND storage_key IS NOT NULL", (d["id"],))]
+        for k in keys:
+            try:
+                if store.remote:
+                    store._s3.delete_object(Bucket=settings.r2_bucket, Key=k)
+                else:
+                    (settings.local_storage_dir / k).unlink(missing_ok=True)
+                files += 1
+            except Exception as exc:
+                log.warning("could not delete %s: %s", k, exc)
+        with db.transaction() as conn:
+            db.execute(conn, "DELETE FROM job WHERE payload->>'document_id' = %s", (str(d["id"]),))
+            db.execute(conn, "DELETE FROM document WHERE id = %s", (d["id"],))  # cascades to attachments, tags, effects
+    log.info("pruned %d documents and %d files before %d", len(victims), files, settings.min_document_year)
+    return {"documents": len(victims), "files": files, "kept_base_texts": len(docs) - len(victims)}
 
 
 # ----------------------------------------------------------------------------- digest

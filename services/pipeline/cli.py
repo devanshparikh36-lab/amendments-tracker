@@ -33,6 +33,7 @@ def main(argv: list[str] | None = None) -> int:
     p_work.add_argument("--limit", type=int, default=500)
     sub.add_parser("digest")
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
+    sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
     p_run = sub.add_parser("run")
     p_run.add_argument("--limit", type=int, default=500)
     p_back = sub.add_parser("backfill")
@@ -78,6 +79,10 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "digest":
         print("sent" if pipeline.send_daily_digest() else "not sent (check RESEND_API_KEY / DIGEST_TO)")
+        return 0
+
+    if args.cmd == "prune":
+        print(pipeline.prune_before_cutoff())
         return 0
 
     if args.cmd == "retag":

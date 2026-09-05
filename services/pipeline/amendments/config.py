@@ -47,6 +47,12 @@ class Settings:
     # Public site URL used in alerts
     site_url: str = field(default_factory=lambda: (_env("SITE_URL") or "http://localhost:3000").rstrip("/"))
 
+    # Documents issued before this year are not tracked (amendments and circulars only; original regulation texts
+    # and Master Directions are always kept because later amendments attach to them). Empty = no cutoff.
+    min_document_year: int | None = field(
+        default_factory=lambda: int(_env("MIN_DOCUMENT_YEAR")) if _env("MIN_DOCUMENT_YEAR") else None
+    )
+
     # Scraper politeness
     user_agent: str = field(
         default_factory=lambda: _env("SCRAPER_USER_AGENT")

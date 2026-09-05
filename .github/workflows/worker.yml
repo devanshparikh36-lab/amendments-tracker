@@ -9,7 +9,7 @@ on:
         description: "Worker command"
         default: "run"
         type: choice
-        options: [run, work, discover, seed, retag, digest]
+        options: [run, work, discover, seed, retag, prune, digest]
       limit:
         description: "Max jobs to process (run/work)"
         default: "500"
@@ -28,6 +28,7 @@ jobs:
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       AI_ENABLED: "false"
+      MIN_DOCUMENT_YEAR: "2014"
       R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
       R2_BUCKET: ${{ secrets.R2_BUCKET }}
       R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
