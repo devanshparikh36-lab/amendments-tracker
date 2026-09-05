@@ -347,6 +347,16 @@ def official_text(instrument: dict, cfg: dict) -> tuple[list[ParsedProvision], d
 
 # ----------------------------------------------------------------- 1961 <-> 2025 section map
 
+def _text_value(v) -> str:
+    """Liferay returns either a plain string or an i18n dict {'en_US': '...'}."""
+    if isinstance(v, dict):
+        for key in ("en_US", "en-US", "value", "data"):
+            if isinstance(v.get(key), str):
+                return v[key]
+        return next((x for x in v.values() if isinstance(x, str)), "")
+    return v or ""
+
+
 def section_map() -> list[dict]:
     """CBDT's own mapping between Income-tax Act 1961 / Rules 1962 and Act 2025 / Rules 2026."""
     rows: list[dict] = []
@@ -359,13 +369,13 @@ def section_map() -> list[dict]:
         for i in items:
             rows.append(
                 {
-                    "old_title": i.get("parentSectionTitle") or "",
-                    "old_cms_id": i.get("parentSectionCmsId") or "",
+                    "old_title": _text_value(i.get("parentSectionTitle")),
+                    "old_cms_id": _text_value(i.get("parentSectionCmsId")),
                     "old_priority": i.get("parentSectionPriority"),
-                    "new_title": i.get("childSectionTitle") or "",
-                    "new_cms_id": i.get("childSectionCmsId") or "",
+                    "new_title": _text_value(i.get("childSectionTitle")),
+                    "new_cms_id": _text_value(i.get("childSectionCmsId")),
                     "new_priority": i.get("childSectionPriority"),
-                    "entity_type": i.get("parentEntityType") or "",
+                    "entity_type": _text_value(i.get("parentEntityType")),
                 }
             )
         if len(items) < 100:
