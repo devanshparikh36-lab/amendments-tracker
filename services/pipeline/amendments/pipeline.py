@@ -14,7 +14,7 @@ from typing import Any
 
 import psycopg
 
-from . import db
+from . import db, rules
 from .adapters import registry, official_text_for
 from .adapters.base import DiscoveredDocument
 from .ai import tasks as ai
@@ -283,10 +283,14 @@ def tag_document(doc_id: int) -> None:
         text = _doc_full_text(conn, doc)
         instruments = db.fetch_all(conn, "SELECT id, slug, title, kind FROM instrument ORDER BY id")
 
-    if not settings.ai_enabled or not text:
+    if not text:
         with db.transaction() as conn:
             db.execute(conn, "UPDATE document SET tag_status = 'skipped' WHERE id = %s", (doc_id,))
         teams.notify_new_document(doc, [], settings.site_url)
+        return
+
+    if not settings.ai_enabled:
+        _tag_document_by_rules(doc, text, instruments)
         return
 
     meta = {k: doc.get(k) for k in ("doc_type", "number", "date_issued", "title", "source_url")}
@@ -364,6 +368,79 @@ def tag_document(doc_id: int) -> None:
             enqueue(conn, "merge_document", {"document_id": doc_id})
         else:
             db.execute(conn, "UPDATE document SET tag_status = 'merged' WHERE id = %s", (doc_id,))
+    ok = teams.notify_new_document(doc, tag_names, settings.site_url)
+    with db.transaction() as conn:
+        db.execute(conn, "INSERT INTO notification_log (channel, document_id, ok) VALUES ('teams', %s, %s)", (doc_id, ok))
+
+
+def _tag_document_by_rules(doc: dict, text: str, instruments: list[dict]) -> None:
+    """Zero-cost tagging from the document's own wording (see rules.py). Records tags and effects; never merges text."""
+    doc_id = doc["id"]
+    result = rules.tag({"doc_type": doc["doc_type"], "title": doc["title"]}, text, [dict(i) for i in instruments])
+    tag_names: list[str] = []
+    with db.transaction() as conn:
+        by_slug = {i["slug"]: i for i in db.fetch_all(conn, "SELECT id, slug, title, kind FROM instrument")}
+        for ni in result.new_instruments:
+            if ni.slug in by_slug:
+                continue
+            reg_id = db.regulator_id(conn, ni.regulator)
+            row = db.fetch_one(
+                conn,
+                """INSERT INTO instrument (regulator_id, slug, short_code, title, kind, official_url)
+                   VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (slug) DO UPDATE SET official_url = COALESCE(instrument.official_url, EXCLUDED.official_url)
+                   RETURNING id, slug, title, kind""",
+                (reg_id, ni.slug, ni.slug.upper()[:24], ni.title, ni.kind, doc["source_url"] if ni.official_document else None),
+            )
+            by_slug[ni.slug] = row
+            if ni.official_document:
+                enqueue(conn, "selfcheck_instrument", {"slug": ni.slug, "document_id": doc_id})
+        # An original regulations notification for an instrument that already exists but has no text yet.
+        for slug, relation in result.tags:
+            inst = by_slug.get(slug)
+            if inst and relation in ("supersedes", "references") and inst["kind"] in ("regulations", "rules"):
+                cur = db.fetch_one(conn, "SELECT official_url, seeded_at FROM instrument WHERE id = %s", (inst["id"],))
+                if cur and cur["official_url"] is None and not re.search(r"\bAmendment\b", doc["title"] or "", re.I):
+                    db.execute(conn, "UPDATE instrument SET official_url = %s WHERE id = %s", (doc["source_url"], inst["id"]))
+                    enqueue(conn, "selfcheck_instrument", {"slug": slug, "document_id": doc_id})
+
+        for slug, relation in result.tags:
+            inst = by_slug.get(slug)
+            if not inst:
+                continue
+            db.execute(
+                conn,
+                """INSERT INTO document_tag (document_id, instrument_id, provision_id, relation, confidence)
+                   VALUES (%s, %s, NULL, %s, 1.0) ON CONFLICT DO NOTHING""",
+                (doc_id, inst["id"], relation),
+            )
+            tag_names.append(f"{inst['title']} ({relation})")
+
+        for e in result.effects:
+            inst = by_slug.get(e.instrument_slug)
+            if not inst:
+                continue
+            prov = db.fetch_one(
+                conn,
+                "SELECT id, number FROM provision WHERE instrument_id = %s AND (number = %s OR number LIKE %s) ORDER BY sort_key LIMIT 1",
+                (inst["id"], e.provision_number, f"{e.provision_number} (%"),
+            ) or _create_provision(conn, inst["id"], e.provision_number)
+            db.execute(
+                conn,
+                """INSERT INTO amendment_effect (document_id, provision_id, change_type, confidence, ai_note)
+                   VALUES (%s, %s, %s, 1.0, %s)""",
+                (doc_id, prov["id"], e.change_type, e.excerpt),
+            )
+            db.execute(
+                conn,
+                """INSERT INTO document_tag (document_id, instrument_id, provision_id, relation, confidence)
+                   VALUES (%s, %s, %s, 'amends', 1.0) ON CONFLICT DO NOTHING""",
+                (doc_id, inst["id"], prov["id"]),
+            )
+        db.execute(
+            conn,
+            "UPDATE document SET is_amending = %s, tag_status = 'tagged' WHERE id = %s",
+            (result.is_amending, doc_id),
+        )
     ok = teams.notify_new_document(doc, tag_names, settings.site_url)
     with db.transaction() as conn:
         db.execute(conn, "INSERT INTO notification_log (channel, document_id, ok) VALUES ('teams', %s, %s)", (doc_id, ok))
@@ -483,6 +560,8 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
     cfg = _seed_config(slug)
     if cfg is None and inst["kind"] == "master_direction":
         cfg = {"adapter": "rbi_master_directions", "style": "master_direction"}
+    if cfg is None and inst["kind"] in ("regulations", "rules") and inst.get("official_url"):
+        cfg = {"adapter": "document_text", "style": "regulations"}
     if cfg is None:
         raise RuntimeError(f"no seed source configured for {slug}")
     official = official_text_for(inst, cfg)          # (text, updated_as_on, source_url)

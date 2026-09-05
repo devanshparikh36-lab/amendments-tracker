@@ -18,11 +18,15 @@ docs/sources/        notes per official source
    notifications), A.P. (DIR Series) circulars, RBI Master Directions, and the FEMA Act via RBI's Act page.
 2. **Fetch verbatim** - the detail page text, every PDF/annex, and the extracted text of each file are stored
    unchanged. Scanned PDFs go through OCR (flagged `ocr_used`).
-3. **Tag (Claude, unattended)** - which regulation(s) and which provisions the document amends, with the verbatim
-   amending instruction. Non-amending circulars are stored and shown but not merged.
-4. **Merge (Claude, unattended)** - the instruction is applied to the current provision text, producing a new
-   `provision_version` labelled **machine-consolidated** with a footnote. If the instruction cannot be applied
-   unambiguously the engine returns `cannot_apply` and the amendment is only linked, never guessed.
+3. **Tag** - which regulation(s) and which provisions the document amends, with the verbatim amending instruction.
+   Default mode is **rule-based and free** (`AI_ENABLED=false`): FEMA notifications name their principal regulation
+   and the regulation/schedule they change; circulars name the Master Direction. Original regulation notifications
+   become tracked instruments and are split into regulations automatically.
+4. **Merge (optional, Claude)** - with `AI_ENABLED=true` and an `ANTHROPIC_API_KEY`, the instruction is applied to
+   the current provision text, producing a new `provision_version` labelled **machine-consolidated**. Without AI,
+   Master Directions stay consolidated (RBI publishes them consolidated and they are re-scraped on every update) and
+   FEM Regulations show the original text with every amendment linked per regulation number. Run
+   `python cli.py retag` after enabling AI to reprocess documents scraped earlier.
 5. **Self-check** - when RBI republishes a Master Direction ("Updated as on" changes) the official text is re-parsed
    and overrules machine merges; mismatches are flagged `differs_from_official` and posted to Teams.
 6. **Notify** - Teams Adaptive Card per new document; daily Resend email digest.
@@ -53,7 +57,7 @@ cp ../../.env.example .env.local   # DATABASE_URL, SITE_PASSCODE, optional R2_PU
 npm run dev                        # http://localhost:3000
 ```
 
-Set `AI_ENABLED=false` to run the scraper without Claude (documents are stored and shown, tagging is skipped).
+`AI_ENABLED` defaults to true in code but the deployment runs with `AI_ENABLED=false` (rule-based tagging, no API cost).
 
 ## Deployment
 
@@ -64,7 +68,7 @@ Set `AI_ENABLED=false` to run the scraper without Claude (documents are stored a
 | Worker | Railway | New service from this repo, Dockerfile `services/pipeline/Dockerfile`; cron `0 */6 * * *` runs `python cli.py run`. Add a second cron service `0 3 * * *` running `python cli.py digest` |
 | Web | Netlify | Base directory `apps/web`, build `npm run build`; the Next.js runtime plugin is declared in `apps/web/netlify.toml` |
 | Alerts | Teams incoming webhook + Resend | `TEAMS_WEBHOOK_URL`, `RESEND_API_KEY`, `DIGEST_FROM`, `DIGEST_TO` |
-| AI | Anthropic API | `ANTHROPIC_API_KEY`; model defaults to `claude-opus-5` (`CLAUDE_MODEL`). Refusal fallback to Opus 4.8 is enabled server-side |
+| AI (optional) | Anthropic API | Off by default (`AI_ENABLED=false`). To enable merging later: `AI_ENABLED=true`, `ANTHROPIC_API_KEY`; model `claude-opus-5` |
 
 First deploy: run `python cli.py migrate` once against Neon (Railway shell or locally with the Neon URL), then
 `python cli.py backfill --since-year 2000` to load history, then let the cron take over.

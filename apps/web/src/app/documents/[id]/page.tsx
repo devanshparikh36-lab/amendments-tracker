@@ -70,7 +70,11 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
                       {e.ai_note && <p className="mt-1 text-xs text-stone-500">{e.ai_note}</p>}
                     </>
                   ) : (
-                    <p className="text-sm text-stone-500">Pending merge.</p>
+                    <div className="text-sm">
+                      <p className="text-stone-600">Amending instruction (verbatim):</p>
+                      <pre className="mt-1 whitespace-pre-wrap font-sans text-[15px] leading-relaxed">{e.ai_note}</pre>
+                      <p className="mt-2 text-xs text-stone-500">Merged text is not generated in this deployment; the official document above is the authority.</p>
+                    </div>
                   )}
                 </div>
               ))}

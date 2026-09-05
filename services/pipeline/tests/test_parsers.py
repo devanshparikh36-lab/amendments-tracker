@@ -82,6 +82,29 @@ def test_master_direction_split_keeps_all_text():
     assert sum(1 for p in provs if p.level == "chapter") == 3
 
 
+def test_rule_based_tagging_of_amendment_notification():
+    from amendments import rules
+
+    text, _, _ = extract_detail(rd("fema_detail.html"), "x")
+    doc = {"doc_type": "notification", "title": "Foreign Exchange Management (Deposit) (Sixth Amendment) Regulations, 2026"}
+    res = rules.tag(doc, text, [{"slug": "fema-1999", "title": "Foreign Exchange Management Act, 1999", "kind": "act"}])
+    assert res.is_amending
+    assert ("fem-deposit-regulations-2016", "amends") in res.tags
+    assert res.new_instruments and res.new_instruments[0].kind == "regulations" and not res.new_instruments[0].official_document
+    effects = {(e.provision_number, e.change_type) for e in res.effects}
+    assert ("2", "insert") in effects and ("5", "substitute") in effects
+    assert any(n.startswith("Schedule") for n, _ in effects)
+
+    original = rules.tag(
+        {"doc_type": "notification", "title": "Foreign Exchange Management (Guarantees) Regulations, 2026"},
+        "In exercise of the powers conferred by section 6 of the Foreign Exchange Management Act, 1999 and in supersession of the earlier regulations, the Reserve Bank makes the following regulations",
+        [],
+    )
+    assert not original.is_amending
+    assert original.new_instruments[0].official_document
+    assert ("fem-guarantees-regulations-2026", "supersedes") in original.tags
+
+
 def test_master_direction_letter_parts_and_restarting_numbers():
     text, _, _ = extract_detail(rd("md_export.html"), "x")
     provs = split_provisions(text, style="master_direction")
