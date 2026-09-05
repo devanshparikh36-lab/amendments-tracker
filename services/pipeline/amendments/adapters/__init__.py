@@ -11,6 +11,9 @@ from .rbi_master_directions import RbiMasterDirections
 from . import cbdt, cbic_gst, rbi_fema_act, rbi_master_directions, sebi
 from .cbdt import CbdtCirculars, CbdtNotifications
 from .sebi import SebiCirculars, SebiMasterCirculars, SebiRegulations
+from . import rbi_master_directions, rbi_fema_act, cbdt, mca
+from .cbdt import CbdtCirculars, CbdtNotifications
+from .mca import McaCirculars, McaNotifications
 
 registry: dict[str, Adapter] = {
     a.name: a
@@ -25,6 +28,8 @@ registry: dict[str, Adapter] = {
         SebiRegulations(),
         SebiMasterCirculars(),
         SebiCirculars(),
+        McaNotifications(),
+        McaCirculars(),
     )
 }
 
@@ -57,6 +62,7 @@ _OFFICIAL_TEXT_SOURCES = {
     "cbdt_act": cbdt.official_text,
     "cbic_gst": cbic_gst.official_text,
     "sebi": sebi.official_text,
+    "mca": mca.official_text,
     "document_text": _document_text,
 }
 
