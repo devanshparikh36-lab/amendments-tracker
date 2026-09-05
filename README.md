@@ -65,7 +65,7 @@ npm run dev                        # http://localhost:3000
 |---|---|---|
 | Database | Neon Postgres | Create a project, copy the pooled connection string into `DATABASE_URL` everywhere |
 | Files | Cloudflare R2 | Bucket + API token; set `R2_*` on the worker and `R2_PUBLIC_BASE_URL` (public bucket or custom domain) on both |
-| Worker | Railway | New service from this repo, Dockerfile `services/pipeline/Dockerfile`; cron `0 */6 * * *` runs `python cli.py run`. Add a second cron service `0 3 * * *` running `python cli.py digest` |
+| Worker | Railway | New service from this repo, Dockerfile via root `railway.json`; cron `0 */6 * * *` runs `python cli.py run`. Add a second cron service `0 3 * * *` running `python cli.py digest` |
 | Web | Netlify | Base directory `apps/web`, build `npm run build`; the Next.js runtime plugin is declared in `apps/web/netlify.toml` |
 | Alerts | Teams incoming webhook + Resend | `TEAMS_WEBHOOK_URL`, `RESEND_API_KEY`, `DIGEST_FROM`, `DIGEST_TO` |
 | AI (optional) | Anthropic API | Off by default (`AI_ENABLED=false`). To enable merging later: `AI_ENABLED=true`, `ANTHROPIC_API_KEY`; model `claude-opus-5` |
