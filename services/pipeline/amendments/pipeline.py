@@ -686,6 +686,15 @@ def _slugify(number: str) -> str:
 
 # ----------------------------------------------------------------------------- section map
 
+def _split_map_title(value: str | None) -> tuple[str, str]:
+    """CBDT writes '80C - Deduction ...' for Act rows and '3AC : Audit report ...' for rules and forms."""
+    text = (value or "").strip()
+    m = re.match(r"^(?P<num>[^:\-]{1,40}?)\s*[:–—-]\s+(?P<title>.*)$", text, re.S)
+    if not m:
+        return text, ""
+    return m.group("num").strip(), m.group("title").strip()
+
+
 def load_section_map() -> dict[str, int]:
     """Load CBDT's official Income-tax Act 1961 <-> 2025 provision mapping."""
     from .adapters import cbdt
@@ -695,9 +704,13 @@ def load_section_map() -> dict[str, int]:
     with db.transaction() as conn:
         db.execute(conn, "DELETE FROM section_map WHERE map_key = 'income-tax'")
         for i, r in enumerate(rows):
-            old_num, _, old_title = (r["old_title"] or "").partition(" : ")
-            new_num, _, new_title = (r["new_title"] or "").partition(" : ")
-            entity = (r.get("entity_type") or "").strip().lower() or ("form" if old_num.upper().startswith("FORM") else "section")
+            old_num, old_title = _split_map_title(r["old_title"])
+            new_num, new_title = _split_map_title(r["new_title"])
+            # The portal marks "no counterpart" with a run of dashes.
+            old_num = "" if set(old_num.strip()) <= {"-"} else old_num.strip()
+            new_num = "" if set(new_num.strip()) <= {"-"} else new_num.strip()
+            raw = (r.get("entity_type") or "").strip().lower()
+            entity = {"acts": "section", "act": "section", "rules": "rule", "forms": "form"}.get(raw, raw or "section")
             is_rule = entity in ("rule", "form")
             db.execute(
                 conn,
@@ -708,9 +721,9 @@ def load_section_map() -> dict[str, int]:
                 (
                     "itr-1962" if is_rule else "ita-1961",
                     "itr-2026" if is_rule else "ita-2025",
-                    old_num.strip() or None,
+                    old_num or None,
                     old_title.strip() or None,
-                    new_num.strip() or None,
+                    new_num or None,
                     new_title.strip() or None,
                     entity,
                     r.get("old_priority") or i,
