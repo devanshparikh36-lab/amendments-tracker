@@ -7,7 +7,7 @@ human review step.
 
 ```
 apps/web/            Next.js 15 site (Netlify)
-services/pipeline/   Python worker: scrape -> store verbatim -> tag (Claude) -> merge (Claude) -> self-check -> notify (Railway cron)
+services/pipeline/   Python worker: scrape -> store verbatim -> tag -> (optional merge) -> self-check -> notify (GitHub Actions cron)
 packages/db/         SQL migrations (source of truth for the schema)
 docs/sources/        notes per official source
 ```
@@ -65,12 +65,12 @@ npm run dev                        # http://localhost:3000
 |---|---|---|
 | Database | Neon Postgres | Create a project, copy the pooled connection string into `DATABASE_URL` everywhere |
 | Files | Cloudflare R2 | Bucket + API token; set `R2_*` on the worker and `R2_PUBLIC_BASE_URL` (public bucket or custom domain) on both |
-| Worker | Railway | New service from this repo, Dockerfile via root `railway.json`; cron `0 */6 * * *` runs `python cli.py run`. Add a second cron service `0 3 * * *` running `python cli.py digest` |
+| Worker | GitHub Actions (free) | `.github/workflows/worker.yml` runs `python cli.py run` every 6 hours; `digest.yml` sends the daily email; `keepalive.yml` stops GitHub from pausing the schedule. Variables live in the repo's Actions secrets |
 | Web | Netlify | Base directory `apps/web`, build `npm run build`; the Next.js runtime plugin is declared in `apps/web/netlify.toml` |
 | Alerts | Teams incoming webhook + Resend | `TEAMS_WEBHOOK_URL`, `RESEND_API_KEY`, `DIGEST_FROM`, `DIGEST_TO` |
 | AI (optional) | Anthropic API | Off by default (`AI_ENABLED=false`). To enable merging later: `AI_ENABLED=true`, `ANTHROPIC_API_KEY`; model `claude-opus-5` |
 
-First deploy: run `python cli.py migrate` once against Neon (Railway shell or locally with the Neon URL), then
+First deploy: add the secrets listed in `.env.example` to the repo (Settings > Secrets and variables > Actions), run the worker workflow once by hand, then
 `python cli.py backfill --since-year 2000` to load history, then let the cron take over.
 
 ## Adding a regulator
