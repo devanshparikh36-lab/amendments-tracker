@@ -297,9 +297,182 @@ def tag_cbdt(doc: dict, text: str, instruments: list[dict]) -> RuleResult:
     return res
 
 
+# ---------------------------------------------------------------- Companies Act (MCA)
+#
+# MCA documents are formulaic too:
+# - amending rules open "In exercise of the powers conferred by section 469 of the Companies Act, 2013 ... the
+#   Central Government hereby makes the following rules further to amend the Companies (Incorporation) Rules, 2014"
+#   and then list "in rule 8, in sub-rule (2), ..." / "in the said rules, in Form INC-9, ...";
+# - a commencement notification says "the Central Government hereby appoints the 1st day of April, 2014 as the date
+#   on which the provisions of section 135 of the said Act shall come into force";
+# - a General Circular clarifies sections of the Act.
+
+_MCA_RULES_NAME = r"(?:The\s+)?Companies\s*\((?P<subject>[^)]{2,140})\)\s*Rules,?\s*(?P<year>\d{4})"
+_MCA_AMEND_RULES = re.compile(rf"(?:further\s+)?to\s+amend\s+the\s+{_MCA_RULES_NAME}", re.I)
+_MCA_AMEND_TITLE = re.compile(
+    r"(?:The\s+)?Companies\s*\((?P<subject>[^)]{2,140})\)\s*(?:[A-Za-z0-9\- ]*?)Amendment\s*Rules,?\s*(?P<year>\d{4})", re.I
+)
+_MCA_RULE_REF = re.compile(r"\b(?:in|after|before|for)\s+rules?\s+(?P<num>\d{1,3}[A-Z]{0,3})\b", re.I)
+_MCA_FORM_REF = re.compile(
+    r"\b(?:in|for|after|the)\s+(?:the\s+)?(?:said\s+rules,?\s*)?(?:in\s+)?e?\s?-?\s?Form\s+(?:No\.?\s*)?"
+    r"(?P<num>[A-Z]{2,6}\s?-?\s?\d{1,3}[A-Z]{0,3})\b",
+    re.I,
+)
+_MCA_CHANGE_VERB = re.compile(
+    r"\b(shall\s+be\s+(?:inserted|substituted|omitted|added|renumbered)|inserted|substituted|omitted|deleted|renumbered|added)\b",
+    re.I,
+)
+# "I. in rule 3,_" / "III. in rule 7,-" - an amending clause that opens a block of changes to one rule.
+_MCA_OPENER_TAIL = re.compile(r"(?:[,;]\s*[-–—_]?\s*|\bfollowing\b)$|\bfollowing\b", re.I)
+_MCA_COMMENCEMENT = re.compile(
+    r"appoints?\s+the[^.;]{0,120}?as\s+the\s+dates?\s+on\s+which\s+the\s+provisions?\s+of\s+(?P<body>[^.;]{0,400})",
+    re.I,
+)
+_MCA_SECTION_REF = re.compile(r"\bsections?\s+(?P<num>\d{1,3}[A-Z]{0,3})\b", re.I)
+_MCA_ACT = re.compile(r"Companies\s+Act,?\s*2013|\bthe\s+said\s+Act\b", re.I)
+_MCA_ACT_SLUG = "companies-act-2013"
+
+
+def _mca_key(name: str) -> str:
+    """Normalised name of a Rules set, without the leading "The" and without the year."""
+    k = norm_key(re.sub(r"^\s*the\s+", "", name.strip(), flags=re.I))
+    return re.sub(r"\s+\d{4}$", "", k).strip()
+
+
+def _mca_rules_slug(instruments: list[dict], name: str) -> str | None:
+    want = _mca_key(name)
+    for inst in instruments:
+        if inst.get("kind") == "rules" and _mca_key(inst["title"]) == want:
+            return inst["slug"]
+    return None
+
+
+def _mca_form_number(raw: str) -> str:
+    return "Form " + re.sub(r"[\s.]*-[\s.]*|\s+", "-", raw.strip().upper())
+
+
+def _mca_unquoted(line: str) -> str:
+    """The instruction part of a line. Gazette PDFs quote new wording with ― ‖ as well as “ ”."""
+    s = re.sub(r"[“\"―][^”\"‖]*[”\"‖]", " ", line)
+    return re.split(r"[“\"―]", s, maxsplit=1)[0]
+
+
+def _mca_effects(text: str, slug: str) -> list[Effect]:
+    """Walk the amending text: "in rule 3,_" opens a block, the change verbs inside it become effects.
+
+    Amending rules are laid out as numbered clauses ("I. in rule 3,_", "II. for rule 6, the following rule shall be
+    substituted", "in the said rules, in Form INC-9, ..."), each followed by its own sub-clauses, so a paragraph-level
+    match misses the rule the sub-clauses belong to.
+    """
+    lines = [ln.strip() for ln in text.replace("\r", "").split("\n")]
+    effects: list[Effect] = []
+    seen: set[tuple[str, str]] = set()
+    current: str | None = None
+    block_start = 0
+    verbs: list[str] = []
+
+    def flush(end: int) -> None:
+        if not current or not verbs:
+            return
+        excerpt = "\n".join(ln for ln in lines[block_start:end] if ln)[:2000]
+        for ct in verbs:
+            if (current, ct) in seen:
+                continue
+            seen.add((current, ct))
+            effects.append(Effect(instrument_slug=slug, provision_number=current, change_type=ct, excerpt=excerpt))
+
+    for i, raw in enumerate(lines):
+        instruction = _mca_unquoted(raw)
+        opener = None
+        if len(instruction) < 400:
+            m = _MCA_RULE_REF.search(instruction)
+            if m and m.start() < 200:
+                opener = m.group("num").upper()
+            elif _MCA_CHANGE_VERB.search(instruction) or _MCA_OPENER_TAIL.search(instruction.strip()):
+                mf = _MCA_FORM_REF.search(instruction)
+                if mf and mf.start() < 200:
+                    opener = _mca_form_number(mf.group("num"))
+        if opener:
+            flush(i)
+            current, block_start, verbs = opener, i, []
+        if current and _MCA_CHANGE_VERB.search(instruction):
+            ct = _change_type(instruction)
+            if ct not in verbs:
+                verbs.append(ct)
+    flush(len(lines))
+    return effects[:40]
+
+
+def tag_mca(doc: dict, text: str, instruments: list[dict]) -> RuleResult:
+    """Companies Act notifications (amendment rules, commencement) and General Circulars."""
+    res = RuleResult()
+    known = {i["slug"] for i in instruments}
+    title = re.sub(r"\s+", " ", doc.get("title") or "").strip()
+    # Gazette copies carry the Hindi text first and the English text after it, so the opening formula can sit deep
+    # into the document; scan the whole notification rather than a short head.
+    head = text[:200_000]
+    blob = f"{title}\n{head}"
+    doc_type = doc.get("doc_type") or ""
+
+    if doc_type in ("circular", "apdir_circular"):
+        if _MCA_ACT.search(text) and _MCA_ACT_SLUG in known:
+            relation = "clarifies" if _MCA_SECTION_REF.search(text) else "references"
+            res.tags.append((_MCA_ACT_SLUG, relation))
+        for inst in instruments:
+            if inst.get("kind") == "rules" and _mca_key(inst["title"]) in _mca_key(text[:60000]):
+                res.tags.append((inst["slug"], "clarifies"))
+        return res
+
+    # 1. amending rules: "makes the following rules further to amend the Companies (Incorporation) Rules, 2014"
+    slug = None
+    m = _MCA_AMEND_RULES.search(blob)
+    if m:
+        slug = _mca_rules_slug(instruments, f"Companies ({m.group('subject')}) Rules, {m.group('year')}")
+    if slug is None:
+        mt = _MCA_AMEND_TITLE.search(blob)
+        if mt:
+            slug = _mca_rules_slug(instruments, f"Companies ({mt.group('subject')}) Rules")
+    if slug:
+        res.is_amending = True
+        res.tags.append((slug, "amends"))
+        res.effects.extend(_mca_effects(text, slug))
+
+    # 2. commencement notification: brings sections of the Act into force
+    mc = _MCA_COMMENCEMENT.search(head)
+    if mc and _MCA_ACT_SLUG in known and re.search(r"come\s+into\s+force", head, re.I):
+        excerpt = head[max(0, mc.start() - 300):mc.end() + 300]
+        seen: set[str] = set()
+        for ms in _MCA_SECTION_REF.finditer(mc.group("body")):
+            num = ms.group("num").upper()
+            if num in seen:
+                continue
+            seen.add(num)
+            res.is_amending = True
+            res.effects.append(
+                Effect(instrument_slug=_MCA_ACT_SLUG, provision_number=num, change_type="insert", excerpt=excerpt)
+            )
+        if seen:
+            res.tags.append((_MCA_ACT_SLUG, "amends"))
+
+    # 3. the enabling provision: every rule is made under the Companies Act, 2013
+    if _MCA_ACT_SLUG in known and not any(s == _MCA_ACT_SLUG for s, _ in res.tags) and _MCA_ACT.search(blob):
+        res.tags.append((_MCA_ACT_SLUG, "references"))
+    return res
+
+
+def is_mca_document(doc: dict) -> bool:
+    if (doc.get("regulator_code") or "").upper() == "MCA":
+        return True
+    if "mca.gov.in" in (doc.get("source_url") or "").lower():
+        return True
+    return (doc.get("source_adapter") or "").startswith("mca")
+
+
 def tag(doc: dict, text: str, instruments: list[dict]) -> RuleResult:
     for inst in instruments:
         inst["_key"] = norm_key(inst["title"])
+    if is_mca_document(doc):
+        return tag_mca(doc, text, instruments)
     if doc.get("regulator_code") == "CBDT" or doc.get("source_adapter", "").startswith("cbdt"):
         return tag_cbdt(doc, text, instruments)
     if doc.get("doc_type") in ("notification", "gsr", "rules", "regulations"):

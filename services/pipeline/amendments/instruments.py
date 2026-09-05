@@ -44,7 +44,59 @@ CBDT_INSTRUMENTS: list[dict] = [
     },
 ]
 
-PHASE1_INSTRUMENTS: list[dict] = CBDT_INSTRUMENTS + [
+# Companies Act, 2013 and the Rules made under it (MCA). The text comes from MCA's own e-Book
+# (adapters/mca.py): `match` is the name as MCA publishes it, `group` the Act the Rules sit under.
+_MCA_RULES: list[tuple[str, str, str]] = [
+    # (slug, short code, MCA's name for the Rules set)
+    ("companies-incorporation-rules-2014", "CO-INC-2014", "The Companies (Incorporation) Rules, 2014"),
+    ("companies-appointment-and-qualification-of-directors-rules-2014", "CO-DIR-2014",
+     "The Companies (Appointment and Qualifications of Directors) Rules, 2014"),
+    ("companies-meetings-of-board-and-its-powers-rules-2014", "CO-MBP-2014",
+     "The Companies (Meetings of Board and its Powers) Rules, 2014"),
+    ("companies-accounts-rules-2014", "CO-ACC-2014", "The Companies (Accounts) Rules, 2014"),
+    ("companies-audit-and-auditors-rules-2014", "CO-AUD-2014", "The Companies (Audit and Auditors) Rules, 2014"),
+    ("companies-share-capital-and-debentures-rules-2014", "CO-SCD-2014",
+     "The Companies (Share Capital and Debentures) Rules, 2014"),
+    ("companies-management-and-administration-rules-2014", "CO-MGT-2014",
+     "The Companies (Management and Administration) Rules, 2014"),
+    ("companies-corporate-social-responsibility-policy-rules-2014", "CO-CSR-2014",
+     "The Companies (Corporate Social Responsibility Policy) Rules, 2014"),
+    ("companies-prospectus-and-allotment-of-securities-rules-2014", "CO-PAS-2014",
+     "The Companies (Prospectus and Allotment of Securities) Rules, 2014"),
+    ("companies-registered-valuers-and-valuation-rules-2017", "CO-RV-2017",
+     "The Companies (Registered Valuers and Valuation) Rules, 2017"),
+]
+
+MCA_INSTRUMENTS: list[dict] = [
+    {
+        "slug": "companies-act-2013",
+        "short_code": "CA-2013",
+        "title": "The Companies Act, 2013",
+        "kind": "act",
+        "regulator": "MCA",
+        "official_url": "https://www.mca.gov.in/content/mca/global/en/acts-rules/ebooks/acts.html?act=NTk2MQ%3D%3D",
+        "seed": {"adapter": "mca", "kind": "act", "match": "The Companies Act, 2013", "style": "act"},
+    },
+] + [
+    {
+        "slug": slug,
+        "short_code": code,
+        "title": title.removeprefix("The "),
+        "kind": "rules",
+        "regulator": "MCA",
+        "official_url": f"https://www.mca.gov.in/content/mca/global/en/acts-rules/ebooks/rules.html#{slug}",
+        "seed": {
+            "adapter": "mca",
+            "kind": "rules",
+            "group": "The Companies Act, 2013",
+            "match": title,
+            "style": "regulations",
+        },
+    }
+    for slug, code, title in _MCA_RULES
+]
+
+PHASE1_INSTRUMENTS: list[dict] = CBDT_INSTRUMENTS + MCA_INSTRUMENTS + [
     {
         "slug": "fema-1999",
         "short_code": "FEMA",
