@@ -5,7 +5,46 @@ official_url is the page the seeder/self-check re-scrapes for the regulator's ow
 """
 from __future__ import annotations
 
-PHASE1_INSTRUMENTS: list[dict] = [
+CBDT_INSTRUMENTS: list[dict] = [
+    {
+        "slug": "ita-1961",
+        "short_code": "ITA-1961",
+        "title": "Income-tax Act, 1961",
+        "kind": "act",
+        "regulator": "CBDT",
+        "official_url": "https://www.incometaxindia.gov.in/income-tax-act",
+        "seed": {"adapter": "cbdt_act", "match": "Income-tax Act, 1961", "page": "/income-tax-act", "style": "act"},
+    },
+    {
+        "slug": "ita-2025",
+        "short_code": "ITA-2025",
+        "title": "Income-tax Act, 2025",
+        "kind": "act",
+        "regulator": "CBDT",
+        "official_url": "https://www.incometaxindia.gov.in/income-tax-act-202511",
+        "seed": {"adapter": "cbdt_act", "match": "Income-tax Act, 2025", "page": "/income-tax-act-202511", "style": "act"},
+    },
+    {
+        "slug": "itr-1962",
+        "short_code": "ITR-1962",
+        "title": "Income-tax Rules, 1962",
+        "kind": "rules",
+        "regulator": "CBDT",
+        "official_url": "https://www.incometaxindia.gov.in/income-tax-rules",
+        "seed": {"adapter": "cbdt_act", "kind": "rules", "match": "Income-tax Rules, 1962", "page": "/income-tax-rules", "style": "regulations"},
+    },
+    {
+        "slug": "itr-2026",
+        "short_code": "ITR-2026",
+        "title": "Income-tax Rules, 2026",
+        "kind": "rules",
+        "regulator": "CBDT",
+        "official_url": "https://www.incometaxindia.gov.in/income-tax-rule-2026",
+        "seed": {"adapter": "cbdt_act", "kind": "rules", "match": "Income-tax Rules, 2026", "page": "/income-tax-rule-2026", "style": "regulations"},
+    },
+]
+
+PHASE1_INSTRUMENTS: list[dict] = CBDT_INSTRUMENTS + [
     {
         "slug": "fema-1999",
         "short_code": "FEMA",

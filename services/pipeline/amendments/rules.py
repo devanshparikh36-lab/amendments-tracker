@@ -222,9 +222,86 @@ def tag_circular(doc: dict, text: str, instruments: list[dict]) -> RuleResult:
     return res
 
 
+# ---------------------------------------------------------------- Income Tax (CBDT)
+
+_ITR_AMEND = re.compile(
+    r"further to amend the Income-?tax Rules,?\s*(?P<year>19\d{2}|20\d{2})", re.I
+)
+_ITR_RULE_REF = re.compile(r"\b(?:in the principal rules,?\s*)?in rule\s+(?P<num>\d{1,3}[A-Z]{0,3})\b", re.I)
+_ITR_NEW_RULE = re.compile(r"\bafter rule\s+(?P<num>\d{1,3}[A-Z]{0,3}),?\s*the following rule", re.I)
+_FORM_REF = re.compile(r"\bin Form No\.?\s*(?P<num>[0-9A-Z\-]+)", re.I)
+_ITA_SECTION_REF = re.compile(
+    r"\b(?:under |of )?section[s]?\s+(?P<num>\d{1,3}[A-Z]{0,3})(?:\s*\(\d+\))?\s*(?:of the Income-?tax Act)?", re.I
+)
+_ITA_ACT_YEAR = re.compile(r"Income-?tax Act,?\s*(?P<year>1961|2025)", re.I)
+
+
+def _cbdt_instruments(instruments: list[dict]) -> dict[str, dict]:
+    return {i["slug"]: i for i in instruments if i["slug"] in ("ita-1961", "ita-2025", "itr-1962", "itr-2026")}
+
+
+def tag_cbdt(doc: dict, text: str, instruments: list[dict]) -> RuleResult:
+    """Income Tax notifications and circulars: link to the Act/Rules and the rules or sections they touch."""
+    res = RuleResult()
+    known = _cbdt_instruments(instruments)
+    head = text[:8000]
+    title = doc.get("title") or ""
+    blob = f"{title}\n{head}"
+
+    rules_year = None
+    m = _ITR_AMEND.search(blob)
+    if m:
+        rules_year = m.group("year")
+    elif re.search(r"Income-?tax \((?:[A-Za-z\- ]*?Amendment)\) Rules,?\s*(20\d{2})", blob, re.I):
+        rules_year = "2026" if re.search(r"Rules,?\s*2026", blob, re.I) else "1962"
+
+    if rules_year:
+        slug = "itr-2026" if rules_year == "2026" else "itr-1962"
+        if slug in known:
+            res.is_amending = True
+            res.tags.append((slug, "amends"))
+            paras = _paragraphs(text)
+            seen: set[tuple[str, str]] = set()
+            for i, p in enumerate(paras):
+                instruction = re.split(r"namely|:-|:\s|[“\"]", p, maxsplit=1)[0]
+                refs = [mm.group("num") for mm in _ITR_RULE_REF.finditer(instruction)]
+                refs += [mm.group("num") for mm in _ITR_NEW_RULE.finditer(instruction)]
+                if not refs or not re.search(r"\b(shall|substitut|insert|omit|delet|renumber|added|replac)", p, re.I):
+                    continue
+                ct = _change_type(instruction)
+                for num in refs[:3]:
+                    if (num, ct) in seen:
+                        continue
+                    seen.add((num, ct))
+                    res.effects.append(Effect(slug, num, ct, _excerpt(paras, i)))
+            for mm in list(_FORM_REF.finditer(head))[:3]:
+                res.effects.append(Effect(slug, f"Form {mm.group('num')}", "substitute", _excerpt([head], 0)[:1200]))
+
+    # Which Act does it operate under / refer to?
+    acts = {m.group("year") for m in _ITA_ACT_YEAR.finditer(blob)}
+    for year in acts:
+        slug = "ita-2025" if year == "2025" else "ita-1961"
+        if slug in known and not any(s == slug for s, _ in res.tags):
+            relation = "clarifies" if doc.get("doc_type") == "circular" else "references"
+            res.tags.append((slug, relation))
+    if doc.get("doc_type") == "circular":
+        # circulars explain sections: record the sections they discuss
+        target = "ita-1961" if "ita-1961" in known else next(iter(known), None)
+        if target:
+            seen_secs: set[str] = set()
+            for mm in list(_ITA_SECTION_REF.finditer(head))[:8]:
+                num = mm.group("num")
+                if num in seen_secs or len(num) > 6:
+                    continue
+                seen_secs.add(num)
+    return res
+
+
 def tag(doc: dict, text: str, instruments: list[dict]) -> RuleResult:
     for inst in instruments:
         inst["_key"] = norm_key(inst["title"])
+    if doc.get("regulator_code") == "CBDT" or doc.get("source_adapter", "").startswith("cbdt"):
+        return tag_cbdt(doc, text, instruments)
     if doc.get("doc_type") in ("notification", "gsr", "rules", "regulations"):
         return tag_notification(doc, text, instruments)
     if doc.get("doc_type") == "apdir_circular":

@@ -391,7 +391,16 @@ def tag_document(doc_id: int) -> None:
 def _tag_document_by_rules(doc: dict, text: str, instruments: list[dict]) -> None:
     """Zero-cost tagging from the document's own wording (see rules.py). Records tags and effects; never merges text."""
     doc_id = doc["id"]
-    result = rules.tag({"doc_type": doc["doc_type"], "title": doc["title"]}, text, [dict(i) for i in instruments])
+    result = rules.tag(
+        {
+            "doc_type": doc["doc_type"],
+            "title": doc["title"],
+            "regulator_code": doc.get("regulator_code"),
+            "source_adapter": doc.get("source_adapter", ""),
+        },
+        text,
+        [dict(i) for i in instruments],
+    )
     tag_names: list[str] = []
     with db.transaction() as conn:
         by_slug = {i["slug"]: i for i in db.fetch_all(conn, "SELECT id, slug, title, kind FROM instrument")}
@@ -579,9 +588,13 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
         cfg = {"adapter": "document_text", "style": "regulations"}
     if cfg is None:
         raise RuntimeError(f"no seed source configured for {slug}")
-    official = official_text_for(inst, cfg)          # (text, updated_as_on, source_url)
+    official = official_text_for(inst, cfg)          # (text | list[ParsedProvision], updated_as_on, source_url)
     text, updated_as_on, source_url = official
-    parsed = [p for p in split_provisions(text, style=cfg.get("style", "auto")) if p.text.strip()]
+    if isinstance(text, list):
+        # Source already supplies the text section by section (e.g. the Income Tax portal's section API).
+        parsed = [p for p in text if p.text.strip()]
+    else:
+        parsed = [p for p in split_provisions(text, style=cfg.get("style", "auto")) if p.text.strip()]
     if len(parsed) < 3:
         raise RuntimeError(f"official text for {slug} parsed into only {len(parsed)} provisions; refusing to overwrite")
 
@@ -662,6 +675,44 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
 
 def _slugify(number: str) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "-", number).strip("-").lower()
+
+
+# ----------------------------------------------------------------------------- section map
+
+def load_section_map() -> dict[str, int]:
+    """Load CBDT's official Income-tax Act 1961 <-> 2025 provision mapping."""
+    from .adapters import cbdt
+
+    rows = cbdt.section_map()
+    inserted = 0
+    with db.transaction() as conn:
+        db.execute(conn, "DELETE FROM section_map WHERE map_key = 'income-tax'")
+        for i, r in enumerate(rows):
+            old_num, _, old_title = (r["old_title"] or "").partition(" : ")
+            new_num, _, new_title = (r["new_title"] or "").partition(" : ")
+            entity = (r.get("entity_type") or "").strip().lower() or ("form" if old_num.upper().startswith("FORM") else "section")
+            is_rule = entity in ("rule", "form")
+            db.execute(
+                conn,
+                """INSERT INTO section_map (map_key, old_instrument, new_instrument, old_number, old_title,
+                                            new_number, new_title, entity_type, sort_order, source_url)
+                   VALUES ('income-tax', %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                   ON CONFLICT DO NOTHING""",
+                (
+                    "itr-1962" if is_rule else "ita-1961",
+                    "itr-2026" if is_rule else "ita-2025",
+                    old_num.strip() or None,
+                    old_title.strip() or None,
+                    new_num.strip() or None,
+                    new_title.strip() or None,
+                    entity,
+                    r.get("old_priority") or i,
+                    "https://www.incometaxindia.gov.in/income-tax-act-202511",
+                ),
+            )
+            inserted += 1
+    log.info("section map loaded: %d rows", inserted)
+    return {"rows": inserted}
 
 
 # ----------------------------------------------------------------------------- prune

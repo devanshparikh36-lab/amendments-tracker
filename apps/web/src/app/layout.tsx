@@ -11,6 +11,7 @@ const nav = [
   { href: "/", label: "What's new" },
   { href: "/browse", label: "Regulations" },
   { href: "/documents", label: "Documents" },
+  { href: "/compare/income-tax", label: "1961 vs 2025" },
   { href: "/search", label: "Search" },
   { href: "/status", label: "Status" },
 ];

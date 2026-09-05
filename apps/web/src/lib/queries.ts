@@ -228,6 +228,68 @@ export async function search(q: string, limit = 50) {
   return { provisions, documents, attachments };
 }
 
+export type MapRow = {
+  id: number;
+  old_number: string | null;
+  old_title: string | null;
+  new_number: string | null;
+  new_title: string | null;
+  entity_type: string;
+  old_instrument: string;
+  new_instrument: string;
+  sort_order: number;
+};
+
+export async function mapEntries(mapKey: string, opts: { q?: string; entity?: string; limit?: number } = {}) {
+  const params: unknown[] = [mapKey];
+  const where: string[] = ["map_key = $1"];
+  if (opts.entity) {
+    params.push(opts.entity);
+    where.push(`entity_type = $${params.length}`);
+  }
+  if (opts.q) {
+    params.push(opts.q);
+    const i = params.length;
+    where.push(
+      `(old_number ILIKE '%' || $${i} || '%' OR new_number ILIKE '%' || $${i} || '%' OR old_title ILIKE '%' || $${i} || '%' OR new_title ILIKE '%' || $${i} || '%')`,
+    );
+  }
+  const limit = Math.min(opts.limit ?? 400, 3000);
+  return query<MapRow>(
+    `SELECT id, old_number, old_title, new_number, new_title, entity_type, old_instrument, new_instrument, sort_order
+     FROM section_map WHERE ${where.join(" AND ")}
+     ORDER BY sort_order, id LIMIT ${limit}`,
+    params,
+  );
+}
+
+export async function provisionText(instrumentSlug: string, number: string) {
+  const rows = await query<{ text: string; heading: string | null; source_kind: string; effective_from: string | null; number: string }>(
+    `SELECT v.text, p.heading, v.source_kind, v.effective_from, p.number
+     FROM provision p
+     JOIN instrument i ON i.id = p.instrument_id
+     JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
+     WHERE i.slug = $1 AND (p.number = $2 OR upper(p.number) = upper($2))
+     LIMIT 1`,
+    [instrumentSlug, number],
+  );
+  return rows[0] ?? null;
+}
+
+export async function mapCounts(mapKey: string) {
+  const [r] = await query<{ total: number; mapped: number; dropped: number; added: number; sections: number; rules: number }>(
+    `SELECT count(*)::int total,
+            count(*) FILTER (WHERE old_number IS NOT NULL AND new_number IS NOT NULL)::int mapped,
+            count(*) FILTER (WHERE new_number IS NULL)::int dropped,
+            count(*) FILTER (WHERE old_number IS NULL)::int added,
+            count(*) FILTER (WHERE entity_type = 'section')::int sections,
+            count(*) FILTER (WHERE entity_type <> 'section')::int rules
+     FROM section_map WHERE map_key = $1`,
+    [mapKey],
+  );
+  return r;
+}
+
 export async function homeStats() {
   const [s] = await query<{
     documents: number; instruments: number; provisions: number; machine_versions: number; cannot_apply: number; differs: number;

@@ -50,11 +50,14 @@ jobs:
           cache: pip
           cache-dependency-path: services/pipeline/requirements.txt
 
-      - name: Install OCR engine
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr > /dev/null
+      - name: Install OCR engine and X server
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq tesseract-ocr xvfb > /dev/null
 
       - name: Install dependencies
         run: pip install -q -r requirements.txt
+
+      - name: Install Chromium (for sites that block scripted clients)
+        run: python -m playwright install --with-deps chromium
 
       - name: Apply migrations
         run: python cli.py migrate
