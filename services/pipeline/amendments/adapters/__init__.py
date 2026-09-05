@@ -7,8 +7,9 @@ from .base import Adapter
 from .rbi_apdir import RbiApDirCirculars
 from .rbi_fema_notifications import RbiFemaNotifications
 from .rbi_master_directions import RbiMasterDirections
-from . import rbi_master_directions, rbi_fema_act, cbdt
+from . import rbi_master_directions, rbi_fema_act, cbdt, sebi
 from .cbdt import CbdtCirculars, CbdtNotifications
+from .sebi import SebiCirculars, SebiMasterCirculars, SebiRegulations
 
 registry: dict[str, Adapter] = {
     a.name: a
@@ -18,6 +19,9 @@ registry: dict[str, Adapter] = {
         RbiMasterDirections(),
         CbdtNotifications(),
         CbdtCirculars(),
+        SebiRegulations(),
+        SebiMasterCirculars(),
+        SebiCirculars(),
     )
 }
 
@@ -48,6 +52,7 @@ _OFFICIAL_TEXT_SOURCES = {
     "rbi_master_directions": rbi_master_directions.official_text,
     "rbi_fema_act": rbi_fema_act.official_text,
     "cbdt_act": cbdt.official_text,
+    "sebi": sebi.official_text,
     "document_text": _document_text,
 }
 
