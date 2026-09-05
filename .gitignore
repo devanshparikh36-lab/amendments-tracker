@@ -10,3 +10,4 @@ services/pipeline/storage_dev/
 .pytest_cache/
 .claude/
 apps/web/dev.cmd
+services/pipeline/*.log
