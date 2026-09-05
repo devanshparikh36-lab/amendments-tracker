@@ -26,9 +26,9 @@ export default async function Home() {
           {stats.pending > 0 && <> &middot; {stats.pending} jobs in progress</>}
         </p>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-6">
-          <Stat label="Documents" value={stats.documents} href="/documents" />
+          <Stat label="Documents" value={stats.documents.toLocaleString("en-IN")} href="/documents" />
           <Stat label="Regulations tracked" value={stats.instruments} href="/browse" />
-          <Stat label="Provisions" value={stats.provisions} />
+          <Stat label="Provisions" value={stats.provisions.toLocaleString("en-IN")} />
           <Stat label="Machine-consolidated provisions" value={stats.machine_versions} tone="border-amber-200" />
           <Stat label="Amendments not applied automatically" value={stats.cannot_apply} tone={stats.cannot_apply ? "border-red-300" : "border-stone-200"} href="/status" />
           <Stat label="Differ from official republication" value={stats.differs} tone={stats.differs ? "border-red-300" : "border-stone-200"} href="/status" />

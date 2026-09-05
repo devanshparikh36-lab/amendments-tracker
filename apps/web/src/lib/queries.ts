@@ -296,7 +296,7 @@ export async function homeStats() {
     pending: number; last_run: string | null;
   }>(`
     SELECT (SELECT count(*) FROM document)::int AS documents,
-           (SELECT count(*) FROM instrument WHERE seeded_at IS NOT NULL)::int AS instruments,
+           (SELECT count(*) FROM instrument WHERE seeded_at IS NOT NULL OR EXISTS (SELECT 1 FROM provision p WHERE p.instrument_id = instrument.id))::int AS instruments,
            (SELECT count(*) FROM provision)::int AS provisions,
            (SELECT count(*) FROM provision_version WHERE source_kind = 'machine_merged' AND effective_to IS NULL)::int AS machine_versions,
            (SELECT count(*) FROM amendment_effect WHERE change_type = 'cannot_apply')::int AS cannot_apply,
