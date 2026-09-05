@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.netlify/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.local
+services/pipeline/storage_dev/
+.pytest_cache/
+.claude/
+apps/web/dev.cmd
