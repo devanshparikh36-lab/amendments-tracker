@@ -673,24 +673,28 @@ def prune_before_cutoff() -> dict[str, int]:
         raise RuntimeError("MIN_DOCUMENT_YEAR is not set")
     with db.transaction() as conn:
         docs = db.fetch_all(conn, "SELECT id, doc_type, title, date_issued FROM document WHERE date_issued < %s", (date(settings.min_document_year, 1, 1),))
-    victims = [d for d in docs if is_before_cutoff(d["doc_type"], d["title"], d["date_issued"])]
+    victims = [d["id"] for d in docs if is_before_cutoff(d["doc_type"], d["title"], d["date_issued"])]
     store = storage()
     files = 0
-    for d in victims:
+    if victims:
         with db.transaction() as conn:
-            keys = [a["storage_key"] for a in db.fetch_all(conn, "SELECT storage_key FROM attachment WHERE document_id = %s AND storage_key IS NOT NULL", (d["id"],))]
-        for k in keys:
+            keys = [a["storage_key"] for a in db.fetch_all(
+                conn, "SELECT storage_key FROM attachment WHERE document_id = ANY(%s) AND storage_key IS NOT NULL", (victims,)
+            )]
+        for i in range(0, len(keys), 1000):
+            chunk = keys[i:i + 1000]
             try:
                 if store.remote:
-                    store._s3.delete_object(Bucket=settings.r2_bucket, Key=k)
+                    store._s3.delete_objects(Bucket=settings.r2_bucket, Delete={"Objects": [{"Key": k} for k in chunk], "Quiet": True})
                 else:
-                    (settings.local_storage_dir / k).unlink(missing_ok=True)
-                files += 1
+                    for k in chunk:
+                        (settings.local_storage_dir / k).unlink(missing_ok=True)
+                files += len(chunk)
             except Exception as exc:
-                log.warning("could not delete %s: %s", k, exc)
+                log.warning("could not delete a batch of files: %s", exc)
         with db.transaction() as conn:
-            db.execute(conn, "DELETE FROM job WHERE payload->>'document_id' = %s", (str(d["id"]),))
-            db.execute(conn, "DELETE FROM document WHERE id = %s", (d["id"],))  # cascades to attachments, tags, effects
+            db.execute(conn, "DELETE FROM job WHERE (payload->>'document_id')::int = ANY(%s)", (victims,))
+            db.execute(conn, "DELETE FROM document WHERE id = ANY(%s)", (victims,))  # cascades to attachments, tags, effects
     log.info("pruned %d documents and %d files before %d", len(victims), files, settings.min_document_year)
     return {"documents": len(victims), "files": files, "kept_base_texts": len(docs) - len(victims)}
 
