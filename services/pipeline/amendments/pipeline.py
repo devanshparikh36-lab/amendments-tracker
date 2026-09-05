@@ -29,7 +29,8 @@ from .storage.files import build_key, guess_mime, storage
 
 log = logging.getLogger(__name__)
 
-MASTER_DIRECTION_TYPES = {"master_direction"}
+# Consolidated texts the regulator maintains itself: never year-pruned, and they seed / self-check their instrument.
+MASTER_DIRECTION_TYPES = {"master_direction", "master_circular"}
 
 
 # ----------------------------------------------------------------------------- helpers
@@ -144,8 +145,40 @@ def run_discovery(adapter_names: list[str] | None = None, *, since_year: int | N
     return summary
 
 
+def _ensure_instrument(conn: psycopg.Connection, reg_id: int, d: DiscoveredDocument) -> None:
+    """An adapter that knows a document IS an instrument's official text names the instrument in `extra`.
+
+    (SEBI publishes one consolidated "[Last amended on ...]" page per Act / Regulation and mints a new URL for every
+    republication, so the slug is the identity and `official_url` is refreshed to the newest page.)
+    """
+    slug = d.extra.get("instrument_slug")
+    if not slug:
+        return
+    existing = db.fetch_one(conn, "SELECT id, official_url FROM instrument WHERE slug = %s", (slug,))
+    if existing:
+        if existing["official_url"] != d.source_url:
+            db.execute(conn, "UPDATE instrument SET official_url = %s WHERE id = %s", (d.source_url, existing["id"]))
+        return
+    db.execute(
+        conn,
+        """INSERT INTO instrument (regulator_id, slug, short_code, title, kind, official_url)
+           VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (slug) DO NOTHING""",
+        (
+            reg_id,
+            slug,
+            (d.extra.get("instrument_short_code") or slug).upper()[:24],
+            d.extra.get("instrument_title") or d.title,
+            d.extra.get("instrument_kind") or "regulations",
+            d.source_url,
+        ),
+    )
+
+
 def _ensure_md_instrument(conn: psycopg.Connection, reg_id: int, d: DiscoveredDocument) -> None:
     """Every FEMA Master Direction on RBI's listing becomes a tracked instrument automatically."""
+    if d.extra.get("instrument_slug"):
+        _ensure_instrument(conn, reg_id, d)
+        return
     if db.fetch_one(conn, "SELECT id FROM instrument WHERE official_url = %s", (d.source_url,)):
         return
     base = re.sub(r"\(\s*[Uu]pdated[^)]*\)", " ", d.title)
@@ -170,8 +203,8 @@ def is_before_cutoff(doc_type: str, title: str | None, date_issued: date | None)
         return False
     if doc_type in MASTER_DIRECTION_TYPES:
         return False
-    # original (non-amending) regulations / rules are base texts: keep them whatever their year
-    if doc_type in ("notification", "gsr", "rules", "regulations") and not re.search(r"\bAmendment\b|\bamend", title or "", re.I):
+    # original (non-amending) Acts / regulations / rules are base texts: keep them whatever their year
+    if doc_type in ("notification", "gsr", "rules", "regulations", "act") and not re.search(r"\bAmendment\b|\bamend", title or "", re.I):
         return False
     return True
 
@@ -179,7 +212,7 @@ def is_before_cutoff(doc_type: str, title: str | None, date_issued: date | None)
 def _upsert_discovered(conn: psycopg.Connection, reg_id: int, adapter: str, d: DiscoveredDocument) -> bool:
     if is_before_cutoff(d.doc_type, d.title, d.date_issued):
         return False
-    if d.doc_type in MASTER_DIRECTION_TYPES:
+    if d.doc_type in MASTER_DIRECTION_TYPES or d.extra.get("instrument_slug"):
         _ensure_md_instrument(conn, reg_id, d)
     existing = db.fetch_one(conn, "SELECT id, title FROM document WHERE source_url = %s", (d.source_url,))
     if existing:
@@ -285,9 +318,10 @@ def fetch_document(doc_id: int, *, republished: bool = False) -> None:
             if prim:
                 db.execute(conn, "UPDATE document SET extracted_text = %s WHERE id = %s", (prim["extracted_text"], doc_id))
 
-        if doc["doc_type"] in MASTER_DIRECTION_TYPES:
-            # A Master Direction is the regulator's own consolidated text: it seeds / self-checks the instrument.
-            inst = db.fetch_one(conn, "SELECT id, slug FROM instrument WHERE official_url = %s", (doc["source_url"],))
+        inst = db.fetch_one(conn, "SELECT id, slug FROM instrument WHERE official_url = %s", (doc["source_url"],))
+        if doc["doc_type"] in MASTER_DIRECTION_TYPES or inst:
+            # A Master Direction / Master Circular / consolidated SEBI Regulation is the regulator's own text:
+            # it seeds and self-checks the instrument instead of being tagged as an amendment.
             if inst:
                 enqueue(conn, "selfcheck_instrument", {"slug": inst["slug"], "document_id": doc_id})
             db.execute(conn, "UPDATE document SET tag_status = 'skipped', is_amending = false WHERE id = %s", (doc_id,))
@@ -404,6 +438,7 @@ def _tag_document_by_rules(doc: dict, text: str, instruments: list[dict]) -> Non
             "source_url": doc.get("source_url"),
             "regulator_code": doc.get("regulator_code"),
             "source_adapter": doc.get("source_adapter", ""),
+            "source_url": doc.get("source_url", ""),
         },
         text,
         [dict(i) for i in instruments],
@@ -589,6 +624,10 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
     if not inst:
         raise LookupError(slug)
     cfg = _seed_config(slug)
+    if cfg is None and inst["regulator_code"] == "SEBI" and inst.get("official_url"):
+        # auto-registered from the SEBI Legal listing: its own page holds the consolidated text
+        style = "master_direction" if inst["kind"] == "master_direction" else "sebi"
+        cfg = {"adapter": "sebi", "style": style}
     if cfg is None and inst["kind"] == "master_direction":
         cfg = {"adapter": "rbi_master_directions", "style": "master_direction"}
     if cfg is None and inst["kind"] in ("regulations", "rules") and inst.get("official_url"):

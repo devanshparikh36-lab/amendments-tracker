@@ -1,9 +1,126 @@
-"""Instruments tracked in Phase 1 (FEMA + RBI). Adding a regulator later means adding entries here plus an adapter.
+"""Instruments tracked in Phase 1 (FEMA + RBI, Income Tax, SEBI). Adding a regulator means entries here plus an adapter.
 
 official_url is the page the seeder/self-check re-scrapes for the regulator's own consolidated text.
 `rbi_md_id` identifies the Master Direction on rbi.org.in; the seeder uses the HTML detail page (cleaner than the PDF).
 """
 from __future__ import annotations
+
+# SEBI keeps one consolidated "[Last amended on <date>]" page per Act / Regulation, and mints a new URL every time
+# it republishes one. `seed.match` is therefore the stable key: the seeder re-finds the current page on the Legal
+# listing and `official_url` is only a fallback. Every other consolidated Regulation on that listing is registered
+# automatically at discovery time (adapters/sebi.py -> pipeline._ensure_instrument).
+SEBI_INSTRUMENTS: list[dict] = [
+    {
+        "slug": "sebi-act-1992",
+        "short_code": "SEBI-ACT",
+        "title": "Securities and Exchange Board of India Act, 1992",
+        "kind": "act",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/acts/jan-1992/securities-and-exchange-board-of-india-act-1992-as-amended-by-the-finance-act-2021-13-of-2021-w-e-f-april-1-2021-_3.html",
+        "seed": {"adapter": "sebi", "listing": "acts", "match": r"^Securities and Exchange Board of India Act,?\s*1992", "style": "sebi"},
+    },
+    {
+        "slug": "scra-1956",
+        "short_code": "SCRA",
+        "title": "Securities Contracts (Regulation) Act, 1956",
+        "kind": "act",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/acts/apr-2021/securities-contracts-regulation-act-1956-as-amended-by-the-finance-act-2021-13-of-2021-w-e-f-april-1-2021-_49750.html",
+        "seed": {"adapter": "sebi", "listing": "acts", "match": r"^Securities Contracts \(Regulation\) Act,?\s*1956", "style": "sebi"},
+    },
+    {
+        "slug": "depositories-act-1996",
+        "short_code": "DEP-ACT",
+        "title": "Depositories Act, 1996",
+        "kind": "act",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/acts/sep-1995/depositories-act-1996-as-amended-by-the-international-financial-services-centres-authority-act-2019-w-e-f-october-01-2020-_1.html",
+        "seed": {"adapter": "sebi", "listing": "acts", "match": r"^Depositories Act,?\s*1996", "style": "sebi"},
+    },
+    {
+        "slug": "sebi-lodr-2015",
+        "short_code": "SEBI-LODR",
+        "title": "Securities and Exchange Board of India (Listing Obligations and Disclosure Requirements) Regulations, 2015",
+        "kind": "regulations",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/regulations/jul-2026/securities-and-exchange-board-of-india-listing-obligations-and-disclosure-requirements-regulations-2015-last-amended-on-july-14-2026-_102974.html",
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Listing Obligations and Disclosure Requirements", "style": "sebi"},
+    },
+    {
+        "slug": "sebi-icdr-2018",
+        "short_code": "SEBI-ICDR",
+        "title": "Securities and Exchange Board of India (Issue of Capital and Disclosure Requirements) Regulations, 2018",
+        "kind": "regulations",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/regulations/mar-2026/securities-and-exchange-board-of-india-issue-of-capital-and-disclosure-requirements-regulations-2018-last-amended-on-march-21-2026-_100581.html",
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Issue of Capital and Disclosure Requirements", "style": "sebi"},
+    },
+    {
+        "slug": "sebi-sast-2011",
+        "short_code": "SEBI-SAST",
+        "title": "Securities and Exchange Board of India (Substantial Acquisition of Shares and Takeovers) Regulations, 2011",
+        "kind": "regulations",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/regulations/dec-2025/securities-and-exchange-board-of-india-substantial-acquisition-of-shares-and-takeovers-regulations-2011-last-amended-on-december-5-2025-_98643.html",
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Substantial Acquisition of Shares and Takeovers", "style": "sebi"},
+    },
+    {
+        "slug": "sebi-pit-2015",
+        "short_code": "SEBI-PIT",
+        "title": "Securities and Exchange Board of India (Prohibition of Insider Trading) Regulations, 2015",
+        "kind": "regulations",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/regulations/mar-2025/securities-and-exchange-board-of-india-prohibition-of-insider-trading-regulations-2015-last-amended-on-march-12-2025-_92672.html",
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Prohibition of Insider Trading", "style": "sebi"},
+    },
+    {
+        # SEBI recast the Mutual Funds Regulations, 1996 as the (Mutual Funds) Regulations, 2026; the listing keeps
+        # only the current text, so the slug carries no year and `match` follows whichever is published.
+        "slug": "sebi-mutual-funds",
+        "short_code": "SEBI-MF",
+        "title": "Securities and Exchange Board of India (Mutual Funds) Regulations",
+        "kind": "regulations",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/regulations/jul-2026/securities-and-exchange-board-of-india-mutual-funds-regulations-2026-last-amended-on-july-7-2026-_102780.html",
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"\(Mutual Funds\)\s*Regulations", "style": "sebi"},
+    },
+    {
+        "slug": "sebi-aif-2012",
+        "short_code": "SEBI-AIF",
+        "title": "Securities and Exchange Board of India (Alternative Investment Funds) Regulations, 2012",
+        "kind": "regulations",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/regulations/apr-2026/securities-and-exchange-board-of-india-alternative-investment-funds-regulations-2012-last-amended-on-april-18-2026-_101019.html",
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"\(Alternative Investment Funds", "style": "sebi"},
+    },
+    {
+        "slug": "sebi-portfolio-managers-2020",
+        "short_code": "SEBI-PMS",
+        "title": "Securities and Exchange Board of India (Portfolio Managers) Regulations, 2020",
+        "kind": "regulations",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/regulations/sep-2025/securities-and-exchange-board-of-india-portfolio-managers-regulations-2020-last-amended-on-september-03-2025-_96560.html",
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"\(Portfolio Managers\)\s*Regulations", "style": "sebi"},
+    },
+    {
+        "slug": "sebi-buyback-2018",
+        "short_code": "SEBI-BUYBACK",
+        "title": "Securities and Exchange Board of India (Buy-Back of Securities) Regulations, 2018",
+        "kind": "regulations",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/regulations/jul-2026/securities-and-exchange-board-of-india-buy-back-of-securities-regulations-2018-last-amended-on-july-6-2026-_103042.html",
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Buy-?Back of Securities", "style": "sebi"},
+    },
+    {
+        "slug": "sebi-delisting-2021",
+        "short_code": "SEBI-DELISTING",
+        "title": "Securities and Exchange Board of India (Delisting of Equity Shares) Regulations, 2021",
+        "kind": "regulations",
+        "regulator": "SEBI",
+        "official_url": "https://www.sebi.gov.in/legal/regulations/sep-2025/securities-and-exchange-board-of-india-delisting-of-equity-shares-regulations-2021-last-amended-on-september-3-2025-_96548.html",
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Delisting of Equity Shares", "style": "sebi"},
+    },
+]
 
 CBDT_INSTRUMENTS: list[dict] = [
     {
@@ -44,7 +161,7 @@ CBDT_INSTRUMENTS: list[dict] = [
     },
 ]
 
-PHASE1_INSTRUMENTS: list[dict] = CBDT_INSTRUMENTS + [
+PHASE1_INSTRUMENTS: list[dict] = SEBI_INSTRUMENTS + CBDT_INSTRUMENTS + [
     {
         "slug": "fema-1999",
         "short_code": "FEMA",

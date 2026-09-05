@@ -76,11 +76,11 @@ def _is_chapter(line: str) -> bool:
 
 def _match_number(line: str, style: str):
     m = None
-    if style in ("auto", "regulations", "act"):
+    if style in ("auto", "regulations", "act", "sebi"):
         m = _LABELLED.match(line)
     if m is None and style in ("auto", "master_direction"):
         m = _PARA_DOTTED.match(line) or _PARA_LETTER.match(line) or _PARA_TOP.match(line)
-    if m is None and style in ("auto", "act", "regulations"):
+    if m is None and style in ("auto", "act", "regulations", "sebi"):
         m = _ACT_SEC.match(line) or _PARA_TOP.match(line)
     return m
 
@@ -135,6 +135,9 @@ def _find_body_start(lines: list[str], style: str) -> int | None:
 
 
 def split_provisions(text: str, *, style: str = "auto") -> list[ParsedProvision]:
+    # SEBI prints its footnotes at the foot of *every* page of a consolidated PDF, not once at the end, so the
+    # "everything after the first footnote is the appendix" rule must not apply: they stay with their provision.
+    footnotes_at_end = style != "sebi"
     lines = [ln.strip() for ln in text.replace("\r", "").split("\n")]
     has_chapters = any(_is_chapter(ln) for ln in lines if ln)
     has_index = any(_INDEX.match(ln) and len(ln) < 60 for ln in lines if ln)
@@ -178,7 +181,7 @@ def split_provisions(text: str, *, style: str = "auto") -> list[ParsedProvision]
         if body_start is not None and i >= body_start and region in ("preamble", "front"):
             region = "body"
 
-        if region in ("front", "body") and is_appendix and body_paras >= 3:
+        if region in ("front", "body") and is_appendix and body_paras >= 3 and footnotes_at_end:
             region = "appendix"
             footnote_lines.append(line)
             continue
@@ -216,13 +219,13 @@ def split_provisions(text: str, *, style: str = "auto") -> list[ParsedProvision]
             continue
 
         if current is not None and style != "master_direction" and _INLINE_FOOTNOTE.match(line):
-            # CBIC section pages print each section's footnotes right after it ("1. Inserted by section 118 of ...");
-            # they stay with that section instead of opening a provision numbered "1".
+            # CBIC and SEBI pages print each provision's footnotes right after it ("1. Inserted by section 118 of ...");
+            # they stay with that provision instead of opening a provision numbered "1".
             current.footnotes.append(line)
             append(line)
             continue
 
-        if body_paras >= 5 and _FOOTNOTE_VERB.match(line):
+        if body_paras >= 5 and footnotes_at_end and _FOOTNOTE_VERB.match(line):
             region = "appendix"
             footnote_lines.append(line)
             continue

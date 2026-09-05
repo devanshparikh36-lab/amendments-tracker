@@ -7,6 +7,7 @@ from amendments.adapters.rbi_apdir import _parse_rows
 from amendments.adapters.rbi_common import extract_detail, parse_listing, parse_rbi_date, updated_as_on
 from amendments.adapters.rbi_fema_notifications import DETAIL_PATTERN, classify, clean_number
 from amendments.adapters.rbi_master_directions import is_fema_master_direction
+from amendments.adapters import sebi
 from amendments.parsers.provisions import split_provisions
 
 FIX = Path(__file__).parent / "fixtures"
@@ -119,3 +120,168 @@ def test_master_direction_letter_parts_and_restarting_numbers():
     assert len(set(numbers)) == len(numbers)
     by = {p.number: p for p in provs}
     assert by["3.2 (Part I)"].parent_number == "3 (Part I)"
+
+
+# ----------------------------------------------------------------------------- SEBI (sebi.gov.in)
+
+SEBI_INSTRUMENTS = [
+    {"slug": "sebi-act-1992", "title": "Securities and Exchange Board of India Act, 1992", "kind": "act"},
+    {"slug": "scra-1956", "title": "Securities Contracts (Regulation) Act, 1956", "kind": "act"},
+    {
+        "slug": "sebi-lodr-2015",
+        "title": "Securities and Exchange Board of India (Listing Obligations and Disclosure Requirements) Regulations, 2015",
+        "kind": "regulations",
+    },
+    {
+        "slug": "sebi-pit-2015",
+        "title": "Securities and Exchange Board of India (Prohibition of Insider Trading) Regulations, 2015",
+        "kind": "regulations",
+    },
+]
+
+
+def test_sebi_regulations_listing():
+    html = rd("sebi_regulations.html")
+    rows = sebi.parse_listing(html)
+    assert len(rows) == 25
+    assert sebi.total_records(html) > 1000          # the Regulations archive, not just the current consolidated texts
+    assert all(r["url"].startswith("https://www.sebi.gov.in/legal/regulations/") for r in rows)
+    assert all(r["date_issued"] for r in rows)
+
+    consolidated = [r for r in rows if sebi.is_consolidated(r["title"], "regulations")]
+    assert consolidated, "expected at least one '[Last amended on ...]' text"
+    assert not any(re.match(r"Corrigendum", r["title"], re.I) for r in consolidated)
+    # an amending regulation is a document but never an instrument
+    assert not sebi.is_consolidated(
+        "Securities and Exchange Board of India (Listing Obligations and Disclosure Requirements) (Second Amendment) Regulations, 2026",
+        "regulations",
+    )
+    assert not sebi.is_consolidated("Corrigendum to the Securities and Exchange Board of India (X) Regulations, 2021", "regulations")
+
+
+def test_sebi_instrument_slugs_and_titles():
+    slug, short, title, kind = sebi.instrument_for(
+        "Securities and Exchange Board of India (Listing Obligations and Disclosure Requirements) Regulations, 2015 "
+        "[Last amended on July 14, 2026]",
+        "regulations",
+    )
+    assert (slug, short, kind) == ("sebi-lodr-2015", "SEBI-LODR", "regulations")
+    assert title.endswith("Regulations, 2015")
+    assert sebi.instrument_for("Securities and Exchange Board of India Act, 1992 (As amended by the Finance Act, 2021)", "act")[0] == "sebi-act-1992"
+    assert sebi.instrument_for("Securities Contracts (Regulation) Act, 1956 (As amended ...)", "act")[0] == "scra-1956"
+    # a regulation with no hand-written slug still gets a stable one
+    assert sebi.instrument_for("Securities and Exchange Board of India (Vault Managers) Regulations, 2021", "regulations")[0] == "sebi-vault-managers-regulations-2021"
+    assert sebi.instrument_for("Master Circular for Alternative Investment Funds (AIFs)", "master_circular")[3] == "master_direction"
+
+
+def test_sebi_updated_as_on_and_dates():
+    assert str(sebi.updated_as_on("... Regulations, 2015 [Last amended on July 14, 2026]")) == "2026-07-14"
+    assert str(sebi.updated_as_on("... Regulations, 2020 [Last amended on September 03, 2025]")) == "2025-09-03"
+    assert sebi.updated_as_on("... Regulations, 2026") is None
+    assert sebi.strip_amendment_note("X Regulations, 2015 [Last amended on July 14, 2026]") == "X Regulations, 2015"
+
+
+def test_sebi_circulars_listing_is_date_filtered():
+    rows = sebi.parse_listing(rd("sebi_circulars.html"))
+    assert len(rows) == 25
+    assert all(r["date_issued"] and r["date_issued"].year == 2014 for r in rows)
+    assert all("/legal/circulars/" in r["url"] for r in rows)
+
+
+def test_sebi_detail_page_number_date_and_pdf():
+    url = "https://www.sebi.gov.in/legal/regulations/may-2025/x_93783.html"
+    d = sebi.parse_detail(rd("sebi_lodr_amendment_detail.html"), url)
+    assert str(d.date_issued) == "2025-05-01"
+    assert "Listing Obligations" in d.title and "Second Amendment" in d.title
+    assert len(d.pdf_urls) == 1
+    assert d.pdf_urls[0].startswith("https://www.sebi.gov.in/sebi_data/attachdocs/") and d.pdf_urls[0].endswith(".pdf")
+    assert d.number is None            # SEBI prints "Regulations" here; circulars print "Circular No.: ..."
+    assert d.text == ""                # PDF-only page: the pipeline falls back to the attachment's text
+
+
+def test_sebi_viewer_url_unwrapping():
+    page = "https://www.sebi.gov.in/legal/circulars/aug-2026/x_1.html"
+    assert sebi.pdf_from_viewer("../../../web/?file=https://www.sebi.gov.in/sebi_data/attachdocs/a/1.pdf", page) == "https://www.sebi.gov.in/sebi_data/attachdocs/a/1.pdf"
+    assert sebi.pdf_from_viewer("../../../web/?file=/sebi_data/attachdocs/1451563961297.pdf", page) == "https://www.sebi.gov.in/sebi_data/attachdocs/1451563961297.pdf"
+    assert sebi.pdf_from_viewer("/some/page.html", page) is None
+
+
+def test_sebi_amendment_regulation_is_tagged_from_its_own_wording():
+    from amendments import rules
+
+    text = rd("sebi_lodr_amendment.txt")
+    doc = {
+        "doc_type": "regulations",
+        "regulator_code": "SEBI",
+        "source_url": "https://www.sebi.gov.in/legal/regulations/may-2025/x_93783.html",
+        "title": "Securities and Exchange Board of India (Listing Obligations and Disclosure Requirements) (Second Amendment) Regulations, 2025",
+    }
+    res = rules.tag(doc, text, [dict(i) for i in SEBI_INSTRUMENTS])
+    assert res.is_amending
+    assert ("sebi-lodr-2015", "amends") in res.tags
+    # "In exercise of the powers conferred by ... section 30 of the SEBI Act, 1992 read with section 31 of the SCRA"
+    assert ("sebi-act-1992", "references") in res.tags
+    assert ("scra-1956", "references") in res.tags
+    effects = {(e.provision_number, e.change_type) for e in res.effects}
+    assert ("13", "insert") in effects            # "In regulation 13, sub-regulation (2), ... shall be inserted"
+    assert ("Schedule III", "insert") in effects  # "In Schedule III, in Part D, after clause 9, ..."
+    assert all(e.instrument_slug == "sebi-lodr-2015" for e in res.effects)
+    assert all(e.excerpt for e in res.effects)
+
+
+def test_sebi_circular_clarifies_the_regulations_it_cites():
+    from amendments import rules
+
+    text = (
+        "In terms of regulation 30 of the Securities and Exchange Board of India (Listing Obligations and "
+        "Disclosure Requirements) Regulations, 2015, listed entities shall disclose material events. "
+        "This circular is issued in exercise of the powers conferred under section 11 of the Securities and "
+        "Exchange Board of India Act, 1992."
+    )
+    doc = {"doc_type": "circular", "regulator_code": "SEBI", "title": "Disclosure of material events"}
+    res = rules.tag(doc, text, [dict(i) for i in SEBI_INSTRUMENTS])
+    assert not res.is_amending
+    assert ("sebi-lodr-2015", "clarifies") in res.tags
+    assert ("sebi-act-1992", "clarifies") in res.tags
+    assert not res.effects
+
+
+def test_sebi_style_keeps_per_page_footnotes_with_their_provision():
+    """SEBI repeats footnotes at the foot of every page, so the 'appendix starts at the first footnote' rule
+    (right for an RBI Master Direction) would swallow the rest of the document."""
+    text = "\n".join(
+        [
+            "CHAPTER I",
+            "PRELIMINARY",
+            "Short title and commencement.",
+            "1. (1) These regulations may be called the Securities and Exchange Board of India (Listing Obligations and Disclosure Requirements) Regulations, 2015.",
+            "Definitions.",
+            "2. (1) In these regulations, unless the context otherwise requires: 1[associate] shall mean any entity.",
+            "1 Inserted by SEBI (Listing Obligations and Disclosure Requirements) (Fifth Amendment) Regulations, 2018, w.e.f. 06.09.2018.",
+            "Board of directors.",
+            "17. (1) The composition of the board of directors of the listed entity shall be as follows.",
+            "2 Substituted by SEBI (LODR) (Second Amendment) Regulations, 2021, w.e.f. 01.01.2022.",
+            "Obligations of listed entity.",
+            "30. (1) Every listed entity shall make disclosures of any events or information which are material.",
+        ]
+    )
+    provs = split_provisions(text, style="sebi")
+    numbers = [p.number for p in provs]
+    assert "1" in numbers and "2" in numbers and "17" in numbers and "30" in numbers
+    assert not any(p.number == "Appendix and Footnotes" for p in provs)
+    # the footnote text is kept verbatim, attached to the provision it was printed under
+    assert "Fifth Amendment) Regulations, 2018" in {p.number: p.text for p in provs}["2"]
+    kept = sum(len(p.text) for p in provs)
+    assert kept >= 0.99 * len(text)
+
+
+def test_sebi_routing_leaves_the_fema_rules_alone():
+    from amendments import rules
+
+    res = rules.tag(
+        {"doc_type": "notification", "title": "Foreign Exchange Management (Guarantees) Regulations, 2026"},
+        "In exercise of the powers conferred by section 6 of the Foreign Exchange Management Act, 1999 and in "
+        "supersession of the earlier regulations, the Reserve Bank makes the following regulations",
+        [],
+    )
+    assert ("fem-guarantees-regulations-2026", "supersedes") in res.tags
