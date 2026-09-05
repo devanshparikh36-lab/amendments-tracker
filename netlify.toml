@@ -1,0 +1,10 @@
+# Root config: the website lives in apps/web. Netlify reads this first, then apps/web/netlify.toml for the plugin.
+[build]
+  base = "apps/web"
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
