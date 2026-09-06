@@ -30,6 +30,9 @@ export type InstrumentRow = {
   provision_count: number;
   machine_count: number;
   doc_count: number;
+  pdf_storage_key: string | null;
+  pdf_source_url: string | null;
+  pdf_page_count: number | null;
 };
 
 export type ProvisionRow = {
@@ -47,11 +50,16 @@ export type ProvisionRow = {
   merge_confidence: number | null;
   effect_count: number;
   differs: number;
+  html?: string | null;
+  pdf_storage_key?: string | null;
+  pdf_page?: number | null;
+  source_url?: string | null;
 };
 
 export async function listInstruments(): Promise<InstrumentRow[]> {
   return query<InstrumentRow>(`
     SELECT i.id, i.slug, i.short_code, i.title, i.kind, i.official_url, i.official_updated_as_on, i.seeded_at,
+           i.pdf_storage_key, i.pdf_source_url, i.pdf_page_count,
            r.code AS regulator_code,
            (SELECT count(*) FROM provision p WHERE p.instrument_id = i.id)::int AS provision_count,
            (SELECT count(*) FROM provision p JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
@@ -80,13 +88,142 @@ export async function listProvisions(instrumentId: number, asOn?: string): Promi
   const params: unknown[] = asOn ? [instrumentId, asOn] : [instrumentId];
   return query<ProvisionRow>(
     `SELECT p.id, p.number, p.heading, p.level, p.parent_id, p.sort_key,
-            v.id AS version_id, v.text, v.source_kind, v.effective_from, v.footnote, v.merge_confidence,
+            p.pdf_storage_key, p.pdf_page, p.source_url,
+            v.id AS version_id, v.text, v.html, v.source_kind, v.effective_from, v.footnote, v.merge_confidence,
             (SELECT count(*) FROM amendment_effect e WHERE e.provision_id = p.id)::int AS effect_count,
             (SELECT count(*) FROM amendment_effect e WHERE e.provision_id = p.id AND e.verification_status = 'differs_from_official')::int AS differs
      FROM provision p ${versionJoin}
      WHERE p.instrument_id = $1
      ORDER BY p.sort_key, v.id DESC`,
     params,
+  );
+}
+
+// Sidebar / contents list: numbers and headings only, so a 900-section Act renders instantly.
+export type ProvisionIndexRow = {
+  id: number;
+  number: string;
+  heading: string | null;
+  level: string;
+  parent_id: number | null;
+  sort_key: number;
+  machine: boolean;
+  differs: number;
+};
+
+export async function listProvisionIndex(instrumentId: number): Promise<ProvisionIndexRow[]> {
+  return query<ProvisionIndexRow>(
+    `SELECT p.id, p.number, p.heading, p.level, p.parent_id, p.sort_key,
+            coalesce(v.source_kind = 'machine_merged', false) AS machine,
+            (SELECT count(*) FROM amendment_effect e WHERE e.provision_id = p.id AND e.verification_status = 'differs_from_official')::int AS differs
+     FROM provision p
+     LEFT JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
+     WHERE p.instrument_id = $1
+     ORDER BY p.sort_key, p.id`,
+    [instrumentId],
+  );
+}
+
+// One provision with everything needed to lead with the official source.
+export async function getProvision(instrumentId: number, number: string, asOn?: string): Promise<ProvisionRow | null> {
+  const versionJoin = asOn
+    ? `LEFT JOIN provision_version v ON v.provision_id = p.id
+         AND (v.effective_from IS NULL OR v.effective_from <= $3::date)
+         AND (v.effective_to IS NULL OR v.effective_to > $3::date)`
+    : `LEFT JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL`;
+  const params: unknown[] = asOn ? [instrumentId, number, asOn] : [instrumentId, number];
+  const rows = await query<ProvisionRow>(
+    `SELECT p.id, p.number, p.heading, p.level, p.parent_id, p.sort_key,
+            p.pdf_storage_key, p.pdf_page, p.source_url,
+            v.id AS version_id, v.text, v.html, v.source_kind, v.effective_from, v.footnote, v.merge_confidence,
+            (SELECT count(*) FROM amendment_effect e WHERE e.provision_id = p.id)::int AS effect_count,
+            (SELECT count(*) FROM amendment_effect e WHERE e.provision_id = p.id AND e.verification_status = 'differs_from_official')::int AS differs
+     FROM provision p ${versionJoin}
+     WHERE p.instrument_id = $1 AND (p.number = $2 OR upper(p.number) = upper($2))
+     ORDER BY v.id DESC LIMIT 1`,
+    params,
+  );
+  return rows[0] ?? null;
+}
+
+export type LookupProvision = {
+  id: number;
+  number: string;
+  heading: string | null;
+  level: string;
+  instrument_slug: string;
+  instrument_title: string;
+  short_code: string;
+  slug: string;
+  title: string;
+  kind: string;
+  regulator_code: string;
+  instrument_size: number;
+  snippet: string | null;
+};
+
+// Exact provision-number match across every instrument (whitespace-insensitive: "2 (2)" == "2(2)").
+export async function findProvisionsByNumber(number: string): Promise<LookupProvision[]> {
+  return query<LookupProvision>(
+    `SELECT p.id, p.number, p.heading, p.level,
+            i.slug AS instrument_slug, i.title AS instrument_title, i.slug, i.title, i.short_code, i.kind,
+            r.code AS regulator_code,
+            (SELECT count(*) FROM provision x WHERE x.instrument_id = i.id)::int AS instrument_size,
+            left(regexp_replace(coalesce(v.text, ''), '\\s+', ' ', 'g'), 220) AS snippet
+     FROM provision p
+     JOIN instrument i ON i.id = p.instrument_id
+     JOIN regulator r ON r.id = i.regulator_id
+     LEFT JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
+     WHERE replace(upper(p.number), ' ', '') = replace(upper($1), ' ', '')
+       AND p.level <> 'chapter'
+     LIMIT 80`,
+    [number],
+  );
+}
+
+export type LookupInstrument = InstrumentRow & { rank: number };
+
+export async function findInstruments(words: string[]): Promise<LookupInstrument[]> {
+  if (!words.length) return [];
+  const rows = await query<InstrumentRow>(
+    `SELECT i.id, i.slug, i.short_code, i.title, i.kind, i.official_url, i.official_updated_as_on, i.seeded_at,
+            i.pdf_storage_key, i.pdf_source_url, i.pdf_page_count, r.code AS regulator_code,
+            (SELECT count(*) FROM provision p WHERE p.instrument_id = i.id)::int AS provision_count,
+            0 AS machine_count,
+            (SELECT count(DISTINCT t.document_id) FROM document_tag t WHERE t.instrument_id = i.id)::int AS doc_count
+     FROM instrument i JOIN regulator r ON r.id = i.regulator_id`,
+  );
+  return rows
+    .map((i) => {
+      const hay = `${i.slug} ${i.short_code} ${i.title}`.toLowerCase();
+      const hits = words.filter((w) => hay.includes(w)).length;
+      return { ...i, rank: hits === words.length ? hits * 10 + (i.provision_count > 0 ? 5 : 0) : hits };
+    })
+    .filter((i) => i.rank > 0)
+    .sort((a, b) => b.rank - a.rank || b.provision_count - a.provision_count)
+    .slice(0, 20);
+}
+
+export type SubjectCount = { regulator_code: string; documents: number; latest: string | null };
+
+export async function documentCountsByRegulator(): Promise<SubjectCount[]> {
+  return query<SubjectCount>(
+    `SELECT r.code AS regulator_code, count(d.id)::int AS documents, max(d.date_issued)::text AS latest
+     FROM regulator r LEFT JOIN document d ON d.regulator_id = r.id GROUP BY r.code`,
+  );
+}
+
+// Everything the home page needs about instruments, in one grouped pass.
+export async function instrumentIndex(): Promise<InstrumentRow[]> {
+  return query<InstrumentRow>(
+    `SELECT i.id, i.slug, i.short_code, i.title, i.kind, i.official_url, i.official_updated_as_on, i.seeded_at,
+            i.pdf_storage_key, i.pdf_source_url, i.pdf_page_count, r.code AS regulator_code,
+            coalesce(pc.n, 0)::int AS provision_count, 0 AS machine_count, coalesce(dc.n, 0)::int AS doc_count
+     FROM instrument i
+     JOIN regulator r ON r.id = i.regulator_id
+     LEFT JOIN (SELECT instrument_id, count(*) n FROM provision GROUP BY instrument_id) pc ON pc.instrument_id = i.id
+     LEFT JOIN (SELECT instrument_id, count(DISTINCT document_id) n FROM document_tag GROUP BY instrument_id) dc ON dc.instrument_id = i.id
+     ORDER BY provision_count DESC, i.title`,
   );
 }
 

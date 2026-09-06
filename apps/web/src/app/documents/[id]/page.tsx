@@ -2,16 +2,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { Diff } from "@/components/Diff";
+import { fileHref } from "@/lib/files";
 import { DOC_TYPE_LABEL, fmtBytes, fmtDate } from "@/lib/format";
 import { getDocument } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
-
-function fileHref(storageKey: string | null, sourceUrl: string): string {
-  if (!storageKey) return sourceUrl;
-  const base = process.env.R2_PUBLIC_BASE_URL;
-  return base ? `${base.replace(/\/$/, "")}/${storageKey}` : `/api/files/${storageKey}`;
-}
 
 export default async function DocumentPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -42,7 +37,7 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
           <section className="rounded-lg border border-stone-200 bg-white p-4">
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-stone-500">Verbatim text</h2>
             {doc.extracted_text ? (
-              <pre className="whitespace-pre-wrap font-sans text-[15px] leading-relaxed">{doc.extracted_text}</pre>
+              <div className="legal-pre">{doc.extracted_text}</div>
             ) : (
               <p className="text-stone-500">Text not yet extracted.</p>
             )}

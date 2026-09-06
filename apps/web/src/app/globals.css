@@ -1,26 +1,163 @@
 @import "tailwindcss";
 
+/* A quiet, paper-like reading surface. One light theme only: this is read on laptops and printed. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
+  --paper: #ffffff;
+  --ground: #f7f6f4;
+  --ink: #1c1917;
+  --ink-soft: #57534e;
+  --rule: #e7e5e4;
+  --accent: #1e4620; /* deep green, used sparingly for primary actions */
+  --link: #14532d;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--ground);
+  --color-foreground: var(--ink);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+/* Visible keyboard focus everywhere. */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Statutory text: serif, generous leading, regulator's own tables preserved. */
+.legal {
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  font-size: 16.5px;
+  line-height: 1.75;
+  color: var(--ink);
+  overflow-wrap: break-word;
+}
+
+.legal p {
+  margin: 0 0 0.85em;
+}
+
+.legal p:last-child {
+  margin-bottom: 0;
+}
+
+.legal ul,
+.legal ol {
+  margin: 0 0 0.85em 1.4em;
+  padding-left: 0.6em;
+}
+
+.legal ul {
+  list-style: disc;
+}
+
+.legal ol {
+  list-style: decimal;
+}
+
+.legal li {
+  margin-bottom: 0.35em;
+}
+
+.legal h1,
+.legal h2,
+.legal h3,
+.legal h4 {
+  font-weight: 600;
+  font-size: 1em;
+  margin: 1.2em 0 0.5em;
+}
+
+.legal blockquote {
+  margin: 0 0 0.85em 1.2em;
+  padding-left: 0.9em;
+  border-left: 2px solid var(--rule);
+  color: var(--ink-soft);
+}
+
+.legal table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.9em 0;
+  font-size: 0.92em;
+}
+
+.legal th,
+.legal td {
+  border: 1px solid var(--rule);
+  padding: 6px 8px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.legal thead th {
+  background: #faf9f7;
+  font-weight: 600;
+}
+
+.legal sup {
+  font-size: 0.72em;
+  vertical-align: super;
+  color: var(--ink-soft);
+}
+
+.legal a {
+  color: var(--link);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* Plain-text fallback keeps the source's own line breaks. */
+.legal-pre {
+  white-space: pre-wrap;
+  font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  font-size: 16.5px;
+  line-height: 1.75;
+}
+
+/* Wide content never pushes the page sideways. */
+.scroll-x {
+  overflow-x: auto;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    font-size: 11pt;
+  }
+  .legal,
+  .legal-pre {
+    font-size: 11.5pt;
+    line-height: 1.5;
+  }
+  .print-full {
+    max-width: none !important;
+    width: 100% !important;
+    display: block !important;
+  }
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 8pt;
+    color: #555;
+  }
 }

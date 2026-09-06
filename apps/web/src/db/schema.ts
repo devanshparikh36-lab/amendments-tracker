@@ -27,6 +27,10 @@ export const instrument = pgTable("instrument", {
   kind: text("kind").notNull(),
   officialUrl: text("official_url"),
   officialUpdatedAsOn: date("official_updated_as_on"),
+  pdfStorageKey: text("pdf_storage_key"),
+  pdfSourceUrl: text("pdf_source_url"),
+  pdfPageCount: integer("pdf_page_count"),
+  pdfFetchedAt: timestamp("pdf_fetched_at", { withTimezone: true }),
   seededAt: timestamp("seeded_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
@@ -39,12 +43,16 @@ export const provision = pgTable("provision", {
   heading: text("heading"),
   level: text("level").notNull(),
   sortKey: integer("sort_key").notNull(),
+  pdfStorageKey: text("pdf_storage_key"),
+  pdfPage: integer("pdf_page"),
+  sourceUrl: text("source_url"),
 });
 
 export const provisionVersion = pgTable("provision_version", {
   id: serial("id").primaryKey(),
   provisionId: integer("provision_id").notNull(),
   text: text("text").notNull(),
+  html: text("html"),
   effectiveFrom: date("effective_from"),
   effectiveTo: date("effective_to"),
   sourceKind: text("source_kind").notNull(),
