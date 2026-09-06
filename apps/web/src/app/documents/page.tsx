@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Badge } from "@/components/Badge";
 import { DOC_TYPE_LABEL, fmtDate } from "@/lib/format";
-import { listDocuments, listInstruments } from "@/lib/queries";
+import { instrumentIndex, listDocuments } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -13,12 +13,12 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
   const limit = 100;
   const [docs, instruments] = await Promise.all([
     listDocuments({ regulator: sp.regulator, docType: sp.type, instrument: sp.instrument, q: sp.q, from: sp.from, to: sp.to, limit, offset: (page - 1) * limit }),
-    listInstruments(),
+    instrumentIndex(),
   ]);
   const qs = new URLSearchParams(Object.entries(sp).filter(([k, v]) => v && k !== "page") as [string, string][]);
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-semibold">Documents</h1>
+      <h1 className="text-[19px] font-semibold tracking-tight">Notifications, circulars and gazette documents</h1>
       <form className="flex flex-wrap items-end gap-3 rounded-lg border border-stone-200 bg-white p-3 text-sm">
         <label className="flex flex-col text-xs text-stone-500">Regulator
           <select name="regulator" defaultValue={sp.regulator ?? ""} className="rounded border border-stone-300 px-2 py-1 text-sm">
