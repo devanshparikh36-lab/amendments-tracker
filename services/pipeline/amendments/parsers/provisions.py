@@ -40,6 +40,10 @@ class ParsedProvision:
     level: str = "para"             # chapter | section | para | annex
     parent_number: str | None = None
     footnotes: list[str] = field(default_factory=list)
+    # Fidelity to the official source: the regulator's own HTML, and where the provision sits in its PDF.
+    html: str | None = None         # official markup, rendered as published (tables, indents, provisos)
+    source_url: str | None = None   # the regulator's page for this provision
+    pdf_page: int | None = None     # 1-based page in the instrument's official PDF
     # internal
     raw_number: str = ""
     chapter_idx: int = -1
