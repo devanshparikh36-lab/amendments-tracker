@@ -863,17 +863,45 @@ HANDLERS = {
 MAX_ATTEMPTS = 3
 
 
-def process_jobs(limit: int = 200) -> int:
-    """Run queued jobs oldest-first. Returns the number processed."""
+STALE_MINUTES = 30
+
+
+def requeue_stale_jobs() -> int:
+    """A worker that dies (or is killed) leaves jobs marked 'running'. Put them back on the queue."""
+    with db.transaction() as conn:
+        return db.execute(
+            conn,
+            """UPDATE job SET status = 'queued', updated_at = now()
+               WHERE status = 'running' AND updated_at < now() - (%s || ' minutes')::interval""",
+            (STALE_MINUTES,),
+        )
+
+
+def process_jobs(limit: int = 200, *, adapters: list[str] | None = None, exclude_adapters: list[str] | None = None) -> int:
+    """Run queued jobs oldest-first. Returns the number processed.
+
+    `adapters` / `exclude_adapters` restrict the worker to documents from those sources, so browser-driven sites
+    (which each need a Chromium) can run in one process while plain-HTTP sites run in several.
+    """
     processed = 0
+    where = ["status = 'queued'"]
+    params: list = []
+    if adapters or exclude_adapters:
+        names = adapters or exclude_adapters
+        op = "IN" if adapters else "NOT IN"
+        placeholders = ", ".join(["%s"] * len(names))
+        where.append(
+            f"""(payload->>'document_id' IS NULL
+                 OR EXISTS (SELECT 1 FROM document d WHERE d.id = (payload->>'document_id')::int
+                            AND d.source_adapter {op} ({placeholders})))"""
+        )
+        params.extend(names)
+    sql = f"""UPDATE job SET status = 'running', attempts = attempts + 1, updated_at = now()
+              WHERE id = (SELECT id FROM job WHERE {' AND '.join(where)} ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
+              RETURNING id, type, payload, attempts"""
     while processed < limit:
         with db.transaction() as conn:
-            job = db.fetch_one(
-                conn,
-                """UPDATE job SET status = 'running', attempts = attempts + 1, updated_at = now()
-                   WHERE id = (SELECT id FROM job WHERE status = 'queued' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
-                   RETURNING id, type, payload, attempts""",
-            )
+            job = db.fetch_one(conn, sql, tuple(params))
         if not job:
             break
         processed += 1
