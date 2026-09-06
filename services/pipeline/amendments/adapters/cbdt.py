@@ -18,6 +18,7 @@ import re
 from datetime import date, datetime
 
 from ..browser import session
+from ..parsers.officialhtml import clean_official_html, html_to_text
 from ..parsers.provisions import ParsedProvision
 from .base import Adapter, DiscoveredDocument, FetchedAttachment, FetchedDocument
 
@@ -220,6 +221,17 @@ def _rule_id(name_contains: str) -> int:
     raise LookupError(f"Rules not found on the portal: {name_contains}")
 
 
+def _provision_html(number: str, heading: str | None, body_html: str, footnotes_html: str) -> str | None:
+    """The section as the department renders it, under its own number and heading."""
+    if not body_html:
+        return None
+    head = f"<p class=\"provision-heading\"><b>{number}. {heading}</b></p>" if heading else f"<p class=\"provision-heading\"><b>{number}.</b></p>"
+    parts = [head, body_html]
+    if footnotes_html:
+        parts.append(f"<div class=\"provision-footnotes\">{footnotes_html}</div>")
+    return "\n".join(parts)
+
+
 def _clean_text(html_or_text: str) -> str:
     t = re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", html_or_text, flags=re.S | re.I)
     t = re.sub(r"<br\s*/?>|</p>|</div>|</tr>", "\n", t, flags=re.I)
@@ -281,18 +293,26 @@ def _sections(
                 continue
             seen.add(number)
             heading = (f.get("sectionShortDescription") or f.get("ruleShortDescription") or "").strip()
-            # Full text is in documentContent (HTML). Some entries are PDF-only; fall back to the snippet.
-            body = _clean_text(f.get("documentContent") or "")
+            # The department publishes each section as formatted HTML: rate tables, indented sub-clauses,
+            # provisos. Keep that markup so the site shows the section as the department lays it out, and
+            # derive the plain text from it for search and diffing.
+            raw_html = f.get("documentContent") or ""
+            official_html = clean_official_html(raw_html, base_url=BASE)
+            body = html_to_text(official_html) if official_html else ""
             if not body:
                 body = re.sub(r"^\d{15,}\s+\d{4}-\d{2}-\d{2}\s+", "", _clean_text(item.get("description") or ""))
             body = _strip_act_header(body)
             if heading and body.startswith(heading):
                 body = body[len(heading):].strip()
             text = f"{number}. {heading}\n{body}".strip() if heading else f"{number}. {body}".strip()
-            footnotes = _clean_text(f.get("footnotes") or "")
+            footnotes_html = clean_official_html(f.get("footnotes") or "")
+            footnotes = html_to_text(footnotes_html) if footnotes_html else _clean_text(f.get("footnotes") or "")
             if footnotes:
                 text += "\n\n" + footnotes
             chapter = (f.get("chapterTitle") or "").strip()
+            # The PDF a section may carry instead of HTML, and the department's own page for this section.
+            pdf_url = f.get("reportFile__url")
+            cms_id = (f.get("sectionCMSID") or "").strip()
             provisions.append(
                 ParsedProvision(
                     number=number,
@@ -302,6 +322,8 @@ def _sections(
                     raw_number=number,
                     chapter_label=chapter or None,
                     footnotes=[footnotes] if footnotes else [],
+                    html=_provision_html(number, heading, official_html, footnotes_html),
+                    source_url=(BASE + pdf_url) if pdf_url else (f"{BASE}/documents/d/guest/{cms_id}" if cms_id else None),
                 )
             )
         if len(items) < size:

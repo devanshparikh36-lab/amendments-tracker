@@ -659,23 +659,35 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
                 (inst["id"], parent_id, p.number, p.heading, p.level, i),
             )
             number_to_id[p.number] = row["id"]
+            # Where this provision can be read in the regulator's own file.
+            if getattr(p, "source_url", None) or getattr(p, "pdf_page", None):
+                db.execute(
+                    conn,
+                    """UPDATE provision SET source_url = COALESCE(%s, source_url), pdf_page = COALESCE(%s, pdf_page)
+                       WHERE id = %s""",
+                    (getattr(p, "source_url", None), getattr(p, "pdf_page", None), row["id"]),
+                )
             full_text = p.text + ("\n\n" + "\n".join(p.footnotes) if p.footnotes else "")
+            official_html = getattr(p, "html", None)
             current = db.fetch_one(
                 conn,
-                "SELECT id, text, source_kind FROM provision_version WHERE provision_id = %s AND effective_to IS NULL ORDER BY id DESC LIMIT 1",
+                "SELECT id, text, html, source_kind FROM provision_version WHERE provision_id = %s AND effective_to IS NULL ORDER BY id DESC LIMIT 1",
                 (row["id"],),
             )
             if current is None:
                 db.execute(
                     conn,
-                    """INSERT INTO provision_version (provision_id, text, effective_from, source_kind, created_by_document_id)
-                       VALUES (%s, %s, %s, 'official', %s)""",
-                    (row["id"], full_text, updated_as_on, document_id),
+                    """INSERT INTO provision_version (provision_id, text, html, effective_from, source_kind, created_by_document_id)
+                       VALUES (%s, %s, %s, %s, 'official', %s)""",
+                    (row["id"], full_text, official_html, updated_as_on, document_id),
                 )
                 stats["inserted"] += 1
                 continue
             if _norm(current["text"]) == _norm(full_text):
                 stats["unchanged"] += 1
+                # Backfill the official markup onto a version stored before we kept it.
+                if official_html and not current.get("html"):
+                    db.execute(conn, "UPDATE provision_version SET html = %s WHERE id = %s", (official_html, current["id"]))
                 if current["source_kind"] == "machine_merged":
                     db.execute(
                         conn,
@@ -687,9 +699,9 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
             db.execute(conn, "UPDATE provision_version SET effective_to = %s WHERE id = %s", (updated_as_on, current["id"]))
             db.execute(
                 conn,
-                """INSERT INTO provision_version (provision_id, text, effective_from, source_kind, created_by_document_id, footnote)
-                   VALUES (%s, %s, %s, 'official', %s, %s)""",
-                (row["id"], full_text, updated_as_on, document_id, f"Official consolidated text as on {updated_as_on}"),
+                """INSERT INTO provision_version (provision_id, text, html, effective_from, source_kind, created_by_document_id, footnote)
+                   VALUES (%s, %s, %s, %s, 'official', %s, %s)""",
+                (row["id"], full_text, official_html, updated_as_on, document_id, f"Official consolidated text as on {updated_as_on}"),
             )
             if current["source_kind"] == "machine_merged":
                 stats["replaced_machine"] += 1
