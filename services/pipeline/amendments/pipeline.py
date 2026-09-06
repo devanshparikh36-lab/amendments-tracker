@@ -671,7 +671,7 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
             official_html = getattr(p, "html", None)
             current = db.fetch_one(
                 conn,
-                "SELECT id, text, html, source_kind FROM provision_version WHERE provision_id = %s AND effective_to IS NULL ORDER BY id DESC LIMIT 1",
+                "SELECT id, text, html, source_kind, effective_from FROM provision_version WHERE provision_id = %s AND effective_to IS NULL ORDER BY id DESC LIMIT 1",
                 (row["id"],),
             )
             if current is None:
@@ -695,7 +695,23 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
                         (current["id"],),
                     )
                 continue
-            # Text differs: official wins.
+            # Same official publication, re-read: our extraction improved, the law did not change. Refresh the
+            # stored version in place instead of inventing an amendment in the timeline.
+            same_publication = (
+                current["source_kind"] == "official"
+                and current.get("effective_from") is not None
+                and updated_as_on is not None
+                and current["effective_from"] == updated_as_on
+            )
+            if same_publication:
+                db.execute(
+                    conn,
+                    "UPDATE provision_version SET text = %s, html = COALESCE(%s, html) WHERE id = %s",
+                    (full_text, official_html, current["id"]),
+                )
+                stats["refreshed"] = stats.get("refreshed", 0) + 1
+                continue
+            # Text differs and the regulator republished: official wins, as a new version.
             db.execute(conn, "UPDATE provision_version SET effective_to = %s WHERE id = %s", (updated_as_on, current["id"]))
             db.execute(
                 conn,
