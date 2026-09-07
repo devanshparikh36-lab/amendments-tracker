@@ -32,7 +32,9 @@ const labels: Record<string, string> = {
 export function Badge({ kind, children }: { kind: string; children?: React.ReactNode }) {
   const cls = styles[kind] ?? "bg-stone-100 text-stone-700 ring-stone-200";
   return (
-    <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset ${cls}`}>
+    <span
+      className={`inline-flex items-center whitespace-nowrap rounded px-1.5 py-px text-[11.5px] font-medium ring-1 ring-inset ${cls}`}
+    >
       {children ?? labels[kind] ?? kind.replace(/_/g, " ")}
     </span>
   );

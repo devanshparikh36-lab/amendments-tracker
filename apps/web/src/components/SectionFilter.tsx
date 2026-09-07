@@ -35,7 +35,7 @@ export function SectionFilter({
   const [q, setQ] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const href = (number: string) => `/browse/${slug}?p=${encodeURIComponent(number)}${suffix ?? ""}`;
+  const href = (number: string) => `/browse/${slug}/text?p=${encodeURIComponent(number)}${suffix ?? ""}`;
 
   const shown = useMemo(() => {
     const needle = norm(q);
@@ -58,7 +58,7 @@ export function SectionFilter({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-stone-200 p-2">
+      <div className="border-b border-[var(--rule)] p-2">
         <label htmlFor="section-filter" className="sr-only">
           Filter {unit}s
         </label>
@@ -75,9 +75,9 @@ export function SectionFilter({
             if (e.key === "Escape") setQ("");
           }}
           placeholder={`Type a ${unit} number — 80C, 17`}
-          className="w-full rounded border border-stone-300 px-2 py-1.5 text-sm focus:border-stone-600 focus:outline-none"
+          className="field w-full"
         />
-        <div className="mt-1 flex items-baseline justify-between text-[11px] text-stone-500">
+        <div className="mt-1 flex items-baseline justify-between text-[11px] text-[var(--ink-3)]">
           <span>
             {shown.filter((i) => i.level !== "chapter").length} of {items.filter((i) => i.level !== "chapter").length}{" "}
             {unit}s
@@ -92,26 +92,28 @@ export function SectionFilter({
       <nav aria-label={`${unit} list`} className="min-h-0 flex-1 overflow-y-auto p-1 text-[13px]">
         {shown.map((i) =>
           i.level === "chapter" ? (
-            <div key={i.id} className="mt-3 px-2 pb-0.5 text-[11px] font-semibold uppercase tracking-wide text-stone-500">
+            <div key={i.id} className="eyebrow mt-3 px-2 pb-0.5">
               {i.heading || i.number}
             </div>
           ) : (
             <Link
               key={i.id}
               href={href(i.number)}
-              className={`block truncate rounded px-2 py-[3px] hover:bg-stone-100 ${
-                selected === i.number ? "bg-stone-200 font-semibold text-stone-900" : "text-stone-700"
+              className={`block truncate rounded px-2 py-[3px] hover:bg-[var(--ground-sunk)] ${
+                selected === i.number
+                  ? "bg-[var(--ground-sunk)] font-semibold text-[var(--ink)]"
+                  : "text-[var(--ink-2)]"
               }`}
               title={i.heading ? `${i.number} — ${i.heading}` : i.number}
             >
-              <span className="font-medium tabular-nums">{i.number}</span>
-              {i.heading ? <span className="text-stone-500"> {i.heading.replace(/[.\-\s]+$/, "")}</span> : null}
+              <span className="num font-medium">{i.number}</span>
+              {i.heading ? <span className="text-[var(--ink-3)]"> {i.heading.replace(/[.\-\s]+$/, "")}</span> : null}
               {i.machine && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 align-middle" />}
               {i.differs > 0 && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-red-500 align-middle" />}
             </Link>
           ),
         )}
-        {shown.length === 0 && <p className="px-2 py-4 text-stone-500">No {unit} matches &ldquo;{q}&rdquo;.</p>}
+        {shown.length === 0 && <p className="px-2 py-4 text-[var(--ink-3)]">No {unit} matches &ldquo;{q}&rdquo;.</p>}
       </nav>
     </div>
   );

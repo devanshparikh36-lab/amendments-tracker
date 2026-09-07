@@ -279,12 +279,159 @@ export async function findInstruments(words: string[]): Promise<LookupInstrument
     .slice(0, 20);
 }
 
-export type SubjectCount = { regulator_code: string; documents: number; latest: string | null };
+export type SubjectCount = {
+  regulator_code: string;
+  documents: number;
+  last30: number;
+  last90: number;
+  amending: number;
+  effects: number;
+  latest: string | null;
+};
 
+// One row per regulator: how much there is, how much of it is recent, and how many changes to the
+// consolidated text those documents produced. Feeds the bifurcated "what's new" on the home page.
 export async function documentCountsByRegulator(): Promise<SubjectCount[]> {
   return query<SubjectCount>(
-    `SELECT r.code AS regulator_code, count(d.id)::int AS documents, max(d.date_issued)::text AS latest
-     FROM regulator r LEFT JOIN document d ON d.regulator_id = r.id GROUP BY r.code`,
+    `SELECT r.code AS regulator_code,
+            count(d.id)::int AS documents,
+            count(d.id) FILTER (WHERE d.date_issued >= current_date - INTERVAL '30 days')::int AS last30,
+            count(d.id) FILTER (WHERE d.date_issued >= current_date - INTERVAL '90 days')::int AS last90,
+            count(d.id) FILTER (WHERE d.is_amending)::int AS amending,
+            max(d.date_issued)::text AS latest,
+            (SELECT count(*) FROM amendment_effect e
+               JOIN provision p ON p.id = e.provision_id
+               JOIN instrument i ON i.id = p.instrument_id
+             WHERE i.regulator_id = r.id)::int AS effects
+     FROM regulator r LEFT JOIN document d ON d.regulator_id = r.id
+     GROUP BY r.id, r.code`,
+  );
+}
+
+export type FeedItem = {
+  id: number;
+  title: string;
+  number: string | null;
+  doc_type: string;
+  date_issued: string | null;
+  regulator_code: string;
+  is_amending: boolean | null;
+  affects: string | null;
+  effects: number;
+};
+
+// The most recent documents for every regulator in one pass, so the home page can show each subject's
+// own feed side by side instead of one mixed list.
+export async function recentByRegulator(perRegulator = 6): Promise<FeedItem[]> {
+  return query<FeedItem>(
+    `WITH ranked AS (
+       SELECT d.id, d.title, d.number, d.doc_type, d.date_issued, d.is_amending, r.code AS regulator_code,
+              row_number() OVER (PARTITION BY r.code ORDER BY d.date_issued DESC NULLS LAST, d.id DESC) AS rn
+       FROM document d JOIN regulator r ON r.id = d.regulator_id
+     )
+     SELECT k.id, k.title, k.number, k.doc_type, k.date_issued, k.is_amending, k.regulator_code,
+            (SELECT string_agg(DISTINCT i.short_code, ', ') FROM document_tag t JOIN instrument i ON i.id = t.instrument_id
+               WHERE t.document_id = k.id AND t.relation IN ('amends','supersedes')) AS affects,
+            (SELECT count(*) FROM amendment_effect e WHERE e.document_id = k.id)::int AS effects
+     FROM ranked k WHERE k.rn <= $1
+     ORDER BY k.regulator_code, k.rn`,
+    [perRegulator],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The per-instrument landing page: what this Act/Rules/Regulation is, and what has happened to it.
+
+export type InstrumentOverview = {
+  provisions: number;
+  chapters: number;
+  machine: number;
+  official_html: number;
+  effects: number;
+  effects_differ: number;
+  documents: number;
+  amending_documents: number;
+  latest_amendment: string | null;
+  first_document: string | null;
+  earliest_in_force: string | null;
+};
+
+export async function instrumentOverview(instrumentId: number): Promise<InstrumentOverview> {
+  const [row] = await query<InstrumentOverview>(
+    `SELECT
+       (SELECT count(*) FROM provision p WHERE p.instrument_id = $1 AND p.level <> 'chapter')::int AS provisions,
+       (SELECT count(*) FROM provision p WHERE p.instrument_id = $1 AND p.level = 'chapter')::int AS chapters,
+       (SELECT count(*) FROM provision p JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
+          WHERE p.instrument_id = $1 AND v.source_kind = 'machine_merged')::int AS machine,
+       (SELECT count(*) FROM provision p JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
+          WHERE p.instrument_id = $1 AND v.html IS NOT NULL AND v.html <> '')::int AS official_html,
+       (SELECT count(*) FROM amendment_effect e JOIN provision p ON p.id = e.provision_id
+          WHERE p.instrument_id = $1)::int AS effects,
+       (SELECT count(*) FROM amendment_effect e JOIN provision p ON p.id = e.provision_id
+          WHERE p.instrument_id = $1 AND e.verification_status = 'differs_from_official')::int AS effects_differ,
+       (SELECT count(DISTINCT t.document_id) FROM document_tag t WHERE t.instrument_id = $1)::int AS documents,
+       (SELECT count(DISTINCT t.document_id) FROM document_tag t
+          WHERE t.instrument_id = $1 AND t.relation IN ('amends','supersedes'))::int AS amending_documents,
+       (SELECT max(d.date_issued)::text FROM document_tag t JOIN document d ON d.id = t.document_id
+          WHERE t.instrument_id = $1 AND t.relation IN ('amends','supersedes')) AS latest_amendment,
+       (SELECT min(d.date_issued)::text FROM document_tag t JOIN document d ON d.id = t.document_id
+          WHERE t.instrument_id = $1) AS first_document,
+       (SELECT min(v.effective_from)::text FROM provision p JOIN provision_version v ON v.provision_id = p.id
+          WHERE p.instrument_id = $1) AS earliest_in_force`,
+    [instrumentId],
+  );
+  return row;
+}
+
+export type InstrumentAmendment = {
+  id: number;
+  title: string;
+  number: string | null;
+  doc_type: string;
+  date_issued: string | null;
+  relation: string;
+  provisions: string | null;
+  effects: number;
+};
+
+// Documents that changed this instrument, newest first, with the provisions each one touched.
+export async function instrumentAmendments(instrumentId: number, limit = 8): Promise<InstrumentAmendment[]> {
+  return query<InstrumentAmendment>(
+    `SELECT d.id, d.title, d.number, d.doc_type, d.date_issued, min(t.relation) AS relation,
+            (SELECT string_agg(DISTINCT p.number, ', ') FROM amendment_effect e JOIN provision p ON p.id = e.provision_id
+               WHERE e.document_id = d.id AND p.instrument_id = $1) AS provisions,
+            (SELECT count(*) FROM amendment_effect e JOIN provision p ON p.id = e.provision_id
+               WHERE e.document_id = d.id AND p.instrument_id = $1)::int AS effects
+     FROM document_tag t JOIN document d ON d.id = t.document_id
+     WHERE t.instrument_id = $1 AND t.relation IN ('amends','supersedes')
+     GROUP BY d.id
+     ORDER BY d.date_issued DESC NULLS LAST, d.id DESC
+     LIMIT $2`,
+    [instrumentId, limit],
+  );
+}
+
+export type ChapterRow = { id: number; number: string; heading: string | null; sort_key: number };
+
+// Chapter headings only — the shape of the Act, for the landing page's contents card.
+export async function instrumentChapters(instrumentId: number): Promise<ChapterRow[]> {
+  return query<ChapterRow>(
+    `SELECT id, number, heading, sort_key FROM provision
+     WHERE instrument_id = $1 AND level = 'chapter' ORDER BY sort_key LIMIT 60`,
+    [instrumentId],
+  );
+}
+
+// The first handful of provisions, so the landing page can show what the numbering looks like.
+export async function instrumentOpeningProvisions(instrumentId: number, limit = 12): Promise<ProvisionIndexRow[]> {
+  return query<ProvisionIndexRow>(
+    `SELECT p.id, p.number, p.heading, p.level, p.parent_id, p.sort_key,
+            coalesce(v.source_kind = 'machine_merged', false) AS machine, 0 AS differs
+     FROM provision p
+     LEFT JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
+     WHERE p.instrument_id = $1 AND p.level <> 'chapter'
+     ORDER BY p.sort_key, p.id LIMIT $2`,
+    [instrumentId, limit],
   );
 }
 

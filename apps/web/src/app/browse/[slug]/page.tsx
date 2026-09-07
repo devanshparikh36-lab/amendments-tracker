@@ -1,633 +1,447 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Badge } from "@/components/Badge";
-import { SectionFilter } from "@/components/SectionFilter";
-import { KIND_LABEL } from "@/lib/catalogue";
+import { KIND_LABEL, REGULATOR_LABEL, SUBJECT_BY_REGULATOR, subjectClass, unitFor } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
-import { fmtDate, slugifyNumber } from "@/lib/format";
-import { parseQuery } from "@/lib/lookup";
+import { DOC_TYPE_LABEL, fmtDate, slugifyNumber } from "@/lib/format";
 import {
   getInstrument,
-  getProvision,
-  instrumentDocuments,
-  listProvisionIndex,
-  listProvisions,
-  provisionDocuments,
-  searchInstrumentPages,
-  type InstrumentRow,
-  type PageHit,
-  type ProvisionRow,
+  instrumentAmendments,
+  instrumentChapters,
+  instrumentOpeningProvisions,
+  instrumentOverview,
 } from "@/lib/queries";
-import { hasRealHtml, sanitizeHtml } from "@/lib/sanitize";
 
 export const dynamic = "force-dynamic";
 
 type Params = Promise<{ slug: string }>;
 type Search = Promise<{ p?: string; asOn?: string; view?: string; pq?: string; page?: string }>;
 
-function unitFor(kind: string): string {
-  if (kind === "rules") return "rule";
-  if (kind === "regulations") return "regulation";
-  if (kind === "master_direction" || kind === "master_circular") return "paragraph";
-  return "section";
+export async function generateMetadata({ params }: { params: Params }) {
+  const { slug } = await params;
+  const inst = await getInstrument(slug);
+  return { title: inst ? inst.title : "Instrument" };
 }
 
-// The official PDF for a provision: its own page in its own file if the pipeline recorded one,
-// otherwise the instrument's consolidated PDF, otherwise whatever official URL we have.
-function officialSource(inst: InstrumentRow, p?: ProvisionRow | null) {
-  const key = p?.pdf_storage_key ?? inst.pdf_storage_key ?? null;
-  const url = fileHref(key, null) || null;
-  const page = p?.pdf_page ?? null;
-  if (url) {
-    return {
-      kind: "pdf" as const,
-      href: pdfHref(url, page),
-      embed: pdfHref(url, page, true),
-      label: page ? `Open official PDF at page ${page}` : "Open official PDF",
-      page,
-    };
-  }
-  const link = p?.source_url ?? inst.pdf_source_url ?? inst.official_url ?? null;
-  return link ? { kind: "link" as const, href: link, embed: null, label: "Open official source", page: null } : null;
+function n(v: number | null | undefined): string {
+  return (v ?? 0).toLocaleString("en-IN");
 }
 
+// The landing page for one Act, Rules, Regulations or Master Direction: what it is, who issued it,
+// what state the text is in, what has changed it, and the ways into the text itself.
 export default async function InstrumentPage({ params, searchParams }: { params: Params; searchParams: Search }) {
   const { slug } = await params;
   const sp = await searchParams;
+
+  // Links and bookmarks made before the reading view moved keep working.
+  const legacy = new URLSearchParams();
+  for (const k of ["p", "asOn", "view", "pq", "page"] as const) if (sp[k]) legacy.set(k, sp[k] as string);
+  if ([...legacy].length) redirect(`/browse/${slug}/text?${legacy.toString()}`);
+
   const inst = await getInstrument(slug);
   if (!inst) notFound();
 
-  // Some regulators publish only a consolidated PDF. We serve that file and search its pages;
-  // we do not split it into sections we would then be asserting.
-  if (inst.pdf_only) return <PdfInstrument inst={inst} slug={slug} sp={sp} />;
+  const [overview, amendments, chapters, opening] = await Promise.all([
+    instrumentOverview(inst.id),
+    instrumentAmendments(inst.id, 8),
+    inst.pdf_only ? Promise.resolve([]) : instrumentChapters(inst.id),
+    inst.pdf_only ? Promise.resolve([]) : instrumentOpeningProvisions(inst.id, 10),
+  ]);
 
   const unit = unitFor(inst.kind);
-  const suffix = sp.asOn ? `&asOn=${sp.asOn}` : "";
-  const fullText = sp.view === "full" && !sp.p;
-
-  const [index, docs, selected, fullRows] = await Promise.all([
-    listProvisionIndex(inst.id),
-    instrumentDocuments(inst.id),
-    sp.p ? getProvision(inst.id, sp.p, sp.asOn) : Promise.resolve(null),
-    fullText ? listProvisions(inst.id, sp.asOn) : Promise.resolve([]),
-  ]);
-  const selectedDocs = selected ? await provisionDocuments(selected.id) : [];
-  const source = officialSource(inst, selected);
-  const sections = index.filter((i) => i.level !== "chapter");
-  // The sidebar ships to the browser: send trimmed headings so a 900-section Act stays light.
-  const navItems = index.map((i) => ({
-    ...i,
-    heading: i.heading && i.heading.length > 80 ? `${i.heading.slice(0, 80)}…` : i.heading,
-  }));
+  const kindLabel = KIND_LABEL[inst.kind] ?? inst.kind;
+  const subject = SUBJECT_BY_REGULATOR[inst.regulator_code];
+  const pdfUrl = fileHref(inst.pdf_storage_key, inst.pdf_source_url);
+  const pageCount = inst.page_count || inst.pdf_page_count || 0;
+  const hasText = inst.pdf_only ? pageCount > 0 : overview.provisions > 0;
+  const readHref = `/browse/${slug}/text`;
 
   return (
-    <div className="space-y-4">
-      <div className="no-print">
-        <div className="text-xs text-stone-500">
-          <Link href="/" className="hover:underline">
-            Home
-          </Link>{" "}
-          /{" "}
-          <Link href="/browse" className="hover:underline">
-            Acts &amp; Rules
-          </Link>{" "}
-          / {inst.regulator_code}
-        </div>
-        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-[19px] font-semibold tracking-tight text-stone-900">{inst.title}</h1>
-          <span className="text-xs text-stone-500">
-            {KIND_LABEL[inst.kind] ?? inst.kind} · {sections.length} {unit}s
-            {inst.official_updated_as_on && <> · official text as on {fmtDate(inst.official_updated_as_on)}</>}
-          </span>
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          {!sp.p && source && (
-            <a
-              href={source.href}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-md border border-stone-300 px-3 py-1.5 text-[13px] text-stone-800 hover:bg-stone-100"
-            >
-              {source.label}
-            </a>
+    <div className="space-y-5">
+      <header className={`panel sub-rule ${subject ? subjectClass(subject.key) : ""} px-6 py-5`}>
+        <p className="crumbs no-print">
+          <Link href="/">Home</Link> / <Link href="/browse">Acts &amp; Rules</Link>
+          {subject && (
+            <>
+              {" "}
+              / <Link href={`/browse?subject=${subject.key}`}>{subject.name}</Link>
+            </>
           )}
-          <Link
-            href={`/browse/${slug}${fullText ? "" : "?view=full"}${sp.asOn ? `${fullText ? "?" : "&"}asOn=${sp.asOn}` : ""}`}
-            className="text-[13px] text-[var(--link)] hover:underline"
-          >
-            {fullText ? "Contents" : "Read full text"}
-          </Link>
-          <form className="ml-auto flex items-center gap-2">
-            {sp.p && <input type="hidden" name="p" value={sp.p} />}
-            {fullText && <input type="hidden" name="view" value="full" />}
-            <label htmlFor="asOn" className="text-xs text-stone-500">
-              Text as on
-            </label>
-            <input
-              id="asOn"
-              type="date"
-              name="asOn"
-              defaultValue={sp.asOn ?? ""}
-              className="rounded border border-stone-300 px-2 py-1 text-xs"
-            />
-            <button className="rounded border border-stone-300 px-2 py-1 text-xs hover:bg-stone-100">Apply</button>
-            {sp.asOn && (
-              <Link href={`/browse/${slug}${sp.p ? `?p=${encodeURIComponent(sp.p)}` : ""}`} className="text-xs text-stone-500 hover:underline">
-                today
+        </p>
+        <div className="mt-1 flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+          <div className="min-w-0">
+            <h1 className="page-title">{inst.title}</h1>
+            <p className="meta mt-1">
+              {kindLabel} · issued by {REGULATOR_LABEL[inst.regulator_code] ?? inst.regulator_code} · cited here as{" "}
+              <span className="font-medium text-[var(--ink-2)]">{inst.short_code}</span>
+            </p>
+          </div>
+          <div className="no-print flex flex-wrap gap-2">
+            {hasText && (
+              <Link href={readHref} className="btn btn-primary">
+                {inst.pdf_only ? "Open the official PDF" : `Read the ${unit}s`}
               </Link>
             )}
-          </form>
+            {inst.official_url && (
+              <a href={inst.official_url} target="_blank" rel="noreferrer" className="btn">
+                {inst.regulator_code}&rsquo;s page
+              </a>
+            )}
+            {pdfUrl && (
+              <a href={pdfHref(pdfUrl, null)} target="_blank" rel="noreferrer" className="btn">
+                Stored PDF{pageCount ? ` (${pageCount} pp)` : ""}
+              </a>
+            )}
+          </div>
         </div>
-      </div>
 
-      <div className="grid gap-5 lg:grid-cols-[290px_minmax(0,1fr)]">
-        <aside className="no-print sticky top-4 h-[calc(100vh-6rem)] overflow-hidden rounded-lg border border-stone-200 bg-white">
-          <SectionFilter items={navItems} slug={slug} selected={sp.p} suffix={suffix} unit={unit} />
-        </aside>
+        {inst.pdf_only ? (
+          <p className="provenance provenance-pdf mt-4">
+            {inst.regulator_code} publishes this instrument only as a consolidated PDF. That file is what this site
+            serves; we do not split it into {unit}s the official document does not have. The{" "}
+            {n(pageCount)} indexed pages are searchable as a finding aid only.
+          </p>
+        ) : overview.official_html > 0 ? (
+          <p className="provenance mt-4">
+            {n(overview.official_html)} of {n(overview.provisions)} {unit}s are stored with{" "}
+            {REGULATOR_LABEL[inst.regulator_code] ?? inst.regulator_code}&rsquo;s own published HTML and are shown in
+            the department&rsquo;s own formatting — its rate tables, indented clauses and provisos as printed.
+            {overview.machine > 0 && (
+              <>
+                {" "}
+                {n(overview.machine)} {unit}s currently show a machine-consolidated version, marked as such wherever
+                they appear.
+              </>
+            )}
+          </p>
+        ) : overview.machine > 0 ? (
+          <p className="provenance provenance-machine mt-4">
+            {n(overview.machine)} of {n(overview.provisions)} {unit}s currently show text our merge engine produced by
+            applying amending documents to the last official version. No person has reviewed those; the official
+            document is linked on every {unit}.
+          </p>
+        ) : hasText ? (
+          <p className="provenance mt-4">
+            Text reproduced verbatim from {REGULATOR_LABEL[inst.regulator_code] ?? inst.regulator_code}&rsquo;s own
+            publication, with the official document linked on every {unit}.
+          </p>
+        ) : (
+          <p className="provenance provenance-pdf mt-4">
+            The text of this instrument has not been loaded yet. Documents recorded against it are listed below.
+          </p>
+        )}
+      </header>
 
-        <div className="print-full min-w-0 space-y-4">
-          {selected ? (
-            <ProvisionView
-              inst={inst}
-              p={selected}
-              slug={slug}
-              unit={unit}
-              source={source}
-              docs={selectedDocs}
-              asOn={sp.asOn}
-            />
-          ) : fullText ? (
-            <article className="space-y-3">
-              {fullRows.map((p) => (
-                <section key={p.id} id={slugifyNumber(p.number)} className="rounded-lg border border-stone-200 bg-white p-4">
-                  <div className="mb-1.5 flex flex-wrap items-baseline gap-2">
-                    <Link href={`/browse/${slug}?p=${encodeURIComponent(p.number)}`} className="font-semibold hover:underline">
-                      {p.level === "chapter" ? p.heading : p.number}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
+        <div className="min-w-0 space-y-5">
+          {/* --- the details of this instrument --------------------------- */}
+          <section className="panel">
+            <div className="panel-head">
+              <h2 className="eyebrow">Details of this {kindLabel.toLowerCase()}</h2>
+            </div>
+            <div className="panel-body">
+              <dl className="kv">
+                <dt>Full title</dt>
+                <dd>{inst.title}</dd>
+
+                <dt>Type</dt>
+                <dd>{kindLabel}</dd>
+
+                <dt>Issuing authority</dt>
+                <dd>{REGULATOR_LABEL[inst.regulator_code] ?? inst.regulator_code}</dd>
+
+                <dt>Subject</dt>
+                <dd>
+                  {subject ? (
+                    <Link href={`/browse?subject=${subject.key}`} className="text-[var(--link)] hover:underline">
+                      {subject.name}
                     </Link>
-                    {p.level !== "chapter" && p.heading && <span className="text-sm text-stone-600">{p.heading}</span>}
-                    {p.source_kind === "machine_merged" && <Badge kind="machine_merged" />}
-                  </div>
-                  <ProvisionBody p={p} />
-                </section>
-              ))}
-              {fullRows.length === 0 && <NotSeeded />}
-            </article>
-          ) : index.length === 0 ? (
-            <NotSeeded />
-          ) : (
-            <Contents index={index} slug={slug} suffix={suffix} unit={unit} inst={inst} source={source} docs={docs} />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+                  ) : (
+                    inst.regulator_code
+                  )}
+                </dd>
 
-// ---------------------------------------------------------------------------
-// The regulator's own PDF, served as the document, with its pages made searchable.
+                <dt>Text as on</dt>
+                <dd className="num">
+                  {inst.official_updated_as_on ? (
+                    fmtDate(inst.official_updated_as_on)
+                  ) : (
+                    <span className="text-[var(--ink-4)]">not stated by the regulator</span>
+                  )}
+                </dd>
 
-async function PdfInstrument({
-  inst,
-  slug,
-  sp,
-}: {
-  inst: InstrumentRow;
-  slug: string;
-  sp: { pq?: string; page?: string };
-}) {
-  const pdfUrl = fileHref(inst.pdf_storage_key, inst.pdf_source_url);
-  const pq = (sp.pq ?? "").trim();
-  const pageCount = inst.page_count || inst.pdf_page_count || 0;
-  const asked = Number.parseInt(sp.page ?? "", 10);
-  const page = Number.isFinite(asked) && asked >= 1 ? (pageCount ? Math.min(asked, pageCount) : asked) : null;
+                {overview.earliest_in_force && (
+                  <>
+                    <dt>Earliest version in force</dt>
+                    <dd className="num">{fmtDate(overview.earliest_in_force)}</dd>
+                  </>
+                )}
 
-  const [hits, docs] = await Promise.all([
-    pq ? searchInstrumentPages(inst.id, pq, { number: parseQuery(pq).number, limit: 25 }) : Promise.resolve([]),
-    instrumentDocuments(inst.id),
-  ]);
+                <dt>{inst.pdf_only ? "Pages" : `${unit[0].toUpperCase()}${unit.slice(1)}s`}</dt>
+                <dd className="num">
+                  {inst.pdf_only
+                    ? `${n(pageCount)} pages of the official PDF, indexed`
+                    : `${n(overview.provisions)}${overview.chapters ? ` in ${n(overview.chapters)} chapters` : ""}`}
+                </dd>
 
-  return (
-    <div className="space-y-4">
-      <div className="no-print">
-        <div className="text-xs text-stone-500">
-          <Link href="/" className="hover:underline">
-            Home
-          </Link>{" "}
-          /{" "}
-          <Link href="/browse" className="hover:underline">
-            Acts &amp; Rules
-          </Link>{" "}
-          / {inst.regulator_code}
-        </div>
-        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="text-[19px] font-semibold tracking-tight text-stone-900">{inst.title}</h1>
-          <span className="text-xs text-stone-500">
-            {KIND_LABEL[inst.kind] ?? inst.kind}
-            {pageCount > 0 && <> · {pageCount} pages</>}
-            {inst.official_updated_as_on && <> · official text as on {fmtDate(inst.official_updated_as_on)}</>}
-          </span>
-        </div>
-        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
-          {pdfUrl ? (
-            <a
-              href={pdfHref(pdfUrl, page)}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-md bg-[var(--accent)] px-3.5 py-2 text-[13px] font-medium text-white hover:bg-[#173618]"
-            >
-              Open the official PDF{page ? ` at page ${page}` : ""}
-            </a>
-          ) : (
-            <span className="text-xs text-stone-400">The official file is not stored yet.</span>
-          )}
-          {inst.official_url && (
-            <a
-              href={inst.official_url}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-md border border-stone-300 px-3 py-2 text-[13px] hover:bg-stone-100"
-            >
-              {inst.regulator_code}&rsquo;s page for this document
-            </a>
-          )}
-        </div>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-        <div className="no-print min-w-0 space-y-4">
-          <section className="rounded-lg border border-stone-200 bg-white p-4">
-            <p className="text-[13px] leading-relaxed text-stone-600">
-              {inst.regulator_code} publishes this instrument as one consolidated PDF, not as separate sections. What
-              you open here <strong>is</strong> that file, exactly as the regulator issued it
-              {inst.official_updated_as_on && <> ({fmtDate(inst.official_updated_as_on)})</>}. The search below runs
-              over text read out of those pages — a finding aid only. Read the provision in the PDF itself.
-            </p>
-          </section>
-
-          <section className="rounded-lg border border-stone-200 bg-white p-4">
-            <form className="space-y-2">
-              <label htmlFor="pq" className="block text-[12px] font-semibold uppercase tracking-wide text-stone-500">
-                Search inside this PDF
-              </label>
-              <div className="flex gap-2">
-                <input
-                  id="pq"
-                  name="pq"
-                  defaultValue={pq}
-                  placeholder="regulation 17, related party transaction"
-                  className="min-w-0 flex-1 rounded border border-stone-300 px-2.5 py-1.5 text-sm focus:border-stone-600 focus:outline-none"
-                />
-                <button className="rounded bg-stone-800 px-3 py-1.5 text-sm text-white">Search</button>
-              </div>
-            </form>
-            <form className="mt-3 flex items-end gap-2 border-t border-stone-100 pt-3">
-              {pq && <input type="hidden" name="pq" value={pq} />}
-              <label htmlFor="page" className="text-xs text-stone-500">
-                Go to page
-                <input
-                  id="page"
-                  name="page"
-                  type="number"
-                  min={1}
-                  max={pageCount || undefined}
-                  defaultValue={page ?? ""}
-                  className="ml-2 w-20 rounded border border-stone-300 px-2 py-1 text-sm"
-                />
-              </label>
-              <button className="rounded border border-stone-300 px-2.5 py-1 text-sm hover:bg-stone-100">Go</button>
-              {pageCount > 0 && <span className="pb-1 text-xs text-stone-400">of {pageCount}</span>}
-            </form>
-          </section>
-
-          {pq && (
-            <section>
-              <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-stone-500">
-                {hits.length === 0
-                  ? "No page matches"
-                  : `${hits.length} page${hits.length === 1 ? "" : "s"} match “${pq}”`}
-              </h2>
-              <ol className="space-y-2">
-                {hits.map((h) => (
-                  <li
-                    key={h.page_no}
-                    className={`rounded-lg border bg-white p-3 ${
-                      h.page_no === page ? "border-stone-800" : "border-stone-200"
-                    }`}
-                  >
-                    <div className="flex items-baseline gap-2">
-                      <Link
-                        href={`/browse/${slug}?page=${h.page_no}&pq=${encodeURIComponent(pq)}`}
-                        className="text-sm font-semibold text-[var(--link)] hover:underline"
-                      >
-                        Page {h.page_no}
-                      </Link>
-                      {h.heading_hit && <span className="text-[11px] text-stone-500">heading on this page</span>}
-                      {pdfUrl && (
-                        <a
-                          href={pdfHref(pdfUrl, h.page_no)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="ml-auto text-[11px] text-stone-500 hover:underline"
-                        >
-                          open PDF here
-                        </a>
+                <dt>Amendments recorded</dt>
+                <dd className="num">
+                  {overview.effects > 0 ? (
+                    <>
+                      {n(overview.effects)} changes to individual {unit}s, from {n(overview.amending_documents)}{" "}
+                      documents
+                      {overview.effects_differ > 0 && (
+                        <>
+                          {" · "}
+                          <Link href="/status" className="text-[var(--link)] hover:underline">
+                            {n(overview.effects_differ)} flagged for review
+                          </Link>
+                        </>
                       )}
+                    </>
+                  ) : overview.amending_documents > 0 ? (
+                    `${n(overview.amending_documents)} amending documents recorded`
+                  ) : (
+                    <span className="text-[var(--ink-4)]">none recorded yet</span>
+                  )}
+                </dd>
+
+                <dt>Documents tagged</dt>
+                <dd className="num">
+                  {overview.documents > 0 ? (
+                    <Link href={`/documents?instrument=${slug}`} className="text-[var(--link)] hover:underline">
+                      {n(overview.documents)} notifications, circulars and gazette copies
+                    </Link>
+                  ) : (
+                    <span className="text-[var(--ink-4)]">none yet</span>
+                  )}
+                  {overview.first_document && (
+                    <span className="text-[var(--ink-4)]"> · from {fmtDate(overview.first_document)}</span>
+                  )}
+                </dd>
+
+                <dt>Official source</dt>
+                <dd className="space-y-0.5">
+                  {inst.official_url ? (
+                    <a
+                      href={inst.official_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block break-all text-[var(--link)] hover:underline"
+                    >
+                      {inst.official_url}
+                    </a>
+                  ) : (
+                    <span className="text-[var(--ink-4)]">no official page recorded</span>
+                  )}
+                  {pdfUrl && (
+                    <a
+                      href={pdfHref(pdfUrl, null)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block text-[var(--link)] hover:underline"
+                    >
+                      Stored copy of the official PDF{pageCount ? ` — ${n(pageCount)} pages` : ""}
+                    </a>
+                  )}
+                  {inst.pdf_source_url && inst.pdf_source_url !== inst.official_url && (
+                    <a
+                      href={inst.pdf_source_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block break-all text-[var(--link)] hover:underline"
+                    >
+                      {inst.pdf_source_url}
+                    </a>
+                  )}
+                </dd>
+              </dl>
+            </div>
+          </section>
+
+          {/* --- latest amendments affecting this instrument -------------- */}
+          <section className="panel">
+            <div className="panel-head">
+              <h2 className="eyebrow">Latest amendments affecting this {kindLabel.toLowerCase()}</h2>
+              {overview.latest_amendment && <span className="meta num ml-auto">last {fmtDate(overview.latest_amendment)}</span>}
+            </div>
+            {amendments.length > 0 ? (
+              <ul className="feed px-4 py-1">
+                {amendments.map((a) => (
+                  <li key={a.id} className="py-2">
+                    <div className="flex flex-wrap items-baseline gap-x-2">
+                      <span className="feed-date w-[4.6rem] shrink-0">{fmtDate(a.date_issued) || "no date"}</span>
+                      <Link href={`/documents/${a.id}`} className="min-w-0 flex-1 text-[13.5px] hover:underline">
+                        {a.title}
+                      </Link>
+                      <Badge kind={a.relation} />
                     </div>
-                    <PageSnippet hit={h} />
+                    <p className="meta mt-0.5 pl-[5.1rem]">
+                      {DOC_TYPE_LABEL[a.doc_type] ?? a.doc_type.replace(/_/g, " ")}
+                      {a.number ? ` · ${a.number}` : ""}
+                      {a.provisions ? (
+                        <>
+                          {" "}
+                          · {unit}s{" "}
+                          <span className="font-medium text-[var(--ink-2)]">
+                            {a.provisions.length > 90 ? `${a.provisions.slice(0, 90)}…` : a.provisions}
+                          </span>
+                        </>
+                      ) : (
+                        ""
+                      )}
+                    </p>
                   </li>
                 ))}
-                {hits.length === 0 && (
-                  <li className="rounded-lg border border-dashed border-stone-300 bg-white p-4 text-sm text-stone-600">
-                    Nothing on any page of this file matches that. Try a phrase from the text, or the regulation number
-                    on its own.
-                  </li>
+              </ul>
+            ) : (
+              <p className="panel-body text-[13.5px] text-[var(--ink-3)]">
+                No document collected so far is recorded as amending this instrument.
+                {overview.documents > 0 && (
+                  <>
+                    {" "}
+                    {n(overview.documents)} document{overview.documents === 1 ? " refers" : "s refer"} to it —{" "}
+                    <Link href={`/documents?instrument=${slug}`} className="text-[var(--link)] hover:underline">
+                      see them all
+                    </Link>
+                    .
+                  </>
                 )}
-              </ol>
+              </p>
+            )}
+            {overview.amending_documents > amendments.length && (
+              <div className="border-t border-[var(--rule)] px-4 py-2 text-[12.5px]">
+                <Link href={`/documents?instrument=${slug}`} className="text-[var(--link)] hover:underline">
+                  All {n(overview.amending_documents)} amending documents &rarr;
+                </Link>
+              </div>
+            )}
+          </section>
+
+          {/* --- how this instrument is arranged -------------------------- */}
+          {chapters.length > 0 && (
+            <section className="panel">
+              <div className="panel-head">
+                <h2 className="eyebrow">Arrangement of {unit}s</h2>
+                <span className="meta ml-auto">{n(chapters.length)} chapters</span>
+              </div>
+              <ul className="panel-body grid gap-x-6 gap-y-1 text-[13.5px] sm:grid-cols-2">
+                {chapters.map((c) => (
+                  <li key={c.id} className="min-w-0 truncate">
+                    <Link
+                      href={`${readHref}?view=full#${slugifyNumber(c.number)}`}
+                      className="hover:underline"
+                      title={c.heading ?? c.number}
+                    >
+                      <span className="num font-medium">{c.number}</span>{" "}
+                      <span className="text-[var(--ink-2)]">{c.heading}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+        </div>
+
+        {/* --- ways into the text --------------------------------------- */}
+        <aside className="no-print space-y-4">
+          {hasText && (
+            <section className="panel">
+              <div className="panel-head">
+                <h2 className="eyebrow">{inst.pdf_only ? "Find it in the PDF" : `Go to a ${unit}`}</h2>
+              </div>
+              <div className="panel-body space-y-3">
+                {inst.pdf_only ? (
+                  <form action={readHref} className="space-y-2">
+                    <label htmlFor="pq" className="block text-[12.5px] text-[var(--ink-2)]">
+                      Search the text read out of the official pages, then open the PDF at that page.
+                    </label>
+                    <div className="flex gap-2">
+                      <input id="pq" name="pq" className="field min-w-0 flex-1" placeholder="regulation 17" />
+                      <button className="btn btn-primary">Search</button>
+                    </div>
+                  </form>
+                ) : (
+                  <form action={readHref} className="space-y-2">
+                    <label htmlFor="p" className="block text-[12.5px] text-[var(--ink-2)]">
+                      Type the {unit} number and open it with the official text alongside.
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        id="p"
+                        name="p"
+                        className="field min-w-0 flex-1"
+                        placeholder={opening[0] ? opening[0].number : "80C"}
+                      />
+                      <button className="btn btn-primary">Open</button>
+                    </div>
+                  </form>
+                )}
+                <div className="flex flex-wrap gap-2 border-t border-[var(--rule)] pt-3">
+                  <Link href={readHref} className="btn">
+                    {inst.pdf_only ? "Open the PDF" : "Contents"}
+                  </Link>
+                  {!inst.pdf_only && (
+                    <Link href={`${readHref}?view=full`} className="btn">
+                      Full text
+                    </Link>
+                  )}
+                  <Link href={`/documents?instrument=${slug}`} className="btn">
+                    Documents
+                  </Link>
+                </div>
+              </div>
             </section>
           )}
 
-          <section className="rounded-lg border border-stone-200 bg-white p-4">
-            <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-stone-500">
-              Amending documents ({docs.length})
-            </h2>
-            <ul className="space-y-1.5 text-sm">
-              {docs.slice(0, 15).map((d) => (
-                <li key={d.id} className="flex flex-wrap items-baseline gap-x-2">
-                  <span className="w-20 shrink-0 text-xs tabular-nums text-stone-500">{fmtDate(d.date_issued)}</span>
-                  <Link href={`/documents/${d.id}`} className="min-w-0 flex-1 text-stone-800 hover:underline">
-                    {d.title}
-                  </Link>
-                </li>
-              ))}
-              {docs.length === 0 && <li className="text-stone-500">Nothing tagged to {inst.short_code} yet.</li>}
-            </ul>
-            {docs.length > 15 && (
-              <Link href={`/documents?instrument=${slug}`} className="mt-2 inline-block text-sm text-[var(--link)] hover:underline">
-                All {docs.length} documents for this instrument
-              </Link>
-            )}
-          </section>
-        </div>
-
-        {pdfUrl ? (
-          <aside className="no-print sticky top-4 h-[calc(100vh-6rem)] overflow-hidden rounded-lg border border-stone-200 bg-white">
-            <div className="flex items-center justify-between border-b border-stone-200 px-3 py-1.5 text-xs text-stone-600">
-              <span>
-                Official PDF as published by {inst.regulator_code}
-                {page ? ` · page ${page}` : ""}
-              </span>
-              <a href={pdfHref(pdfUrl, page)} target="_blank" rel="noreferrer" className="text-[var(--link)] hover:underline">
-                open in new tab
-              </a>
-            </div>
-            {/* Keyed on the page so a new result remounts the viewer: a bare #page change would not move it. */}
-            <iframe
-              key={page ?? 0}
-              src={pdfHref(pdfUrl, page, true)}
-              title={`${inst.title} — official PDF`}
-              className="h-[calc(100%-2rem)] w-full"
-            />
-          </aside>
-        ) : (
-          <aside className="rounded-lg border border-dashed border-stone-300 bg-white p-8 text-center text-sm text-stone-600">
-            The official file has not been stored yet.{" "}
-            {inst.official_url && (
-              <a href={inst.official_url} target="_blank" rel="noreferrer" className="text-[var(--link)] underline">
-                Open it on {inst.regulator_code}&rsquo;s site
-              </a>
-            )}
-          </aside>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ts_headline marks matches with <b>; the number-only branch returns escaped plain text. Both are
-// produced by our own SQL, never by the source document.
-function PageSnippet({ hit }: { hit: PageHit }) {
-  return (
-    <p
-      className="mt-1 text-[13px] leading-relaxed text-stone-600 [&_b]:bg-yellow-100 [&_b]:font-semibold"
-      dangerouslySetInnerHTML={{ __html: hit.snippet }}
-    />
-  );
-}
-
-function NotSeeded() {
-  return (
-    <p className="rounded-lg border border-dashed border-stone-300 bg-white p-8 text-center text-stone-600">
-      The official text for this instrument has not been loaded yet. Notifications and circulars tagged to it are still
-      listed under <Link href="/documents" className="text-[var(--link)] underline">Notifications</Link>.
-    </p>
-  );
-}
-
-function ProvisionBody({ p }: { p: ProvisionRow }) {
-  if (hasRealHtml(p.html)) {
-    // The regulator's own markup: tables, indentation and provisos survive intact.
-    return <div className="legal" dangerouslySetInnerHTML={{ __html: sanitizeHtml(p.html) }} />;
-  }
-  if (p.text) return <div className="legal-pre">{p.text}</div>;
-  return <p className="text-stone-500">No text recorded for this date.</p>;
-}
-
-type Source = ReturnType<typeof officialSource>;
-
-function ProvisionView({
-  inst,
-  p,
-  slug,
-  unit,
-  source,
-  docs,
-  asOn,
-}: {
-  inst: InstrumentRow;
-  p: ProvisionRow;
-  slug: string;
-  unit: string;
-  source: Source;
-  docs: Awaited<ReturnType<typeof provisionDocuments>>;
-  asOn?: string;
-}) {
-  const showEmbed = source?.kind === "pdf";
-  return (
-    <div className={showEmbed ? "grid gap-4 xl:grid-cols-2" : ""}>
-      <article className="rounded-lg border border-stone-200 bg-white">
-        <header className="border-b border-stone-200 px-5 py-3">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <h2 className="text-[17px] font-semibold capitalize text-stone-900">
-              {unit} {p.number}
-            </h2>
-            {p.heading && <span className="text-[15px] text-stone-700">{p.heading.replace(/[.\-\s]+$/, "")}</span>}
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-stone-500">
-            <Link href={`/browse/${slug}`} className="hover:underline">
-              {inst.title}
-            </Link>
-            {p.source_kind && <Badge kind={p.source_kind} />}
-            {p.differs > 0 && <Badge kind="differs_from_official" />}
-            {p.effective_from && <span>w.e.f. {fmtDate(p.effective_from)}</span>}
-            {asOn && <span>as on {fmtDate(asOn)}</span>}
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2 no-print">
-            {source ? (
-              <a
-                href={source.href}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-md bg-[var(--accent)] px-3.5 py-2 text-[13px] font-medium text-white hover:bg-[#173618]"
-              >
-                {source.label}
-              </a>
-            ) : (
-              <span className="text-xs text-stone-400">Official file not linked yet.</span>
-            )}
-            {p.source_url && source?.kind === "pdf" && (
-              <a
-                href={p.source_url}
-                target="_blank"
-                rel="noreferrer"
-                className="rounded-md border border-stone-300 px-3 py-2 text-[13px] hover:bg-stone-100"
-              >
-                Source page
-              </a>
-            )}
-            <Link
-              href={`/browse/${slug}/${slugifyNumber(p.number)}/history`}
-              className="rounded-md border border-stone-300 px-3 py-2 text-[13px] hover:bg-stone-100"
-            >
-              Amendment history{p.effect_count ? ` (${p.effect_count})` : ""}
-            </Link>
-          </div>
-        </header>
-        <div className="px-5 py-4">
-          <ProvisionBody p={p} />
-          {p.footnote && (
-            <p className="mt-3 border-t border-stone-100 pt-2 text-xs leading-relaxed text-stone-500">{p.footnote}</p>
-          )}
-        </div>
-        {docs.length > 0 && (
-          <section className="border-t border-stone-200 px-5 py-3">
-            <h3 className="mb-1.5 text-[12px] font-semibold uppercase tracking-wide text-stone-500">
-              Documents affecting this {unit}
-            </h3>
-            <ul className="space-y-1.5 text-sm">
-              {docs.map((d) => (
-                <li key={d.id}>
-                  <Link href={`/documents/${d.id}`} className="text-stone-800 hover:underline">
-                    {d.title}
-                  </Link>
-                  <div className="text-xs text-stone-500">
-                    {fmtDate(d.date_issued)} {d.number && <>· {d.number}</>}{" "}
-                    {d.change_type && <Badge kind={d.change_type} />}{" "}
-                    {d.verification_status && d.verification_status !== "unchecked" && <Badge kind={d.verification_status} />}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-      </article>
-
-      {showEmbed && source?.embed && (
-        <aside className="no-print sticky top-4 h-[calc(100vh-6rem)] overflow-hidden rounded-lg border border-stone-200 bg-white">
-          <div className="flex items-center justify-between border-b border-stone-200 px-3 py-1.5 text-xs text-stone-600">
-            <span>Official PDF{source.page ? `, page ${source.page}` : ""}</span>
-            <a href={source.href} target="_blank" rel="noreferrer" className="text-[var(--link)] hover:underline">
-              open in new tab
-            </a>
-          </div>
-          <iframe src={source.embed} title="Official PDF" className="h-[calc(100%-2rem)] w-full" />
-        </aside>
-      )}
-    </div>
-  );
-}
-
-function Contents({
-  index,
-  slug,
-  suffix,
-  unit,
-  inst,
-  source,
-  docs,
-}: {
-  index: Awaited<ReturnType<typeof listProvisionIndex>>;
-  slug: string;
-  suffix: string;
-  unit: string;
-  inst: InstrumentRow;
-  source: Source;
-  docs: Awaited<ReturnType<typeof instrumentDocuments>>;
-}) {
-  const groups: { title: string | null; items: typeof index }[] = [];
-  for (const row of index) {
-    if (row.level === "chapter") groups.push({ title: row.heading || row.number, items: [] });
-    else {
-      if (!groups.length) groups.push({ title: null, items: [] });
-      groups[groups.length - 1].items.push(row);
-    }
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border border-stone-200 bg-white p-4">
-        <p className="text-sm text-stone-600">
-          Pick a {unit} from the list on the left, or type its number in the filter box and press Enter. Every {unit}{" "}
-          opens with the official text and a link to the regulator&rsquo;s own file.
-        </p>
-        {source && (
-          <a href={source.href} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm text-[var(--link)] hover:underline">
-            {source.label}
-          </a>
-        )}
-      </div>
-
-      {groups.map((g, gi) => (
-        <section key={gi} className="rounded-lg border border-stone-200 bg-white p-4">
-          {g.title && <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-stone-500">{g.title}</h2>}
-          <ul className="grid gap-x-6 gap-y-0.5 sm:grid-cols-2 xl:grid-cols-3">
-            {g.items.map((i) => (
-              <li key={i.id} className="min-w-0">
-                <Link
-                  href={`/browse/${slug}?p=${encodeURIComponent(i.number)}${suffix}`}
-                  className="block truncate rounded px-1 py-0.5 text-[13.5px] hover:bg-stone-100"
-                  title={i.heading ? `${i.number} — ${i.heading}` : i.number}
-                >
-                  <span className="font-medium tabular-nums text-stone-900">{i.number}</span>
-                  {i.heading && <span className="text-stone-600"> {i.heading.replace(/[.\-\s]+$/, "")}</span>}
+          {opening.length > 0 && (
+            <section className="panel">
+              <div className="panel-head">
+                <h2 className="eyebrow">Opening {unit}s</h2>
+              </div>
+              <ul className="feed px-4 py-1 text-[13.5px]">
+                {opening.map((o) => (
+                  <li key={o.id} className="py-1">
+                    <Link
+                      href={`${readHref}?p=${encodeURIComponent(o.number)}`}
+                      className="block truncate hover:underline"
+                      title={o.heading ? `${o.number} — ${o.heading}` : o.number}
+                    >
+                      <span className="num font-medium">{o.number}</span>{" "}
+                      <span className="text-[var(--ink-2)]">{o.heading?.replace(/[.\-\s]+$/, "")}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <div className="border-t border-[var(--rule)] px-4 py-2 text-[12.5px]">
+                <Link href={readHref} className="text-[var(--link)] hover:underline">
+                  Every {unit} &rarr;
                 </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+              </div>
+            </section>
+          )}
 
-      <section className="rounded-lg border border-stone-200 bg-white p-4">
-        <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-stone-500">
-          Amending documents ({docs.length})
-        </h2>
-        <ul className="space-y-1.5 text-sm">
-          {docs.slice(0, 25).map((d) => (
-            <li key={d.id} className="flex flex-wrap items-baseline gap-x-2">
-              <span className="w-24 shrink-0 text-xs tabular-nums text-stone-500">{fmtDate(d.date_issued)}</span>
-              <Link href={`/documents/${d.id}`} className="min-w-0 flex-1 text-stone-800 hover:underline">
-                {d.title}
-              </Link>
-              <Badge kind={d.relation} />
-            </li>
-          ))}
-          {docs.length === 0 && <li className="text-stone-500">Nothing tagged to {inst.short_code} yet.</li>}
-        </ul>
-        {docs.length > 25 && (
-          <Link href={`/documents?instrument=${slug}`} className="mt-2 inline-block text-sm text-[var(--link)] hover:underline">
-            All {docs.length} documents for this instrument
-          </Link>
-        )}
-      </section>
+          {subject && (
+            <section className="panel">
+              <div className="panel-head">
+                <h2 className="eyebrow">Elsewhere in {subject.name}</h2>
+              </div>
+              <div className="panel-body space-y-1.5 text-[13px]">
+                <p className="text-[var(--ink-3)]">{subject.blurb}</p>
+                <Link href={`/browse?subject=${subject.key}`} className="block text-[var(--link)] hover:underline">
+                  All {subject.name} instruments
+                </Link>
+                <Link
+                  href={`/documents?regulator=${subject.regulators[0]}`}
+                  className="block text-[var(--link)] hover:underline"
+                >
+                  What&rsquo;s new in {subject.name}
+                </Link>
+              </div>
+            </section>
+          )}
+        </aside>
+      </div>
     </div>
   );
 }

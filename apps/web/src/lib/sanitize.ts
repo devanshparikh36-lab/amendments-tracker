@@ -21,7 +21,17 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
   col: new Set(["span"]),
   colgroup: new Set(["span"]),
   ol: new Set(["start", "type"]),
+  // The department aligns its own paragraphs and rules; keeping that is the point.
+  p: new Set(["align", "class"]),
+  div: new Set(["align"]),
+  hr: new Set(["align"]),
+  // Set by prepareLegalHtml only (see CLASS_VALUES): never carried over from the source.
+  table: new Set(["class"]),
 };
+
+// class= survives only for the handful of names this app's own stylesheet defines, so a source
+// document cannot reach into the page's styling.
+const CLASS_VALUES = new Set(["clause-layout", "provision-heading"]);
 
 function safeHref(value: string): string | null {
   const v = value.trim().replace(/\s+/g, "");
@@ -43,6 +53,12 @@ function cleanAttributes(tag: string, attrText: string): string {
       const href = safeHref(raw);
       if (!href) continue;
       out.push(`href="${escapeAttr(href)}" rel="noreferrer" target="_blank"`);
+      continue;
+    }
+    if (name === "class") {
+      const keep = raw.split(/\s+/).filter((c) => CLASS_VALUES.has(c));
+      if (!keep.length) continue;
+      out.push(`class="${keep.join(" ")}"`);
       continue;
     }
     out.push(`${name}="${escapeAttr(raw)}"`);
@@ -70,9 +86,4 @@ export function sanitizeHtml(html: string | null | undefined): string {
     return `<${tag}${cleanAttributes(tag, attrs)}${selfClosing ? " /" : ""}>`;
   });
   return out.trim();
-}
-
-export function hasRealHtml(html: string | null | undefined): boolean {
-  if (!html) return false;
-  return sanitizeHtml(html).replace(/<[^>]*>/g, "").trim().length > 0;
 }

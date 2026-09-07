@@ -12,8 +12,9 @@ export function fmtDateTime(d: string | Date | null | undefined): string {
   return date.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+// Every subject shares this list, so the labels stay generic: a CBDT notification is not a FEMA one.
 export const DOC_TYPE_LABEL: Record<string, string> = {
-  notification: "FEMA Notification",
+  notification: "Notification",
   gsr: "Gazette (GSR)",
   apdir_circular: "A.P. (DIR Series) Circular",
   master_direction: "Master Direction",

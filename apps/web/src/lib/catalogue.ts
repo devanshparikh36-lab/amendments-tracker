@@ -84,6 +84,34 @@ export const SUBJECT_BY_REGULATOR: Record<string, Subject> = Object.fromEntries(
   SUBJECTS.flatMap((s) => s.regulators.map((r) => [r, s] as const)),
 );
 
+// The subject's own accent, as a class the stylesheet turns into a 3px left rule.
+export function subjectClass(key: string): string {
+  return `sub-${key}`;
+}
+
+// What one numbered item of this instrument is called, for headings and counts.
+export function unitFor(kind: string): string {
+  if (kind === "rules") return "rule";
+  if (kind === "regulations") return "regulation";
+  if (kind === "master_direction" || kind === "master_circular") return "paragraph";
+  return "section";
+}
+
+export function unitPlural(kind: string): string {
+  return `${unitFor(kind)}s`;
+}
+
+// Cards and lists show many instruments from one family; drop the boilerplate prefix so the
+// distinguishing words are what the eye lands on.
+export function shortTitle(title: string): string {
+  return title
+    .replace(/^Securities and Exchange Board of India\s*/i, "SEBI ")
+    .replace(/^Foreign Exchange Management\s*/i, "FEM ")
+    .replace(/^Master Direction\s*[–—-]\s*/i, "")
+    .replace(/^The\s+/i, "")
+    .trim();
+}
+
 export const REGULATOR_LABEL: Record<string, string> = {
   RBI: "Reserve Bank of India",
   DEA: "Ministry of Finance (DEA)",
