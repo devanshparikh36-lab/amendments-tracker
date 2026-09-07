@@ -724,6 +724,18 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
         with db.transaction() as conn:
             # Any provisions parsed out of this PDF earlier were unreliable (its layout interleaves body text
             # with per-page footnotes). Remove them rather than leave text filed under the wrong provision.
+            # Their provision-level tags go first: without provisions they would all collapse onto the
+            # instrument and collide with each other.
+            db.execute(
+                conn,
+                """DELETE FROM document_tag WHERE provision_id IN (SELECT id FROM provision WHERE instrument_id = %s)""",
+                (inst["id"],),
+            )
+            db.execute(
+                conn,
+                """DELETE FROM amendment_effect WHERE provision_id IN (SELECT id FROM provision WHERE instrument_id = %s)""",
+                (inst["id"],),
+            )
             removed = db.execute(conn, "DELETE FROM provision WHERE instrument_id = %s", (inst["id"],))
             if removed:
                 log.info("%s: removed %d provisions that had been parsed from the PDF", slug, removed)
