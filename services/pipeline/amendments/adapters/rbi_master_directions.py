@@ -7,7 +7,7 @@ from datetime import date
 
 from .. import http
 from ..instruments import FEMA_MD_TITLE_PATTERNS
-from .base import Adapter, DiscoveredDocument, FetchedAttachment, FetchedDocument
+from .base import Adapter, DiscoveredDocument, FetchedAttachment, FetchedDocument, SeedResult
 from .rbi_common import RBI_BASE, canonical, extract_detail, filename_from_url, parse_listing, updated_as_on
 
 log = logging.getLogger(__name__)
@@ -72,11 +72,32 @@ class RbiMasterDirections(Adapter):
         )
 
 
-def official_text(instrument: dict, cfg: dict) -> tuple[str, date | None, str]:
-    """Consolidated text of a Master Direction from its HTML detail page: (text, updated_as_on, url)."""
+def official_text(instrument: dict, cfg: dict) -> SeedResult:
+    """Consolidated text of a Master Direction from its HTML detail page, with RBI's own PDF alongside.
+
+    RBI publishes each Master Direction as both a web page and a PDF. The page parses cleanly, so it supplies
+    the provisions; the PDF is kept as the document a reader can open and cite, and as the fallback when a
+    particular direction's layout defeats the parser.
+    """
     url = md_detail_url(cfg["rbi_md_id"]) if cfg.get("rbi_md_id") else instrument["official_url"]
     html = http.get_text(url)
-    text, _pdfs, _heading = extract_detail(html, url)
+    text, pdfs, _heading = extract_detail(html, url)
     if len(text) < 2000:
         raise RuntimeError(f"Master Direction page {url} returned too little text ({len(text)} chars)")
-    return text, updated_as_on(text[:3000]) or date.today(), url
+    pdf_bytes = pdf_url = None
+    for candidate in pdfs:
+        try:
+            data, _ = http.get_bytes(candidate)
+        except Exception as exc:
+            log.warning("%s: could not fetch %s: %s", instrument.get("slug"), candidate, str(exc)[:80])
+            continue
+        if data[:4] == b"%PDF":
+            pdf_bytes, pdf_url = data, candidate
+            break
+    return SeedResult(
+        text=text,
+        updated_as_on=updated_as_on(text[:3000]) or date.today(),
+        source_url=url,
+        pdf_bytes=pdf_bytes,
+        pdf_url=pdf_url,
+    )
