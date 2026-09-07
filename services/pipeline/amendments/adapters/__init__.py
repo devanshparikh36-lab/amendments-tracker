@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from datetime import date
 
-from .base import Adapter
+import logging
+
+from .base import Adapter, SeedResult
 from .cbic_gst import CbicGstCirculars, CbicGstNotifications
 from .rbi_apdir import RbiApDirCirculars
 from .rbi_fema_notifications import RbiFemaNotifications
@@ -14,6 +16,8 @@ from .sebi import SebiCirculars, SebiMasterCirculars, SebiRegulations
 from . import rbi_master_directions, rbi_fema_act, cbdt, mca
 from .cbdt import CbdtCirculars, CbdtNotifications
 from .mca import McaCirculars, McaNotifications
+
+log = logging.getLogger(__name__)
 
 registry: dict[str, Adapter] = {
     a.name: a
@@ -33,9 +37,14 @@ registry: dict[str, Adapter] = {
     )
 }
 
-def _document_text(instrument: dict, cfg: dict) -> tuple[str, date | None, str]:
-    """Instruments whose official text is a stored document (an original FEM Regulations / Rules notification)."""
+def _document_text(instrument: dict, cfg: dict) -> SeedResult:
+    """Instruments whose official text is a stored document (an original FEM Regulations / Rules notification).
+
+    The gazette PDF we already stored for that document comes back too, so the site can offer the official file
+    and fall back to it when the text does not parse into usable provisions.
+    """
     from .. import db  # local import: adapters are otherwise DB-free
+    from ..storage.files import storage
 
     with db.transaction() as conn:
         doc = db.fetch_one(
@@ -43,17 +52,31 @@ def _document_text(instrument: dict, cfg: dict) -> tuple[str, date | None, str]:
             "SELECT id, source_url, date_issued, date_effective, extracted_text FROM document WHERE source_url = %s",
             (instrument["official_url"],),
         )
-        if doc and not doc["extracted_text"]:
-            prim = db.fetch_one(
+        attachment = None
+        if doc:
+            attachment = db.fetch_one(
                 conn,
-                "SELECT extracted_text FROM attachment WHERE document_id = %s AND extracted_text IS NOT NULL ORDER BY is_primary DESC, id LIMIT 1",
+                """SELECT extracted_text, storage_key, source_url FROM attachment
+                   WHERE document_id = %s AND storage_key IS NOT NULL ORDER BY is_primary DESC, id LIMIT 1""",
                 (doc["id"],),
             )
-            if prim:
-                doc["extracted_text"] = prim["extracted_text"]
+            if not doc["extracted_text"] and attachment and attachment["extracted_text"]:
+                doc["extracted_text"] = attachment["extracted_text"]
     if not doc or not doc["extracted_text"]:
         raise RuntimeError(f"no stored text for {instrument['official_url']}")
-    return doc["extracted_text"], doc["date_effective"] or doc["date_issued"], doc["source_url"]
+    pdf_bytes = None
+    if attachment and str(attachment["storage_key"]).lower().endswith(".pdf"):
+        try:
+            pdf_bytes = storage().get(attachment["storage_key"])
+        except Exception as exc:
+            log.warning("%s: stored PDF unavailable: %s", instrument.get("slug"), str(exc)[:100])
+    return SeedResult(
+        text=doc["extracted_text"],
+        updated_as_on=doc["date_effective"] or doc["date_issued"],
+        source_url=doc["source_url"],
+        pdf_bytes=pdf_bytes,
+        pdf_url=(attachment or {}).get("source_url"),
+    )
 
 
 _OFFICIAL_TEXT_SOURCES = {

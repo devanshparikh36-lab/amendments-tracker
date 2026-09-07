@@ -30,6 +30,9 @@ from .storage.files import build_key, guess_mime, storage
 log = logging.getLogger(__name__)
 
 # Consolidated texts the regulator maintains itself: never year-pruned, and they seed / self-check their instrument.
+# Above this share of empty provisions, a parse is not trustworthy and the official PDF is served instead.
+EMPTY_PROVISION_LIMIT = 0.25
+
 MASTER_DIRECTION_TYPES = {"master_direction", "master_circular"}
 
 
@@ -695,6 +698,25 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
     # Parsing those into sections put text under the wrong provision, so they are served as the official PDF
     # with a page index instead: nothing is invented, and a search still lands on the right page.
     pdf_only = bool(cfg.get("pdf_only"))
+
+    # Quality gate. A parse that leaves many provisions empty means the source's layout defeated the parser
+    # (footnote columns, multi-column gazette pages). Publishing that shows a reader a section with nothing in
+    # it, so fall back to the regulator's own PDF, which is what they would cite anyway.
+    body = [p for p in parsed if p.level != "chapter"]
+    empty = sum(1 for p in body if len(p.text.strip()) < 40)
+    if body and empty / len(body) > EMPTY_PROVISION_LIMIT:
+        if pdf_bytes:
+            log.warning(
+                "%s: %d of %d provisions parsed empty; serving the official PDF instead",
+                slug, empty, len(body),
+            )
+            pdf_only = True
+        else:
+            log.warning("%s: %d of %d provisions parsed empty and no official PDF is available", slug, empty, len(body))
+
+    if not pdf_only and len(parsed) < 3:
+        raise RuntimeError(f"official text for {slug} parsed into only {len(parsed)} provisions; refusing to overwrite")
+
     if pdf_only:
         if not pdf_bytes:
             raise RuntimeError(f"{slug} is configured as PDF-only but no official PDF was returned")
@@ -712,9 +734,6 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
                 (updated_as_on, source_url, inst["id"]),
             )
         return {"pdf_pages": pages or 0, "provisions": 0, "mode": "official pdf"}
-
-    if len(parsed) < 3:
-        raise RuntimeError(f"official text for {slug} parsed into only {len(parsed)} provisions; refusing to overwrite")
 
     # Keep the regulator's own PDF and work out which page each provision starts on, so the site can open the
     # official document at the right place rather than asking anyone to trust our transcription.
