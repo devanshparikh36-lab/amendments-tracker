@@ -144,6 +144,30 @@ def _store_official_pdf(inst: dict, data: bytes, pdf_url: str, parsed: list) -> 
     return key, pages
 
 
+REFRESH_AFTER_DAYS = 7
+
+
+def enqueue_stale_instruments(conn: psycopg.Connection, *, days: int = REFRESH_AFTER_DAYS, limit: int = 25) -> int:
+    """Re-read the regulator's own text for instruments we have not checked recently.
+
+    RBI and SEBI republish as a new document, which discovery already notices. The Income Tax department, CBIC
+    and MCA instead edit their consolidated text in place behind an API, so nothing new appears to discover.
+    Re-reading the oldest instruments on every scheduled run means an in-place edit shows up here too, and the
+    self-check records it as a new version of whichever provisions changed.
+    """
+    rows = db.fetch_all(
+        conn,
+        """SELECT slug FROM instrument
+           WHERE official_url IS NOT NULL
+             AND (last_checked_at IS NULL OR last_checked_at < now() - (%s || ' days')::interval)
+           ORDER BY last_checked_at NULLS FIRST LIMIT %s""",
+        (days, limit),
+    )
+    for row in rows:
+        enqueue(conn, "selfcheck_instrument", {"slug": row["slug"]})
+    return len(rows)
+
+
 def _seed_config(slug: str) -> dict | None:
     for inst in PHASE1_INSTRUMENTS:
         if inst["slug"] == slug:
@@ -742,7 +766,8 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
             db.execute(
                 conn,
                 "UPDATE instrument SET pdf_only = true, official_updated_as_on = COALESCE(%s, official_updated_as_on),"
-                " seeded_at = COALESCE(seeded_at, now()), official_url = COALESCE(%s, official_url) WHERE id = %s",
+                " seeded_at = COALESCE(seeded_at, now()), last_checked_at = now(),"
+                " official_url = COALESCE(%s, official_url) WHERE id = %s",
                 (updated_as_on, source_url, inst["id"]),
             )
         return {"pdf_pages": pages or 0, "provisions": 0, "mode": "official pdf"}
@@ -855,7 +880,8 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
                 stats["updated_official"] += 1
         db.execute(
             conn,
-            "UPDATE instrument SET official_updated_as_on = %s, seeded_at = COALESCE(seeded_at, now()), official_url = COALESCE(%s, official_url) WHERE id = %s",
+            "UPDATE instrument SET official_updated_as_on = %s, seeded_at = COALESCE(seeded_at, now()),"
+            " last_checked_at = now(), official_url = COALESCE(%s, official_url) WHERE id = %s",
             (updated_as_on, source_url, inst["id"]),
         )
     log.info("seed/selfcheck %s: %s", slug, stats)

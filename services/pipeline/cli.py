@@ -119,6 +119,9 @@ def main(argv: list[str] | None = None) -> int:
         with db.transaction() as conn:
             pipeline.ensure_instruments(conn)
             pipeline.enqueue_unseeded_instruments(conn)
+            stale = pipeline.enqueue_stale_instruments(conn)
+            if stale:
+                print(f"queued {stale} instruments for a re-read of the regulator's text")
         print(pipeline.run_discovery())
         print("processed", pipeline.process_jobs(limit=args.limit))
         try:
