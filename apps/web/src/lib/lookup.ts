@@ -178,12 +178,14 @@ async function pagesFor(inst: LookupInstrument, parsed: ParsedQuery): Promise<Pa
   return wrap(hits);
 }
 
+// The reading view for one provision. /browse/<slug> is the instrument's landing page; the text lives
+// one level down, and old ?p= links to the landing page are redirected there.
 export function provisionHref(slug: string, number: string, extra?: string): string {
-  return `/browse/${slug}?p=${encodeURIComponent(number)}${extra ?? ""}`;
+  return `/browse/${slug}/text?p=${encodeURIComponent(number)}${extra ?? ""}`;
 }
 
 // The instrument's own page, showing the official PDF opened at page N with the search still in the box.
 export function pdfPageHref(slug: string, page: number, q?: string): string {
   const qs = q ? `&pq=${encodeURIComponent(q)}` : "";
-  return `/browse/${slug}?page=${page}${qs}`;
+  return `/browse/${slug}/text?page=${page}${qs}`;
 }

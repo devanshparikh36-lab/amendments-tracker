@@ -1,13 +1,19 @@
 import Link from "next/link";
-import { KIND_LABEL, REGULATOR_LABEL, SUBJECTS } from "@/lib/catalogue";
+import { KIND_LABEL, REGULATOR_LABEL, SUBJECTS, subjectClass, unitPlural } from "@/lib/catalogue";
 import { fmtDate } from "@/lib/format";
 import { instrumentIndex } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
+export const metadata = { title: "Acts, Rules, Regulations and Master Directions" };
+
 const KIND_ORDER = ["act", "rules", "regulations", "master_direction", "master_circular", "scheme", "other"];
 
 type Search = Promise<{ q?: string; regulator?: string; subject?: string; seeded?: string }>;
+
+function n(v: number): string {
+  return v.toLocaleString("en-IN");
+}
 
 export default async function BrowsePage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
@@ -27,108 +33,119 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
     subject: s,
     items: instruments
       .filter((i) => s.regulators.includes(i.regulator_code))
-      .sort((a, b) => KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) || b.provision_count - a.provision_count || a.title.localeCompare(b.title)),
+      .sort(
+        (a, b) =>
+          KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) ||
+          b.provision_count - a.provision_count ||
+          a.title.localeCompare(b.title),
+      ),
   })).filter((g) => g.items.length > 0);
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h1 className="text-[19px] font-semibold tracking-tight">Acts, Rules, Regulations and Master Directions</h1>
-        <p className="text-sm text-stone-600">
-          {instruments.length} of {all.length} tracked ·{" "}
-          {instruments.reduce((n, i) => n + (i.pdf_only ? 0 : i.provision_count), 0).toLocaleString("en-IN")} provisions
-          ·{" "}
-          {instruments.reduce((n, i) => n + (i.pdf_only ? i.page_count : 0), 0).toLocaleString("en-IN")} official PDF
-          pages
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b border-[var(--rule)] pb-3">
+        <div>
+          <h1 className="page-title">Acts, Rules, Regulations and Master Directions</h1>
+          <p className="meta mt-1">
+            Every instrument has its own page — what it is, who issued it, and what has amended it.
+          </p>
+        </div>
+        <p className="meta num">
+          {n(instruments.length)} of {n(all.length)} tracked ·{" "}
+          {n(instruments.reduce((t, i) => t + (i.pdf_only ? 0 : i.provision_count), 0))} provisions ·{" "}
+          {n(instruments.reduce((t, i) => t + (i.pdf_only ? i.page_count : 0), 0))} official PDF pages
         </p>
       </div>
 
-      <div className="no-print flex flex-wrap gap-1.5 text-[13px]">
-        <Link
-          href="/browse"
-          className={`rounded-full border px-3 py-1 ${!subject ? "border-stone-800 bg-stone-800 text-white" : "border-stone-300 hover:bg-stone-100"}`}
-        >
+      <div className="no-print flex flex-wrap items-center gap-1.5">
+        <Link href="/browse" className={`chip ${!subject ? "chip-on" : ""}`}>
           All subjects
         </Link>
         {SUBJECTS.map((s) => (
           <Link
             key={s.key}
             href={`/browse?subject=${s.key}`}
-            className={`rounded-full border px-3 py-1 ${
-              subject?.key === s.key ? "border-stone-800 bg-stone-800 text-white" : "border-stone-300 hover:bg-stone-100"
-            }`}
+            className={`chip ${subject?.key === s.key ? "chip-on" : ""}`}
           >
             {s.name}
           </Link>
         ))}
-      </div>
-
-      <form className="no-print flex flex-wrap items-end gap-3 rounded-lg border border-stone-200 bg-white p-3 text-sm">
-        {subject && <input type="hidden" name="subject" value={subject.key} />}
-        <label className="flex flex-col text-xs text-stone-500">
-          Find a regulation
+        <form className="ml-auto flex flex-wrap items-center gap-2">
+          {subject && <input type="hidden" name="subject" value={subject.key} />}
+          <label htmlFor="browse-q" className="sr-only">
+            Find a regulation
+          </label>
           <input
+            id="browse-q"
             name="q"
             defaultValue={sp.q ?? ""}
             placeholder="LODR, ECB, incorporation"
-            className="w-64 rounded border border-stone-300 px-2 py-1 text-sm"
+            className="field w-56"
           />
-        </label>
-        <label className="flex items-center gap-1.5 text-xs text-stone-600">
-          <input type="checkbox" name="seeded" value="1" defaultChecked={sp.seeded === "1"} /> only those with text
-        </label>
-        <button className="rounded bg-stone-800 px-3 py-1.5 text-white">Filter</button>
-        {(sp.q || sp.regulator || sp.seeded) && (
-          <Link href={subject ? `/browse?subject=${subject.key}` : "/browse"} className="text-sm text-stone-600 hover:underline">
-            clear
-          </Link>
-        )}
-      </form>
+          <label className="flex items-center gap-1.5 text-[12.5px] text-[var(--ink-2)]">
+            <input type="checkbox" name="seeded" value="1" defaultChecked={sp.seeded === "1"} /> only with text
+          </label>
+          <button className="btn">Filter</button>
+          {(sp.q || sp.regulator || sp.seeded) && (
+            <Link
+              href={subject ? `/browse?subject=${subject.key}` : "/browse"}
+              className="text-[12.5px] text-[var(--ink-3)] hover:underline"
+            >
+              clear
+            </Link>
+          )}
+        </form>
+      </div>
 
       {groups.map((g) => (
-        <section key={g.subject.key}>
-          <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-stone-500">
-            {g.subject.name} <span className="font-normal normal-case text-stone-400">({g.items.length})</span>
-          </h2>
-          <div className="scroll-x rounded-lg border border-stone-200 bg-white">
-            <table className="w-full text-sm">
-              <thead className="bg-stone-50 text-left text-xs uppercase tracking-wide text-stone-500">
+        <section key={g.subject.key} className={`panel sub-rule ${subjectClass(g.subject.key)}`}>
+          <div className="panel-head">
+            <h2 className="serif text-[16px] font-semibold">{g.subject.name}</h2>
+            <span className="meta num ml-auto">{n(g.items.length)} instruments</span>
+          </div>
+          <div className="scroll-x">
+            <table className="dtable">
+              <thead>
                 <tr>
-                  <th className="px-3 py-2">Title</th>
-                  <th className="px-3 py-2">Type</th>
-                  <th className="px-3 py-2">Issued by</th>
-                  <th className="px-3 py-2">Text as on</th>
-                  <th className="px-3 py-2 text-right">{g.subject.unit === "section" ? "Sections" : "Provisions"}</th>
-                  <th className="px-3 py-2 text-right">Documents</th>
+                  <th>Title</th>
+                  <th>Type</th>
+                  <th>Issued by</th>
+                  <th>Text as on</th>
+                  <th className="text-right">Contents</th>
+                  <th className="text-right">Documents</th>
                 </tr>
               </thead>
               <tbody>
                 {g.items.map((i) => (
-                  <tr key={i.id} className="border-t border-stone-100 hover:bg-stone-50">
-                    <td className="px-3 py-1.5">
-                      <Link href={`/browse/${i.slug}`} className="font-medium text-stone-900 hover:underline">
+                  <tr key={i.id}>
+                    <td>
+                      <Link href={`/browse/${i.slug}`} className="font-medium hover:underline">
                         {i.title}
                       </Link>
                       {i.pdf_only ? (
-                        <span className="ml-2 text-xs text-stone-500">official PDF</span>
+                        <span className="ml-2 text-[11.5px] text-[var(--ink-3)]">served as the official PDF</span>
                       ) : (
-                        i.provision_count === 0 && <span className="ml-2 text-xs text-stone-400">text not loaded yet</span>
+                        i.provision_count === 0 && (
+                          <span className="ml-2 text-[11.5px] text-[var(--ink-4)]">text not loaded yet</span>
+                        )
                       )}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-1.5 text-stone-600">{KIND_LABEL[i.kind] ?? i.kind}</td>
-                    <td className="whitespace-nowrap px-3 py-1.5 text-stone-600">
+                    <td className="whitespace-nowrap text-[var(--ink-2)]">{KIND_LABEL[i.kind] ?? i.kind}</td>
+                    <td className="whitespace-nowrap text-[var(--ink-2)]">
                       {REGULATOR_LABEL[i.regulator_code] ?? i.regulator_code}
                     </td>
-                    <td className="whitespace-nowrap px-3 py-1.5 text-stone-600">{fmtDate(i.official_updated_as_on)}</td>
-                    <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums">
+                    <td className="num whitespace-nowrap text-[var(--ink-2)]">{fmtDate(i.official_updated_as_on)}</td>
+                    <td className="num whitespace-nowrap text-right text-[var(--ink-2)]">
                       {i.pdf_only
-                        ? `${(i.page_count || i.pdf_page_count || 0).toLocaleString("en-IN")} pages`
-                        : i.provision_count || ""}
+                        ? `${n(i.page_count || i.pdf_page_count || 0)} pages`
+                        : i.provision_count
+                          ? `${n(i.provision_count)} ${unitPlural(i.kind)}`
+                          : ""}
                     </td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">
+                    <td className="num text-right">
                       {i.doc_count ? (
                         <Link href={`/documents?instrument=${i.slug}`} className="hover:underline">
-                          {i.doc_count}
+                          {n(i.doc_count)}
                         </Link>
                       ) : (
                         ""
@@ -141,7 +158,9 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
           </div>
         </section>
       ))}
-      {instruments.length === 0 && <p className="text-stone-500">Nothing matches that filter.</p>}
+      {instruments.length === 0 && (
+        <p className="panel border-dashed p-8 text-center text-[var(--ink-3)]">Nothing matches that filter.</p>
+      )}
     </div>
   );
 }
