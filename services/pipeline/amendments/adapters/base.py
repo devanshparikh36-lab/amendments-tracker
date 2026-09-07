@@ -38,6 +38,22 @@ class FetchedDocument:
     updated_as_on: date | None = None
 
 
+@dataclass
+class SeedResult:
+    """What a seeder found: the regulator's text, and the regulator's own file it came from.
+
+    Storing the PDF and the page each provision starts on is what lets a reader open the official
+    document at the right place instead of taking our transcription on trust.
+    """
+
+    text: str | None = None
+    provisions: list | None = None          # list[ParsedProvision] when the source is already structured
+    updated_as_on: date | None = None
+    source_url: str = ""
+    pdf_bytes: bytes | None = None          # the official PDF itself, to be stored verbatim
+    pdf_url: str | None = None              # where that PDF lives on the regulator's site
+
+
 class Adapter(ABC):
     name: str                       # matches document.source_adapter
     regulator_code: str

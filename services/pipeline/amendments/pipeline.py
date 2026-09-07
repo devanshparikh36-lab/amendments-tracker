@@ -16,7 +16,7 @@ import psycopg
 
 from . import db, rules
 from .adapters import registry, official_text_for
-from .adapters.base import DiscoveredDocument
+from .adapters.base import DiscoveredDocument, SeedResult
 from .ai import tasks as ai
 from .config import settings
 from .http import get_bytes, sha256
@@ -97,6 +97,48 @@ def enqueue_unseeded_instruments(conn: psycopg.Connection) -> int:
             enqueue(conn, "selfcheck_instrument", {"slug": inst["slug"]})
             n += 1
     return n
+
+
+def _store_official_pdf(inst: dict, data: bytes, pdf_url: str, parsed: list) -> tuple[str | None, int | None]:
+    """Store the regulator's PDF verbatim and set `pdf_page` on each provision. Returns (storage key, page count)."""
+    from .parsers import pdfmap
+
+    checksum = sha256(data)
+    key = f"official/{inst['slug']}/{checksum[:12]}.pdf"
+    store = storage()
+    try:
+        if not store.exists(key):
+            store.put(key, data, "application/pdf")
+    except Exception as exc:
+        log.warning("%s: could not store the official PDF: %s", inst["slug"], str(exc)[:120])
+        return None, None
+    try:
+        index = pdfmap.build_index(data)
+        pages = index.page_count
+        # Index every page so a search can land on the right page of the official document.
+        with db.transaction() as conn:
+            db.execute(conn, "DELETE FROM instrument_page WHERE instrument_id = %s", (inst["id"],))
+            for n, page_text in enumerate(index.flat, start=1):
+                if page_text.strip():
+                    db.execute(
+                        conn,
+                        "INSERT INTO instrument_page (instrument_id, page_no, text, storage_key) VALUES (%s, %s, %s, %s)"
+                        " ON CONFLICT (instrument_id, page_no) DO UPDATE SET text = EXCLUDED.text, storage_key = EXCLUDED.storage_key",
+                        (inst["id"], n, page_text, key),
+                    )
+        located = pdfmap.find_pages(index, [p for p in parsed if p.level != "chapter"])
+        log.info("%s: official PDF %d pages indexed, %d of %d provisions located", inst["slug"], pages, located, len(parsed))
+    except Exception as exc:
+        log.warning("%s: could not index the official PDF: %s", inst["slug"], str(exc)[:120])
+        pages = None
+    with db.transaction() as conn:
+        db.execute(
+            conn,
+            """UPDATE instrument SET pdf_storage_key = %s, pdf_source_url = %s, pdf_page_count = %s, pdf_fetched_at = now()
+               WHERE id = %s""",
+            (key, pdf_url, pages, inst["id"]),
+        )
+    return key, pages
 
 
 def _seed_config(slug: str) -> dict | None:
@@ -630,19 +672,57 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
         cfg = {"adapter": "sebi", "style": style}
     if cfg is None and inst["kind"] == "master_direction":
         cfg = {"adapter": "rbi_master_directions", "style": "master_direction"}
+    if cfg is None and inst["regulator_code"] == "SEBI":
+        # SEBI publishes consolidated texts only as PDFs; serve the official file with a page index.
+        cfg = {"adapter": "sebi", "style": "sebi", "pdf_only": True, "url": inst.get("official_url")}
     if cfg is None and inst["kind"] in ("regulations", "rules") and inst.get("official_url"):
         cfg = {"adapter": "document_text", "style": "regulations"}
     if cfg is None:
         raise RuntimeError(f"no seed source configured for {slug}")
-    official = official_text_for(inst, cfg)          # (text | list[ParsedProvision], updated_as_on, source_url)
-    text, updated_as_on, source_url = official
+    official = official_text_for(inst, cfg)
+    # Seeders return either a SeedResult (with the regulator's own PDF) or the older 3-tuple.
+    if isinstance(official, SeedResult):
+        text = official.provisions if official.provisions is not None else official.text
+        updated_as_on, source_url = official.updated_as_on, official.source_url
+        pdf_bytes, pdf_url = official.pdf_bytes, official.pdf_url
+    else:
+        text, updated_as_on, source_url = official
+        pdf_bytes, pdf_url = None, None
     if isinstance(text, list):
         # Source already supplies the text section by section (e.g. the Income Tax portal's section API).
         parsed = [p for p in text if p.text.strip()]
     else:
         parsed = [p for p in split_provisions(text, style=cfg.get("style", "auto")) if p.text.strip()]
+    # Some official texts exist only as a PDF whose layout interleaves body text with per-page footnotes.
+    # Parsing those into sections put text under the wrong provision, so they are served as the official PDF
+    # with a page index instead: nothing is invented, and a search still lands on the right page.
+    pdf_only = bool(cfg.get("pdf_only"))
+    if pdf_only:
+        if not pdf_bytes:
+            raise RuntimeError(f"{slug} is configured as PDF-only but no official PDF was returned")
+        key, pages = _store_official_pdf(inst, pdf_bytes, pdf_url or source_url, [])
+        with db.transaction() as conn:
+            # Any provisions parsed out of this PDF earlier were unreliable (its layout interleaves body text
+            # with per-page footnotes). Remove them rather than leave text filed under the wrong provision.
+            removed = db.execute(conn, "DELETE FROM provision WHERE instrument_id = %s", (inst["id"],))
+            if removed:
+                log.info("%s: removed %d provisions that had been parsed from the PDF", slug, removed)
+            db.execute(
+                conn,
+                "UPDATE instrument SET pdf_only = true, official_updated_as_on = COALESCE(%s, official_updated_as_on),"
+                " seeded_at = COALESCE(seeded_at, now()), official_url = COALESCE(%s, official_url) WHERE id = %s",
+                (updated_as_on, source_url, inst["id"]),
+            )
+        return {"pdf_pages": pages or 0, "provisions": 0, "mode": "official pdf"}
+
     if len(parsed) < 3:
         raise RuntimeError(f"official text for {slug} parsed into only {len(parsed)} provisions; refusing to overwrite")
+
+    # Keep the regulator's own PDF and work out which page each provision starts on, so the site can open the
+    # official document at the right place rather than asking anyone to trust our transcription.
+    pdf_key = pdf_pages = None
+    if pdf_bytes:
+        pdf_key, pdf_pages = _store_official_pdf(inst, pdf_bytes, pdf_url or source_url, parsed)
 
     stats = {"inserted": 0, "unchanged": 0, "replaced_machine": 0, "differs_from_official": 0, "updated_official": 0}
     with db.transaction() as conn:
@@ -660,12 +740,18 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
             )
             number_to_id[p.number] = row["id"]
             # Where this provision can be read in the regulator's own file.
-            if getattr(p, "source_url", None) or getattr(p, "pdf_page", None):
+            if getattr(p, "source_url", None) or getattr(p, "pdf_page", None) or pdf_key:
                 db.execute(
                     conn,
-                    """UPDATE provision SET source_url = COALESCE(%s, source_url), pdf_page = COALESCE(%s, pdf_page)
+                    """UPDATE provision SET source_url = COALESCE(%s, source_url),
+                           pdf_page = COALESCE(%s, pdf_page), pdf_storage_key = COALESCE(%s, pdf_storage_key)
                        WHERE id = %s""",
-                    (getattr(p, "source_url", None), getattr(p, "pdf_page", None), row["id"]),
+                    (
+                        getattr(p, "source_url", None),
+                        getattr(p, "pdf_page", None),
+                        pdf_key if getattr(p, "pdf_page", None) else None,
+                        row["id"],
+                    ),
                 )
             full_text = p.text + ("\n\n" + "\n".join(p.footnotes) if p.footnotes else "")
             official_html = getattr(p, "html", None)

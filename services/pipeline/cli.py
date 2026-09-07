@@ -36,6 +36,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("digest")
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
+    sub.add_parser("storage", help="report R2 and database usage against the free limits, warning if either is filling up")
     sub.add_parser("sectionmap", help="load CBDT's official Income-tax Act 1961 <-> 2025 provision mapping")
     p_run = sub.add_parser("run")
     p_run.add_argument("--limit", type=int, default=500)
@@ -91,6 +92,13 @@ def main(argv: list[str] | None = None) -> int:
         print(pipeline.load_section_map())
         return 0
 
+    if args.cmd == "storage":
+        from amendments.storage import usage
+
+        for u in usage.check():
+            print(f"{u.human():55} {u.detail:22} [{u.level}]")
+        return 0
+
     if args.cmd == "prune":
         print(pipeline.prune_before_cutoff())
         return 0
@@ -113,6 +121,13 @@ def main(argv: list[str] | None = None) -> int:
             pipeline.enqueue_unseeded_instruments(conn)
         print(pipeline.run_discovery())
         print("processed", pipeline.process_jobs(limit=args.limit))
+        try:
+            from amendments.storage import usage
+
+            for u in usage.check():
+                print(u.human())
+        except Exception as exc:
+            logging.warning("storage check failed: %s", exc)
         return 0
 
     if args.cmd == "backfill":

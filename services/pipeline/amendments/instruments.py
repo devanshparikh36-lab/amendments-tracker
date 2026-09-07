@@ -17,7 +17,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "act",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/acts/jan-1992/securities-and-exchange-board-of-india-act-1992-as-amended-by-the-finance-act-2021-13-of-2021-w-e-f-april-1-2021-_3.html",
-        "seed": {"adapter": "sebi", "listing": "acts", "match": r"^Securities and Exchange Board of India Act,?\s*1992", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "acts", "match": r"^Securities and Exchange Board of India Act,?\s*1992", "style": "sebi", "pdf_only": True},
     },
     {
         "slug": "scra-1956",
@@ -26,7 +26,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "act",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/acts/apr-2021/securities-contracts-regulation-act-1956-as-amended-by-the-finance-act-2021-13-of-2021-w-e-f-april-1-2021-_49750.html",
-        "seed": {"adapter": "sebi", "listing": "acts", "match": r"^Securities Contracts \(Regulation\) Act,?\s*1956", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "acts", "match": r"^Securities Contracts \(Regulation\) Act,?\s*1956", "style": "sebi", "pdf_only": True},
     },
     {
         "slug": "depositories-act-1996",
@@ -35,7 +35,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "act",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/acts/sep-1995/depositories-act-1996-as-amended-by-the-international-financial-services-centres-authority-act-2019-w-e-f-october-01-2020-_1.html",
-        "seed": {"adapter": "sebi", "listing": "acts", "match": r"^Depositories Act,?\s*1996", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "acts", "match": r"^Depositories Act,?\s*1996", "style": "sebi", "pdf_only": True},
     },
     {
         "slug": "sebi-lodr-2015",
@@ -44,7 +44,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "regulations",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/regulations/jul-2026/securities-and-exchange-board-of-india-listing-obligations-and-disclosure-requirements-regulations-2015-last-amended-on-july-14-2026-_102974.html",
-        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Listing Obligations and Disclosure Requirements", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Listing Obligations and Disclosure Requirements", "style": "sebi", "pdf_only": True},
     },
     {
         "slug": "sebi-icdr-2018",
@@ -53,7 +53,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "regulations",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/regulations/mar-2026/securities-and-exchange-board-of-india-issue-of-capital-and-disclosure-requirements-regulations-2018-last-amended-on-march-21-2026-_100581.html",
-        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Issue of Capital and Disclosure Requirements", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Issue of Capital and Disclosure Requirements", "style": "sebi", "pdf_only": True},
     },
     {
         "slug": "sebi-sast-2011",
@@ -62,7 +62,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "regulations",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/regulations/dec-2025/securities-and-exchange-board-of-india-substantial-acquisition-of-shares-and-takeovers-regulations-2011-last-amended-on-december-5-2025-_98643.html",
-        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Substantial Acquisition of Shares and Takeovers", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Substantial Acquisition of Shares and Takeovers", "style": "sebi", "pdf_only": True},
     },
     {
         "slug": "sebi-pit-2015",
@@ -71,7 +71,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "regulations",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/regulations/mar-2025/securities-and-exchange-board-of-india-prohibition-of-insider-trading-regulations-2015-last-amended-on-march-12-2025-_92672.html",
-        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Prohibition of Insider Trading", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Prohibition of Insider Trading", "style": "sebi", "pdf_only": True},
     },
     {
         # SEBI recast the Mutual Funds Regulations, 1996 as the (Mutual Funds) Regulations, 2026; the listing keeps
@@ -82,7 +82,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "regulations",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/regulations/jul-2026/securities-and-exchange-board-of-india-mutual-funds-regulations-2026-last-amended-on-july-7-2026-_102780.html",
-        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"\(Mutual Funds\)\s*Regulations", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"\(Mutual Funds\)\s*Regulations", "style": "sebi", "pdf_only": True},
     },
     {
         "slug": "sebi-aif-2012",
@@ -91,7 +91,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "regulations",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/regulations/apr-2026/securities-and-exchange-board-of-india-alternative-investment-funds-regulations-2012-last-amended-on-april-18-2026-_101019.html",
-        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"\(Alternative Investment Funds", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"\(Alternative Investment Funds", "style": "sebi", "pdf_only": True},
     },
     {
         "slug": "sebi-portfolio-managers-2020",
@@ -100,7 +100,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "regulations",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/regulations/sep-2025/securities-and-exchange-board-of-india-portfolio-managers-regulations-2020-last-amended-on-september-03-2025-_96560.html",
-        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"\(Portfolio Managers\)\s*Regulations", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"\(Portfolio Managers\)\s*Regulations", "style": "sebi", "pdf_only": True},
     },
     {
         "slug": "sebi-buyback-2018",
@@ -109,7 +109,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "regulations",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/regulations/jul-2026/securities-and-exchange-board-of-india-buy-back-of-securities-regulations-2018-last-amended-on-july-6-2026-_103042.html",
-        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Buy-?Back of Securities", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Buy-?Back of Securities", "style": "sebi", "pdf_only": True},
     },
     {
         "slug": "sebi-delisting-2021",
@@ -118,7 +118,7 @@ SEBI_INSTRUMENTS: list[dict] = [
         "kind": "regulations",
         "regulator": "SEBI",
         "official_url": "https://www.sebi.gov.in/legal/regulations/sep-2025/securities-and-exchange-board-of-india-delisting-of-equity-shares-regulations-2021-last-amended-on-september-3-2025-_96548.html",
-        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Delisting of Equity Shares", "style": "sebi"},
+        "seed": {"adapter": "sebi", "listing": "regulations", "match": r"Delisting of Equity Shares", "style": "sebi", "pdf_only": True},
     },
 ]
 

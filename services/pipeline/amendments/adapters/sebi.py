@@ -27,7 +27,7 @@ from urllib.parse import parse_qs, urljoin, urlparse
 from bs4 import BeautifulSoup
 
 from .. import http
-from .base import Adapter, DiscoveredDocument, FetchedAttachment, FetchedDocument
+from .base import Adapter, DiscoveredDocument, FetchedAttachment, FetchedDocument, SeedResult
 from .rbi_common import parse_rbi_date as parse_date  # generic "Aug 24, 2026" / "24-08-2026" parser
 
 log = logging.getLogger(__name__)
@@ -458,21 +458,36 @@ def _resolve_url(instrument: dict, cfg: dict) -> str:
     return url
 
 
-def official_text(instrument: dict, cfg: dict) -> tuple[str, date | None, str]:
-    """Seeder / self-check source: SEBI's own consolidated Act, Regulation or Master Circular."""
+def official_text(instrument: dict, cfg: dict) -> SeedResult:
+    """Seeder / self-check source: SEBI's own consolidated Act, Regulation or Master Circular.
+
+    SEBI publishes each consolidated text as a PDF alongside the web page. We keep that PDF, because it is
+    the document a practitioner will cite, and the page mapping lets the site open it at the right place.
+    """
     from ..parsers.pdf import extract_pdf_text  # local import keeps the adapter importable without PyMuPDF
 
     url = _resolve_url(instrument, cfg)
     html = http.get_text(url)
     d = parse_detail(html, url)
     text = d.text
-    if len(text) < 4000 and d.pdf_urls:
-        data, _ = http.get_bytes(d.pdf_urls[0])
-        pdf_text = extract_pdf_text(data).text
-        if len(pdf_text) > len(text):
-            text = pdf_text
+    pdf_bytes: bytes | None = None
+    pdf_url: str | None = None
+    if d.pdf_urls:
+        try:
+            data, _ = http.get_bytes(d.pdf_urls[0])
+            if data[:4] == b"%PDF":
+                pdf_bytes, pdf_url = data, d.pdf_urls[0]
+                pdf_text = extract_pdf_text(data).text
+                # The PDF is the authoritative layout; prefer it when the page text is thin.
+                if len(pdf_text) > len(text):
+                    text = pdf_text
+        except Exception as exc:
+            log.warning("%s: could not fetch the official PDF: %s", instrument.get("slug"), str(exc)[:120])
     if len(text) < 2000:
         raise RuntimeError(f"{instrument.get('slug')}: SEBI page {url} yielded only {len(text)} characters")
     stamp = updated_as_on(d.title or "") or updated_as_on(instrument.get("title") or "") or d.date_issued
-    log.info("%s: %d characters of official text (updated %s)", instrument.get("slug"), len(text), stamp)
-    return text, stamp, url
+    log.info(
+        "%s: %d characters of official text (updated %s)%s",
+        instrument.get("slug"), len(text), stamp, "" if pdf_bytes is None else f", official PDF {len(pdf_bytes) // 1024} KB",
+    )
+    return SeedResult(text=text, updated_as_on=stamp, source_url=url, pdf_bytes=pdf_bytes, pdf_url=pdf_url)
