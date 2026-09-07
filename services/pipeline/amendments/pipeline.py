@@ -667,14 +667,12 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
         raise LookupError(slug)
     cfg = _seed_config(slug)
     if cfg is None and inst["regulator_code"] == "SEBI" and inst.get("official_url"):
-        # auto-registered from the SEBI Legal listing: its own page holds the consolidated text
-        style = "master_direction" if inst["kind"] == "master_direction" else "sebi"
-        cfg = {"adapter": "sebi", "style": style}
+        # Auto-registered from the SEBI Legal listing. Everything SEBI publishes there is a PDF whose layout
+        # interleaves body text with per-page footnotes, so serve the official file and index its pages rather
+        # than parse sections out of it.
+        cfg = {"adapter": "sebi", "style": "sebi", "pdf_only": True}
     if cfg is None and inst["kind"] == "master_direction":
         cfg = {"adapter": "rbi_master_directions", "style": "master_direction"}
-    if cfg is None and inst["regulator_code"] == "SEBI":
-        # SEBI publishes consolidated texts only as PDFs; serve the official file with a page index.
-        cfg = {"adapter": "sebi", "style": "sebi", "pdf_only": True, "url": inst.get("official_url")}
     if cfg is None and inst["kind"] in ("regulations", "rules") and inst.get("official_url"):
         cfg = {"adapter": "document_text", "style": "regulations"}
     if cfg is None:
