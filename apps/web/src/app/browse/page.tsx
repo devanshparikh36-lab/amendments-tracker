@@ -20,7 +20,7 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
       (!subject || subject.regulators.includes(i.regulator_code)) &&
       (!sp.regulator || i.regulator_code === sp.regulator) &&
       (!q || i.title.toLowerCase().includes(q) || i.short_code.toLowerCase().includes(q) || i.slug.includes(q)) &&
-      (sp.seeded !== "1" || i.provision_count > 0),
+      (sp.seeded !== "1" || i.provision_count > 0 || (i.pdf_only && i.page_count > 0)),
   );
 
   const groups = SUBJECTS.map((s) => ({
@@ -36,7 +36,10 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
         <h1 className="text-[19px] font-semibold tracking-tight">Acts, Rules, Regulations and Master Directions</h1>
         <p className="text-sm text-stone-600">
           {instruments.length} of {all.length} tracked ·{" "}
-          {instruments.reduce((n, i) => n + i.provision_count, 0).toLocaleString("en-IN")} provisions
+          {instruments.reduce((n, i) => n + (i.pdf_only ? 0 : i.provision_count), 0).toLocaleString("en-IN")} provisions
+          ·{" "}
+          {instruments.reduce((n, i) => n + (i.pdf_only ? i.page_count : 0), 0).toLocaleString("en-IN")} official PDF
+          pages
         </p>
       </div>
 
@@ -106,14 +109,22 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
                       <Link href={`/browse/${i.slug}`} className="font-medium text-stone-900 hover:underline">
                         {i.title}
                       </Link>
-                      {i.provision_count === 0 && <span className="ml-2 text-xs text-stone-400">text not loaded yet</span>}
+                      {i.pdf_only ? (
+                        <span className="ml-2 text-xs text-stone-500">official PDF</span>
+                      ) : (
+                        i.provision_count === 0 && <span className="ml-2 text-xs text-stone-400">text not loaded yet</span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-stone-600">{KIND_LABEL[i.kind] ?? i.kind}</td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-stone-600">
                       {REGULATOR_LABEL[i.regulator_code] ?? i.regulator_code}
                     </td>
                     <td className="whitespace-nowrap px-3 py-1.5 text-stone-600">{fmtDate(i.official_updated_as_on)}</td>
-                    <td className="px-3 py-1.5 text-right tabular-nums">{i.provision_count || ""}</td>
+                    <td className="whitespace-nowrap px-3 py-1.5 text-right tabular-nums">
+                      {i.pdf_only
+                        ? `${(i.page_count || i.pdf_page_count || 0).toLocaleString("en-IN")} pages`
+                        : i.provision_count || ""}
+                    </td>
                     <td className="px-3 py-1.5 text-right tabular-nums">
                       {i.doc_count ? (
                         <Link href={`/documents?instrument=${i.slug}`} className="hover:underline">

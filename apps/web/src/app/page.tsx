@@ -29,11 +29,11 @@ export default async function Home() {
 
   const cards = SUBJECTS.map((s) => {
     const mine = instruments.filter((i) => s.regulators.includes(i.regulator_code));
-    const seeded = mine.filter((i) => i.provision_count > 0);
+    const seeded = mine.filter(hasText);
     const featured: InstrumentRow[] = [];
     for (const slug of s.featured) {
       const inst = bySlug.get(slug);
-      if (inst && inst.provision_count > 0) featured.push(inst);
+      if (inst && hasText(inst)) featured.push(inst);
     }
     for (const inst of seeded) {
       if (featured.length >= 8) break;
@@ -50,7 +50,7 @@ export default async function Home() {
   });
 
   const totals = {
-    instruments: instruments.filter((i) => i.provision_count > 0).length,
+    instruments: instruments.filter(hasText).length,
     provisions: instruments.reduce((t, i) => t + i.provision_count, 0),
     documents: docCounts.reduce((t, d) => t + d.documents, 0),
   };
@@ -119,7 +119,9 @@ export default async function Home() {
                         {shortTitle(i)}
                       </span>
                       <span className="whitespace-nowrap text-xs tabular-nums text-stone-400">
-                        {n(i.provision_count)} {unitLabel(i.kind)}
+                        {i.pdf_only
+                          ? `${n(i.page_count || i.pdf_page_count || 0)} pages`
+                          : `${n(i.provision_count)} ${unitLabel(i.kind)}`}
                       </span>
                     </Link>
                   </li>
@@ -180,6 +182,11 @@ function unitLabel(kind: string): string {
 }
 
 // Cards list many instruments from one family; drop the boilerplate prefix so the distinguishing words show.
+// Something to read: parsed provisions, or the regulator's own PDF indexed page by page.
+function hasText(i: InstrumentRow): boolean {
+  return i.pdf_only ? i.page_count > 0 : i.provision_count > 0;
+}
+
 function shortTitle(i: InstrumentRow): string {
   return i.title
     .replace(/^Securities and Exchange Board of India\s*/i, "SEBI ")

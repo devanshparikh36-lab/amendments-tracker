@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { KIND_LABEL } from "@/lib/catalogue";
 import { fmtDate } from "@/lib/format";
-import { provisionHref, resolveLookup } from "@/lib/lookup";
+import { fileHref, pdfHref } from "@/lib/files";
+import { pdfPageHref, provisionHref, resolveLookup } from "@/lib/lookup";
 import { search } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,12 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
 
   const text = await search(q, 25);
   const nothing =
-    !lookup.provisions.length && !lookup.instruments.length && !text.provisions.length && !text.documents.length && !text.attachments.length;
+    !lookup.provisions.length &&
+    !lookup.pages.length &&
+    !lookup.instruments.length &&
+    !text.provisions.length &&
+    !text.documents.length &&
+    !text.attachments.length;
 
   return (
     <div className="mx-auto max-w-5xl space-y-7">
@@ -44,6 +50,50 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
             Go to the best match
           </Link>
         </p>
+      )}
+
+      {lookup.pages.length > 0 && (
+        <section>
+          <h2 className="mb-1 text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+            In the regulator&rsquo;s own PDF
+          </h2>
+          <p className="mb-2 text-xs text-stone-500">
+            These instruments are published only as a consolidated PDF. Each result opens that file at the page the
+            match was found on.
+          </p>
+          <ol className="divide-y divide-stone-100 rounded-lg border border-stone-200 bg-white">
+            {lookup.pages.map((p) => {
+              const url = fileHref(p.pdf_storage_key, p.pdf_source_url);
+              return (
+                <li key={`${p.instrument_slug}-${p.page_no}`} className="px-4 py-2.5 hover:bg-stone-50">
+                  <div className="flex flex-wrap items-baseline gap-x-2">
+                    <Link
+                      href={pdfPageHref(p.instrument_slug, p.page_no, q)}
+                      className="font-semibold text-stone-900 hover:underline"
+                    >
+                      Page {p.page_no}
+                    </Link>
+                    <span className="text-sm text-stone-700">{p.instrument_title}</span>
+                    {url && (
+                      <a
+                        href={pdfHref(url, p.page_no)}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="ml-auto text-xs text-stone-500 hover:underline"
+                      >
+                        open the PDF here
+                      </a>
+                    )}
+                  </div>
+                  <p
+                    className="mt-0.5 line-clamp-3 text-[13px] text-stone-600 [&_b]:bg-yellow-100 [&_b]:font-semibold"
+                    dangerouslySetInnerHTML={{ __html: p.snippet }}
+                  />
+                </li>
+              );
+            })}
+          </ol>
+        </section>
       )}
 
       {lookup.provisions.length > 0 && (
@@ -80,7 +130,11 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
                   <span className="min-w-0 flex-1 text-sm text-stone-800">{i.title}</span>
                   <span className="whitespace-nowrap text-xs text-stone-500">
                     {KIND_LABEL[i.kind] ?? i.kind}
-                    {i.provision_count > 0 ? ` · ${i.provision_count} provisions` : " · no text yet"}
+                    {i.pdf_only
+                      ? ` · official PDF, ${i.page_count || i.pdf_page_count || 0} pages`
+                      : i.provision_count > 0
+                        ? ` · ${i.provision_count} provisions`
+                        : " · no text yet"}
                   </span>
                 </Link>
               </li>

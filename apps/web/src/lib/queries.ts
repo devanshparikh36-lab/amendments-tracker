@@ -33,6 +33,10 @@ export type InstrumentRow = {
   pdf_storage_key: string | null;
   pdf_source_url: string | null;
   pdf_page_count: number | null;
+  // True when the regulator publishes this instrument only as a PDF: we serve that file and index its
+  // pages, rather than inventing a section split the official document does not have.
+  pdf_only: boolean;
+  page_count: number;
 };
 
 export type ProvisionRow = {
@@ -59,8 +63,9 @@ export type ProvisionRow = {
 export async function listInstruments(): Promise<InstrumentRow[]> {
   return query<InstrumentRow>(`
     SELECT i.id, i.slug, i.short_code, i.title, i.kind, i.official_url, i.official_updated_as_on, i.seeded_at,
-           i.pdf_storage_key, i.pdf_source_url, i.pdf_page_count,
+           i.pdf_storage_key, i.pdf_source_url, i.pdf_page_count, i.pdf_only,
            r.code AS regulator_code,
+           (SELECT count(*) FROM instrument_page ip WHERE ip.instrument_id = i.id)::int AS page_count,
            (SELECT count(*) FROM provision p WHERE p.instrument_id = i.id)::int AS provision_count,
            (SELECT count(*) FROM provision p JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
               WHERE p.instrument_id = i.id AND v.source_kind = 'machine_merged')::int AS machine_count,
@@ -71,7 +76,8 @@ export async function listInstruments(): Promise<InstrumentRow[]> {
 
 export async function getInstrument(slug: string): Promise<InstrumentRow | null> {
   const rows = await query<InstrumentRow>(
-    `SELECT i.*, r.code AS regulator_code, 0 AS provision_count, 0 AS machine_count, 0 AS doc_count
+    `SELECT i.*, r.code AS regulator_code, 0 AS provision_count, 0 AS machine_count, 0 AS doc_count,
+            (SELECT count(*) FROM instrument_page ip WHERE ip.instrument_id = i.id)::int AS page_count
      FROM instrument i JOIN regulator r ON r.id = i.regulator_id WHERE i.slug = $1`,
     [slug],
   );
@@ -163,6 +169,8 @@ export type LookupProvision = {
 };
 
 // Exact provision-number match across every instrument (whitespace-insensitive: "2 (2)" == "2(2)").
+// pdf_only instruments are left out on purpose: they are served as the regulator's own file, and any
+// provision rows left behind for them are not what the reader is shown. Pages answer those queries instead.
 export async function findProvisionsByNumber(number: string): Promise<LookupProvision[]> {
   return query<LookupProvision>(
     `SELECT p.id, p.number, p.heading, p.level,
@@ -176,8 +184,73 @@ export async function findProvisionsByNumber(number: string): Promise<LookupProv
      LEFT JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
      WHERE replace(upper(p.number), ' ', '') = replace(upper($1), ' ', '')
        AND p.level <> 'chapter'
+       AND NOT i.pdf_only
      LIMIT 80`,
     [number],
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The regulator's own PDF, page by page.
+//
+// SEBI's consolidated Regulations exist only as PDFs whose layout defeats a section parse, so the
+// pipeline stores the official file and indexes each page. Search runs over that extracted page text —
+// a finding aid — and every result opens the actual PDF at the page it was found on.
+
+export type PageHit = { page_no: number; snippet: string; rank: number; heading_hit: boolean };
+
+// Regex-safe stem of a provision number: "17(1)" -> "17", "12A" -> "12A". Only [0-9A-Za-z] survives,
+// so the string can be interpolated into a POSIX regex without escaping.
+export function headingStem(number: string | null | undefined): string | null {
+  if (!number) return null;
+  const m = number.trim().match(/^(\d{1,4}[A-Za-z]{0,4})/);
+  return m ? m[1] : null;
+}
+
+// Search one instrument's PDF pages. A number ("regulation 17") is matched separately from the words,
+// because a page carrying the heading "17. (1) ..." is the answer even when the words are elsewhere.
+export async function searchInstrumentPages(
+  instrumentId: number,
+  q: string,
+  opts: { number?: string | null; limit?: number } = {},
+): Promise<PageHit[]> {
+  const text = q.trim();
+  const stem = headingStem(opts.number);
+  if (!text && !stem) return [];
+  const limit = Math.min(opts.limit ?? 20, 100);
+  // '(^|[^0-9A-Za-z])17\.' — the number as a heading, not as part of a date, amount or cross-reference.
+  // Non-capturing groups only: substring(text from pattern) returns the capture group when there is one.
+  // "(?![0-9])" keeps "17.5.2024" in a footnote from posing as regulation 17.
+  const headingRe = stem ? `(?:^|[^0-9A-Za-z])${stem}\\.(?![0-9])` : null;
+  const openerRe = stem ? `(?:^|[^0-9A-Za-z])${stem}\\.[[:space:]]*[(A-Z]` : null;
+  return query<PageHit>(
+    `WITH q AS (SELECT websearch_to_tsquery('english', $2) AS tsq),
+          hit AS (
+            SELECT ip.page_no, ip.text,
+                   to_tsvector('english', ip.text) @@ q.tsq AS words,
+                   ts_rank(to_tsvector('english', ip.text), q.tsq) AS word_rank,
+                   ($3::text IS NOT NULL AND ip.text ~ $3) AS heading,
+                   ($4::text IS NOT NULL AND ip.text ~ $4) AS opener
+            FROM instrument_page ip, q
+            WHERE ip.instrument_id = $1
+          )
+     SELECT page_no,
+            CASE WHEN words THEN ts_headline('english', text, (SELECT tsq FROM q),
+                   'MaxFragments=2, MaxWords=26, MinWords=12, StartSel=<b>, StopSel=</b>')
+                 ELSE '…' || replace(replace(replace(
+                        coalesce(substring(text from '.{0,70}' || $3 || '.{0,220}'), left(text, 240)),
+                        '&', '&amp;'), '<', '&lt;'), '>', '&gt;') || '…'
+            END AS snippet,
+            (CASE WHEN words THEN word_rank ELSE 0 END
+             + CASE WHEN opener THEN 0.9 WHEN heading THEN 0.25 ELSE 0 END)::float8 AS rank,
+            opener AS heading_hit
+     FROM hit
+     WHERE words OR heading
+     -- A page that opens "17. (1) …" is the answer to "regulation 17". Where several pages do (the
+     -- body, then a schedule repeating the number), the earliest is the numbered provision itself.
+     ORDER BY opener DESC, CASE WHEN opener THEN page_no END ASC, rank DESC, page_no
+     LIMIT $5`,
+    [instrumentId, text, headingRe, openerRe, limit],
   );
 }
 
@@ -187,7 +260,8 @@ export async function findInstruments(words: string[]): Promise<LookupInstrument
   if (!words.length) return [];
   const rows = await query<InstrumentRow>(
     `SELECT i.id, i.slug, i.short_code, i.title, i.kind, i.official_url, i.official_updated_as_on, i.seeded_at,
-            i.pdf_storage_key, i.pdf_source_url, i.pdf_page_count, r.code AS regulator_code,
+            i.pdf_storage_key, i.pdf_source_url, i.pdf_page_count, i.pdf_only, r.code AS regulator_code,
+            (SELECT count(*) FROM instrument_page ip WHERE ip.instrument_id = i.id)::int AS page_count,
             (SELECT count(*) FROM provision p WHERE p.instrument_id = i.id)::int AS provision_count,
             0 AS machine_count,
             (SELECT count(DISTINCT t.document_id) FROM document_tag t WHERE t.instrument_id = i.id)::int AS doc_count
@@ -197,10 +271,11 @@ export async function findInstruments(words: string[]): Promise<LookupInstrument
     .map((i) => {
       const hay = `${i.slug} ${i.short_code} ${i.title}`.toLowerCase();
       const hits = words.filter((w) => hay.includes(w)).length;
-      return { ...i, rank: hits === words.length ? hits * 10 + (i.provision_count > 0 ? 5 : 0) : hits };
+      const hasText = i.provision_count > 0 || i.page_count > 0;
+      return { ...i, rank: hits === words.length ? hits * 10 + (hasText ? 5 : 0) : hits };
     })
     .filter((i) => i.rank > 0)
-    .sort((a, b) => b.rank - a.rank || b.provision_count - a.provision_count)
+    .sort((a, b) => b.rank - a.rank || b.provision_count + b.page_count - (a.provision_count + a.page_count))
     .slice(0, 20);
 }
 
@@ -217,11 +292,13 @@ export async function documentCountsByRegulator(): Promise<SubjectCount[]> {
 export async function instrumentIndex(): Promise<InstrumentRow[]> {
   return query<InstrumentRow>(
     `SELECT i.id, i.slug, i.short_code, i.title, i.kind, i.official_url, i.official_updated_as_on, i.seeded_at,
-            i.pdf_storage_key, i.pdf_source_url, i.pdf_page_count, r.code AS regulator_code,
-            coalesce(pc.n, 0)::int AS provision_count, 0 AS machine_count, coalesce(dc.n, 0)::int AS doc_count
+            i.pdf_storage_key, i.pdf_source_url, i.pdf_page_count, i.pdf_only, r.code AS regulator_code,
+            coalesce(pc.n, 0)::int AS provision_count, 0 AS machine_count, coalesce(dc.n, 0)::int AS doc_count,
+            coalesce(gc.n, 0)::int AS page_count
      FROM instrument i
      JOIN regulator r ON r.id = i.regulator_id
      LEFT JOIN (SELECT instrument_id, count(*) n FROM provision GROUP BY instrument_id) pc ON pc.instrument_id = i.id
+     LEFT JOIN (SELECT instrument_id, count(*) n FROM instrument_page GROUP BY instrument_id) gc ON gc.instrument_id = i.id
      LEFT JOIN (SELECT instrument_id, count(DISTINCT document_id) n FROM document_tag GROUP BY instrument_id) dc ON dc.instrument_id = i.id
      ORDER BY provision_count DESC, i.title`,
   );
@@ -341,7 +418,7 @@ export async function search(q: string, limit = 50) {
             ts_headline('english', v.text, ${ts}, 'MaxFragments=2, MaxWords=25, MinWords=10') AS snippet,
             ts_rank(to_tsvector('english', v.text), ${ts}) AS rank
      FROM provision_version v JOIN provision p ON p.id = v.provision_id JOIN instrument i ON i.id = p.instrument_id
-     WHERE v.effective_to IS NULL AND to_tsvector('english', v.text) @@ ${ts}
+     WHERE v.effective_to IS NULL AND NOT i.pdf_only AND to_tsvector('english', v.text) @@ ${ts}
      ORDER BY rank DESC LIMIT $2`,
     [q, limit],
   );

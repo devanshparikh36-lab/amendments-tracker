@@ -1,5 +1,12 @@
 import { INSTRUMENT_ALIASES } from "@/lib/catalogue";
-import { findInstruments, findProvisionsByNumber, type LookupInstrument, type LookupProvision } from "@/lib/queries";
+import {
+  findInstruments,
+  findProvisionsByNumber,
+  searchInstrumentPages,
+  type LookupInstrument,
+  type LookupProvision,
+  type PageHit,
+} from "@/lib/queries";
 
 // "80C", "regulation 17 LODR", "rule 8 incorporation" -> a provision, in one hop where possible.
 
@@ -92,11 +99,21 @@ function scoreInstrument(
   return score;
 }
 
+// A page of a regulator's own PDF, offered as a one-click answer.
+export type PageCandidate = PageHit & {
+  instrument_slug: string;
+  instrument_title: string;
+  short_code: string;
+  pdf_storage_key: string | null;
+  pdf_source_url: string | null;
+};
+
 export type LookupResult = {
   parsed: ParsedQuery;
   jumpTo: string | null;
   provisions: Candidate[];
   instruments: LookupInstrument[];
+  pages: PageCandidate[];
 };
 
 export async function resolveLookup(raw: string): Promise<LookupResult> {
@@ -110,18 +127,63 @@ export async function resolveLookup(raw: string): Promise<LookupResult> {
     .map((r) => ({ ...r, score: scoreInstrument(parsed.words, parsed.kindHint, r) }))
     .sort((a, b) => b.score - a.score || b.instrument_size - a.instrument_size);
 
+  // Instruments served as the regulator's PDF have no provision rows to match, so the pages of that
+  // file answer instead. Only the instruments the query actually named are searched.
+  const pdfTargets = instruments.filter((i) => i.pdf_only && i.page_count > 0).slice(0, 3);
+  const pageLists = await Promise.all(pdfTargets.map((i) => pagesFor(i, parsed)));
+  // Stable: each instrument keeps the order its own page search returned, and pages carrying the
+  // asked-for number as a heading come first across all of them.
+  const pages: PageCandidate[] = pageLists.flat().sort((a, b) => Number(b.heading_hit) - Number(a.heading_hit));
+
   let jumpTo: string | null = null;
   if (provisions.length) {
     const [top, next] = provisions;
     const decisive = provisions.length === 1 || (top.score > 0 && (!next || top.score > next.score));
     if (decisive) jumpTo = provisionHref(top.instrument_slug, top.number);
-  } else if (!parsed.number && instruments.length) {
+  }
+  // The query named exactly one PDF-served instrument: land on it with the search already run, so the
+  // reader sees the page inside the regulator's file. With a number, only when a page actually carries
+  // that number as a heading — otherwise the list of pages is the honest answer.
+  if (!jumpTo && pages.length && pdfTargets.length === 1 && (!parsed.number || pages[0].heading_hit)) {
+    jumpTo = pdfPageHref(pages[0].instrument_slug, pages[0].page_no, parsed.raw);
+  }
+  if (!jumpTo && !parsed.number && !pages.length && instruments.length) {
     const [top, next] = instruments;
     if (!next || top.rank > next.rank) jumpTo = `/browse/${top.slug}`;
   }
-  return { parsed, jumpTo, provisions: provisions.slice(0, 40), instruments: instruments.slice(0, 12) };
+  return {
+    parsed,
+    jumpTo,
+    provisions: provisions.slice(0, 40),
+    instruments: instruments.slice(0, 12),
+    pages: pages.slice(0, 12),
+  };
+}
+
+async function pagesFor(inst: LookupInstrument, parsed: ParsedQuery): Promise<PageCandidate[]> {
+  const wrap = (hits: PageHit[]) =>
+    hits.map((h) => ({
+      ...h,
+      instrument_slug: inst.slug,
+      instrument_title: inst.title,
+      short_code: inst.short_code,
+      pdf_storage_key: inst.pdf_storage_key,
+      pdf_source_url: inst.pdf_source_url,
+    }));
+  let hits = await searchInstrumentPages(inst.id, parsed.raw, { number: parsed.number, limit: 8 });
+  // "mutual funds valuation" needs every word on one page; if that finds nothing, any word will do.
+  if (!hits.length && parsed.words.length > 1) {
+    hits = await searchInstrumentPages(inst.id, parsed.words.join(" or "), { number: parsed.number, limit: 8 });
+  }
+  return wrap(hits);
 }
 
 export function provisionHref(slug: string, number: string, extra?: string): string {
   return `/browse/${slug}?p=${encodeURIComponent(number)}${extra ?? ""}`;
+}
+
+// The instrument's own page, showing the official PDF opened at page N with the search still in the box.
+export function pdfPageHref(slug: string, page: number, q?: string): string {
+  const qs = q ? `&pq=${encodeURIComponent(q)}` : "";
+  return `/browse/${slug}?page=${page}${qs}`;
 }

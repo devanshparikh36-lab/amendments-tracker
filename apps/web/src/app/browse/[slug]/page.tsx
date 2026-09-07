@@ -5,6 +5,7 @@ import { SectionFilter } from "@/components/SectionFilter";
 import { KIND_LABEL } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
 import { fmtDate, slugifyNumber } from "@/lib/format";
+import { parseQuery } from "@/lib/lookup";
 import {
   getInstrument,
   getProvision,
@@ -12,7 +13,9 @@ import {
   listProvisionIndex,
   listProvisions,
   provisionDocuments,
+  searchInstrumentPages,
   type InstrumentRow,
+  type PageHit,
   type ProvisionRow,
 } from "@/lib/queries";
 import { hasRealHtml, sanitizeHtml } from "@/lib/sanitize";
@@ -20,7 +23,7 @@ import { hasRealHtml, sanitizeHtml } from "@/lib/sanitize";
 export const dynamic = "force-dynamic";
 
 type Params = Promise<{ slug: string }>;
-type Search = Promise<{ p?: string; asOn?: string; view?: string }>;
+type Search = Promise<{ p?: string; asOn?: string; view?: string; pq?: string; page?: string }>;
 
 function unitFor(kind: string): string {
   if (kind === "rules") return "rule";
@@ -53,6 +56,10 @@ export default async function InstrumentPage({ params, searchParams }: { params:
   const sp = await searchParams;
   const inst = await getInstrument(slug);
   if (!inst) notFound();
+
+  // Some regulators publish only a consolidated PDF. We serve that file and search its pages;
+  // we do not split it into sections we would then be asserting.
+  if (inst.pdf_only) return <PdfInstrument inst={inst} slug={slug} sp={sp} />;
 
   const unit = unitFor(inst.kind);
   const suffix = sp.asOn ? `&asOn=${sp.asOn}` : "";
@@ -173,6 +180,237 @@ export default async function InstrumentPage({ params, searchParams }: { params:
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// The regulator's own PDF, served as the document, with its pages made searchable.
+
+async function PdfInstrument({
+  inst,
+  slug,
+  sp,
+}: {
+  inst: InstrumentRow;
+  slug: string;
+  sp: { pq?: string; page?: string };
+}) {
+  const pdfUrl = fileHref(inst.pdf_storage_key, inst.pdf_source_url);
+  const pq = (sp.pq ?? "").trim();
+  const pageCount = inst.page_count || inst.pdf_page_count || 0;
+  const asked = Number.parseInt(sp.page ?? "", 10);
+  const page = Number.isFinite(asked) && asked >= 1 ? (pageCount ? Math.min(asked, pageCount) : asked) : null;
+
+  const [hits, docs] = await Promise.all([
+    pq ? searchInstrumentPages(inst.id, pq, { number: parseQuery(pq).number, limit: 25 }) : Promise.resolve([]),
+    instrumentDocuments(inst.id),
+  ]);
+
+  return (
+    <div className="space-y-4">
+      <div className="no-print">
+        <div className="text-xs text-stone-500">
+          <Link href="/" className="hover:underline">
+            Home
+          </Link>{" "}
+          /{" "}
+          <Link href="/browse" className="hover:underline">
+            Acts &amp; Rules
+          </Link>{" "}
+          / {inst.regulator_code}
+        </div>
+        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="text-[19px] font-semibold tracking-tight text-stone-900">{inst.title}</h1>
+          <span className="text-xs text-stone-500">
+            {KIND_LABEL[inst.kind] ?? inst.kind}
+            {pageCount > 0 && <> · {pageCount} pages</>}
+            {inst.official_updated_as_on && <> · official text as on {fmtDate(inst.official_updated_as_on)}</>}
+          </span>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+          {pdfUrl ? (
+            <a
+              href={pdfHref(pdfUrl, page)}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md bg-[var(--accent)] px-3.5 py-2 text-[13px] font-medium text-white hover:bg-[#173618]"
+            >
+              Open the official PDF{page ? ` at page ${page}` : ""}
+            </a>
+          ) : (
+            <span className="text-xs text-stone-400">The official file is not stored yet.</span>
+          )}
+          {inst.official_url && (
+            <a
+              href={inst.official_url}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-md border border-stone-300 px-3 py-2 text-[13px] hover:bg-stone-100"
+            >
+              {inst.regulator_code}&rsquo;s page for this document
+            </a>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+        <div className="no-print min-w-0 space-y-4">
+          <section className="rounded-lg border border-stone-200 bg-white p-4">
+            <p className="text-[13px] leading-relaxed text-stone-600">
+              {inst.regulator_code} publishes this instrument as one consolidated PDF, not as separate sections. What
+              you open here <strong>is</strong> that file, exactly as the regulator issued it
+              {inst.official_updated_as_on && <> ({fmtDate(inst.official_updated_as_on)})</>}. The search below runs
+              over text read out of those pages — a finding aid only. Read the provision in the PDF itself.
+            </p>
+          </section>
+
+          <section className="rounded-lg border border-stone-200 bg-white p-4">
+            <form className="space-y-2">
+              <label htmlFor="pq" className="block text-[12px] font-semibold uppercase tracking-wide text-stone-500">
+                Search inside this PDF
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="pq"
+                  name="pq"
+                  defaultValue={pq}
+                  placeholder="regulation 17, related party transaction"
+                  className="min-w-0 flex-1 rounded border border-stone-300 px-2.5 py-1.5 text-sm focus:border-stone-600 focus:outline-none"
+                />
+                <button className="rounded bg-stone-800 px-3 py-1.5 text-sm text-white">Search</button>
+              </div>
+            </form>
+            <form className="mt-3 flex items-end gap-2 border-t border-stone-100 pt-3">
+              {pq && <input type="hidden" name="pq" value={pq} />}
+              <label htmlFor="page" className="text-xs text-stone-500">
+                Go to page
+                <input
+                  id="page"
+                  name="page"
+                  type="number"
+                  min={1}
+                  max={pageCount || undefined}
+                  defaultValue={page ?? ""}
+                  className="ml-2 w-20 rounded border border-stone-300 px-2 py-1 text-sm"
+                />
+              </label>
+              <button className="rounded border border-stone-300 px-2.5 py-1 text-sm hover:bg-stone-100">Go</button>
+              {pageCount > 0 && <span className="pb-1 text-xs text-stone-400">of {pageCount}</span>}
+            </form>
+          </section>
+
+          {pq && (
+            <section>
+              <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+                {hits.length === 0
+                  ? "No page matches"
+                  : `${hits.length} page${hits.length === 1 ? "" : "s"} match “${pq}”`}
+              </h2>
+              <ol className="space-y-2">
+                {hits.map((h) => (
+                  <li
+                    key={h.page_no}
+                    className={`rounded-lg border bg-white p-3 ${
+                      h.page_no === page ? "border-stone-800" : "border-stone-200"
+                    }`}
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <Link
+                        href={`/browse/${slug}?page=${h.page_no}&pq=${encodeURIComponent(pq)}`}
+                        className="text-sm font-semibold text-[var(--link)] hover:underline"
+                      >
+                        Page {h.page_no}
+                      </Link>
+                      {h.heading_hit && <span className="text-[11px] text-stone-500">heading on this page</span>}
+                      {pdfUrl && (
+                        <a
+                          href={pdfHref(pdfUrl, h.page_no)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ml-auto text-[11px] text-stone-500 hover:underline"
+                        >
+                          open PDF here
+                        </a>
+                      )}
+                    </div>
+                    <PageSnippet hit={h} />
+                  </li>
+                ))}
+                {hits.length === 0 && (
+                  <li className="rounded-lg border border-dashed border-stone-300 bg-white p-4 text-sm text-stone-600">
+                    Nothing on any page of this file matches that. Try a phrase from the text, or the regulation number
+                    on its own.
+                  </li>
+                )}
+              </ol>
+            </section>
+          )}
+
+          <section className="rounded-lg border border-stone-200 bg-white p-4">
+            <h2 className="mb-2 text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+              Amending documents ({docs.length})
+            </h2>
+            <ul className="space-y-1.5 text-sm">
+              {docs.slice(0, 15).map((d) => (
+                <li key={d.id} className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="w-20 shrink-0 text-xs tabular-nums text-stone-500">{fmtDate(d.date_issued)}</span>
+                  <Link href={`/documents/${d.id}`} className="min-w-0 flex-1 text-stone-800 hover:underline">
+                    {d.title}
+                  </Link>
+                </li>
+              ))}
+              {docs.length === 0 && <li className="text-stone-500">Nothing tagged to {inst.short_code} yet.</li>}
+            </ul>
+            {docs.length > 15 && (
+              <Link href={`/documents?instrument=${slug}`} className="mt-2 inline-block text-sm text-[var(--link)] hover:underline">
+                All {docs.length} documents for this instrument
+              </Link>
+            )}
+          </section>
+        </div>
+
+        {pdfUrl ? (
+          <aside className="no-print sticky top-4 h-[calc(100vh-6rem)] overflow-hidden rounded-lg border border-stone-200 bg-white">
+            <div className="flex items-center justify-between border-b border-stone-200 px-3 py-1.5 text-xs text-stone-600">
+              <span>
+                Official PDF as published by {inst.regulator_code}
+                {page ? ` · page ${page}` : ""}
+              </span>
+              <a href={pdfHref(pdfUrl, page)} target="_blank" rel="noreferrer" className="text-[var(--link)] hover:underline">
+                open in new tab
+              </a>
+            </div>
+            {/* Keyed on the page so a new result remounts the viewer: a bare #page change would not move it. */}
+            <iframe
+              key={page ?? 0}
+              src={pdfHref(pdfUrl, page, true)}
+              title={`${inst.title} — official PDF`}
+              className="h-[calc(100%-2rem)] w-full"
+            />
+          </aside>
+        ) : (
+          <aside className="rounded-lg border border-dashed border-stone-300 bg-white p-8 text-center text-sm text-stone-600">
+            The official file has not been stored yet.{" "}
+            {inst.official_url && (
+              <a href={inst.official_url} target="_blank" rel="noreferrer" className="text-[var(--link)] underline">
+                Open it on {inst.regulator_code}&rsquo;s site
+              </a>
+            )}
+          </aside>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ts_headline marks matches with <b>; the number-only branch returns escaped plain text. Both are
+// produced by our own SQL, never by the source document.
+function PageSnippet({ hit }: { hit: PageHit }) {
+  return (
+    <p
+      className="mt-1 text-[13px] leading-relaxed text-stone-600 [&_b]:bg-yellow-100 [&_b]:font-semibold"
+      dangerouslySetInnerHTML={{ __html: hit.snippet }}
+    />
   );
 }
 
