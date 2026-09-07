@@ -1,7 +1,15 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Badge } from "@/components/Badge";
-import { KIND_LABEL, REGULATOR_LABEL, SUBJECT_BY_REGULATOR, subjectClass, unitFor } from "@/lib/catalogue";
+import {
+  COMPARE_HREF,
+  COMPARE_SLUGS,
+  KIND_LABEL,
+  REGULATOR_LABEL,
+  SUBJECT_BY_REGULATOR,
+  subjectClass,
+  unitFor,
+} from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
 import { DOC_TYPE_LABEL, fmtDate, slugifyNumber } from "@/lib/format";
 import {
@@ -55,6 +63,8 @@ export default async function InstrumentPage({ params, searchParams }: { params:
   const pageCount = inst.page_count || inst.pdf_page_count || 0;
   const hasText = inst.pdf_only ? pageCount > 0 : overview.provisions > 0;
   const readHref = `/browse/${slug}/text`;
+  // The 1961 to 2025 concordance belongs to income tax, so it is offered on those two Acts and nowhere else.
+  const compareLabel = COMPARE_SLUGS[slug];
 
   return (
     <div className="space-y-5">
@@ -325,12 +335,12 @@ export default async function InstrumentPage({ params, searchParams }: { params:
                 <h2 className="eyebrow">Arrangement of {unit}s</h2>
                 <span className="meta ml-auto">{n(chapters.length)} chapters</span>
               </div>
-              <ul className="panel-body grid gap-x-6 gap-y-1 text-[13.5px] sm:grid-cols-2">
+              <ul className="panel-body columns-1 gap-x-10 text-[13.5px] leading-7 sm:columns-2">
                 {chapters.map((c) => (
-                  <li key={c.id} className="min-w-0 truncate">
+                  <li key={c.id} className="break-inside-avoid">
                     <Link
                       href={`${readHref}?view=full#${slugifyNumber(c.number)}`}
-                      className="hover:underline"
+                      className="block truncate hover:underline"
                       title={c.heading ?? c.number}
                     >
                       <span className="num font-medium">{c.number}</span>{" "}
@@ -399,9 +409,9 @@ export default async function InstrumentPage({ params, searchParams }: { params:
               <div className="panel-head">
                 <h2 className="eyebrow">Opening {unit}s</h2>
               </div>
-              <ul className="feed px-4 py-1 text-[13.5px]">
+              <ul className="px-4 py-2 text-[13.5px] leading-7">
                 {opening.map((o) => (
-                  <li key={o.id} className="py-1">
+                  <li key={o.id}>
                     <Link
                       href={`${readHref}?p=${encodeURIComponent(o.number)}`}
                       className="block truncate hover:underline"
@@ -428,6 +438,11 @@ export default async function InstrumentPage({ params, searchParams }: { params:
               </div>
               <div className="panel-body space-y-1.5 text-[13px]">
                 <p className="text-[var(--ink-3)]">{subject.blurb}</p>
+                {compareLabel && (
+                  <Link href={COMPARE_HREF} className="block text-[var(--link)] hover:underline">
+                    {compareLabel}
+                  </Link>
+                )}
                 <Link href={`/browse?subject=${subject.key}`} className="block text-[var(--link)] hover:underline">
                   All {subject.name} instruments
                 </Link>

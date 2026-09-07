@@ -6,77 +6,82 @@ export type Subject = {
   name: string;
   blurb: string;
   regulators: string[];
-  featured: string[];
   unit: string;
+  // The handful of entry points a reader actually opens. Slugs absent from the database are skipped,
+  // so this list is safe to keep ahead of the seeder. Everything else stays one quiet link away.
+  featured: string[];
+  // SEBI publishes about a hundred regulations; only its master circulars belong on a front page.
+  featuredPrefix?: string;
+  featuredPrefixHeading?: string;
+  featuredPrefixLimit?: number;
+  // Companies work starts from a search box and the last few MCA circulars, not from a list of rules.
+  search?: string;
+  recentDocuments?: number;
+  // The 1961 to 2025 concordance is an income-tax tool, so it is offered only where income tax is.
+  compare?: boolean;
+};
+
+// The concordance is not a site-wide feature: it is linked from the Income Tax block and from the
+// two Acts it maps, and nowhere else.
+export const COMPARE_HREF = "/compare/income-tax";
+export const COMPARE_SLUGS: Record<string, string> = {
+  "ita-1961": "Compare with the Income-tax Act, 2025",
+  "ita-2025": "Compare with the Income-tax Act, 1961",
 };
 
 export const SUBJECTS: Subject[] = [
   {
     key: "income-tax",
     name: "Income Tax",
-    blurb: "Income-tax Act and Rules, the 2025 Act, and CBDT notifications and circulars.",
+    blurb: "The two Acts and the Rules made under them.",
     regulators: ["CBDT"],
-    featured: ["ita-1961", "itr-1962", "ita-2025", "itr-2026"],
     unit: "section",
+    featured: ["ita-2025", "ita-1961", "itr-2026", "itr-1962"],
+    compare: true,
   },
   {
     key: "gst",
     name: "GST",
-    blurb: "CGST, IGST, UTGST and Compensation Cess law with CBIC notifications and circulars.",
+    blurb: "The central and integrated levies with the working Rules.",
     regulators: ["CBIC"],
-    featured: ["cgst-act-2017", "cgst-rules-2017", "igst-act-2017", "utgst-act-2017", "gst-compensation-act-2017"],
     unit: "section",
+    featured: ["cgst-act-2017", "cgst-rules-2017", "igst-act-2017", "gst-compensation-act-2017"],
+  },
+  {
+    key: "companies",
+    name: "Companies Act",
+    blurb: "The Act itself, and what MCA has issued lately.",
+    regulators: ["MCA"],
+    unit: "section",
+    featured: ["companies-act-2013"],
+    search: "section 185, CSR, incorporation",
+    recentDocuments: 5,
+  },
+  {
+    key: "sebi",
+    name: "SEBI / Securities",
+    blurb: "Listing obligations, and SEBI's consolidated master circulars.",
+    regulators: ["SEBI"],
+    unit: "regulation",
+    featured: ["sebi-lodr-2015"],
+    featuredPrefix: "sebi-mc-",
+    featuredPrefixHeading: "Master circulars",
+    featuredPrefixLimit: 5,
   },
   {
     key: "fema",
     name: "FEMA / Foreign Exchange",
-    blurb: "RBI Master Directions and FEM Regulations, A.P. (DIR) circulars and gazette notifications.",
+    blurb: "The RBI Master Directions in daily use.",
     regulators: ["RBI", "DEA"],
+    unit: "paragraph",
     featured: [
       "md-foreign-investment-in-india",
       "md-ecb",
       "md-lrs",
       "md-oi",
+      "md-overseas-investment",
       "md-deposits-and-accounts",
-      "md-export-goods-services",
-      "md-import-goods-services",
-      "md-establishment-of-branch-office-bo-liaison-office-lo-project-office-po-",
     ],
-    unit: "paragraph",
-  },
-  {
-    key: "sebi",
-    name: "SEBI / Securities",
-    blurb: "Listing, issue, takeover and insider-trading regulations with SEBI master circulars.",
-    regulators: ["SEBI"],
-    featured: [
-      "sebi-lodr-2015",
-      "sebi-icdr-2018",
-      "sebi-pit-2015",
-      "sebi-sast-2011",
-      "sebi-buyback-2018",
-      "sebi-delisting-2021",
-      "sebi-aif-2012",
-      "sebi-act-1992",
-    ],
-    unit: "regulation",
-  },
-  {
-    key: "companies",
-    name: "Companies Act",
-    blurb: "Companies Act 2013 with the working Rules, MCA notifications and General Circulars.",
-    regulators: ["MCA"],
-    featured: [
-      "companies-act-2013",
-      "companies-incorporation-rules-2014",
-      "companies-appointment-and-qualification-of-directors-rules-2014",
-      "companies-meetings-of-board-and-its-powers-rules-2014",
-      "companies-accounts-rules-2014",
-      "companies-audit-and-auditors-rules-2014",
-      "companies-share-capital-and-debentures-rules-2014",
-      "companies-corporate-social-responsibility-policy-rules-2014",
-    ],
-    unit: "section",
   },
 ];
 

@@ -1,34 +1,49 @@
 import Link from "next/link";
-import { KIND_LABEL, SUBJECTS, shortTitle, subjectClass, unitPlural } from "@/lib/catalogue";
-import { DOC_TYPE_LABEL, fmtDate } from "@/lib/format";
 import {
-  documentCountsByRegulator,
-  instrumentIndex,
-  recentByRegulator,
-  type FeedItem,
-  type InstrumentRow,
-} from "@/lib/queries";
+  COMPARE_HREF,
+  KIND_LABEL,
+  SUBJECTS,
+  type Subject,
+  shortTitle,
+  subjectClass,
+} from "@/lib/catalogue";
+import { fmtDate } from "@/lib/format";
+import { instrumentIndex, listDocuments, recentByRegulator, type InstrumentRow } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
 const EXAMPLES = [
   { q: "80C", label: "80C" },
-  { q: "regulation 17 LODR", label: "regulation 17 LODR" },
-  { q: "rule 8 incorporation", label: "rule 8 incorporation" },
+  { q: "regulation 17 LODR", label: "LODR 17" },
   { q: "section 16 CGST", label: "section 16 CGST" },
   { q: "ECB", label: "ECB Master Direction" },
 ];
 
-// Acts first, then the Rules made under them, then Regulations and the regulator's consolidated directions.
-const KIND_ORDER = ["act", "rules", "regulations", "master_direction", "master_circular", "scheme", "other"];
-
-function n(v: number): string {
-  return v.toLocaleString("en-IN");
-}
-
 // Something to read: parsed provisions, or the regulator's own PDF indexed page by page.
 function hasText(i: InstrumentRow): boolean {
   return i.pdf_only ? i.page_count > 0 : i.provision_count > 0;
+}
+
+// The few instruments a subject actually opens with: the curated slugs that exist and have text,
+// then — for SEBI — its most recently stated master circulars. Nothing else.
+function curated(s: Subject, bySlug: Map<string, InstrumentRow>, all: InstrumentRow[]) {
+  const picked: InstrumentRow[] = [];
+  for (const slug of s.featured) {
+    const inst = bySlug.get(slug);
+    if (inst && hasText(inst) && !picked.some((p) => p.slug === inst.slug)) picked.push(inst);
+    if (picked.length >= 6) break;
+  }
+  const extra = s.featuredPrefix
+    ? all
+        .filter((i) => i.slug.startsWith(s.featuredPrefix as string) && hasText(i))
+        .sort(
+          (a, b) =>
+            (b.official_updated_as_on ?? "").localeCompare(a.official_updated_as_on ?? "") ||
+            a.title.localeCompare(b.title),
+        )
+        .slice(0, s.featuredPrefixLimit ?? 5)
+    : [];
+  return { picked, extra };
 }
 
 type Search = Promise<{ subject?: string }>;
@@ -36,77 +51,62 @@ type Search = Promise<{ subject?: string }>;
 export default async function Home({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const chosen = SUBJECTS.find((s) => s.key === sp.subject) ?? null;
-  const [instruments, counts, feed] = await Promise.all([
+  const shown = chosen ? [chosen] : SUBJECTS;
+
+  const needsDocs = shown.filter((s) => s.recentDocuments);
+  const [instruments, feed, docLists] = await Promise.all([
     instrumentIndex(),
-    documentCountsByRegulator(),
-    recentByRegulator(6),
+    recentByRegulator(chosen ? 8 : 4),
+    Promise.all(
+      needsDocs.map((s) => listDocuments({ regulator: s.regulators[0], limit: s.recentDocuments ?? 5 })),
+    ),
   ]);
 
   const bySlug = new Map(instruments.map((i) => [i.slug, i]));
-  const byReg = new Map(counts.map((d) => [d.regulator_code, d]));
+  const docsFor = new Map(needsDocs.map((s, idx) => [s.key, docLists[idx]]));
 
-  // One block per subject: its own recent documents, its own counts, its own instruments.
-  const subjects = SUBJECTS.map((s) => {
-    const mine = instruments.filter((i) => s.regulators.includes(i.regulator_code));
-    const seeded = mine.filter(hasText);
-    const featured: InstrumentRow[] = [];
-    for (const slug of s.featured) {
-      const inst = bySlug.get(slug);
-      if (inst && hasText(inst)) featured.push(inst);
-    }
-    for (const inst of seeded) {
-      if (featured.length >= 7) break;
-      if (!featured.some((f) => f.slug === inst.slug)) featured.push(inst);
-    }
-    const items = feed
+  const blocks = shown.map((s) => ({
+    subject: s,
+    ...curated(s, bySlug, instruments),
+    documents: docsFor.get(s.key) ?? [],
+    recent: feed
       .filter((d) => s.regulators.includes(d.regulator_code))
       .sort((a, b) => (b.date_issued ?? "").localeCompare(a.date_issued ?? ""))
-      .slice(0, 6);
-    const add = (k: "documents" | "last30" | "last90" | "effects") =>
-      s.regulators.reduce((t, r) => t + (byReg.get(r)?.[k] ?? 0), 0);
-    return {
-      subject: s,
-      featured,
-      items,
-      instruments: seeded.length,
-      provisions: mine.reduce((t, i) => t + i.provision_count, 0),
-      documents: add("documents"),
-      last30: add("last30"),
-      last90: add("last90"),
-      effects: add("effects"),
-      latest: s.regulators.map((r) => byReg.get(r)?.latest).filter(Boolean).sort().pop() ?? null,
-    };
-  });
-
-  const totals = {
-    instruments: instruments.filter(hasText).length,
-    provisions: instruments.reduce((t, i) => t + i.provision_count, 0),
-    documents: counts.reduce((t, d) => t + d.documents, 0),
-    last30: counts.reduce((t, d) => t + d.last30, 0),
-  };
-
-  // Everything the chosen subject covers, grouped the way a reader asks for it: the Act first, then its
-  // Rules, then Regulations and the regulator's consolidated directions.
-  const chosenItems = chosen
-    ? instruments
-        .filter((i) => chosen.regulators.includes(i.regulator_code))
-        .sort(
-          (a, b) =>
-            KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) ||
-            Number(hasText(b)) - Number(hasText(a)) ||
-            b.provision_count - a.provision_count ||
-            a.title.localeCompare(b.title),
-        )
-    : [];
-  const chosenGroups = KIND_ORDER.map((kind) => ({
-    kind,
-    items: chosenItems.filter((i) => i.kind === kind),
-  })).filter((g) => g.items.length > 0);
-  const chosenSummary = chosen ? subjects.find((s) => s.subject.key === chosen.key) : null;
+      .slice(0, chosen && !s.recentDocuments ? 8 : 0),
+  }));
 
   return (
-    <div className="space-y-10">
-      {/* --- pick a subject: the first thing on the page --------------------- */}
+    <div className="mx-auto max-w-[76rem] space-y-12">
+      {/* --- the one box that answers "where is 80C" ------------------------ */}
+      <section>
+        <h1 className="page-title">Look up any section, rule or regulation</h1>
+        <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-[var(--ink-2)]">
+          Every screen shows the regulator&rsquo;s own text, as the regulator publishes it, with a link to the official
+          document it came from.
+        </p>
+        <form action="/find" role="search" className="mt-5 flex flex-wrap gap-2">
+          <label htmlFor="home-q" className="sr-only">
+            Search sections, regulations and notifications
+          </label>
+          <input
+            id="home-q"
+            name="q"
+            autoFocus
+            className="field field-lg min-w-0 flex-1"
+            placeholder="A section number, a regulation name, or any phrase"
+          />
+          <button className="btn btn-primary px-7 text-[15px]">Search</button>
+        </form>
+        <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+          {EXAMPLES.map((e) => (
+            <Link key={e.q} href={`/find?q=${encodeURIComponent(e.q)}`} className="chip">
+              {e.label}
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* --- pick a subject ------------------------------------------------- */}
       <nav aria-label="Subjects" className="no-print flex flex-wrap items-center gap-1.5">
         <Link href="/" className={`chip ${!chosen ? "chip-on" : ""}`}>
           All subjects
@@ -118,239 +118,139 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
         ))}
       </nav>
 
-      {chosen && chosenSummary && (
-        <section className={`panel sub-rule ${subjectClass(chosen.key)}`}>
-          <div className="panel-head">
-            <h2 className="serif text-[17px] font-semibold">{chosen.name}</h2>
-            <span className="meta num ml-auto">
-              {n(chosenSummary.instruments)} with text · {n(chosenSummary.documents)} notifications and circulars
-              {chosenSummary.latest ? ` · latest ${fmtDate(chosenSummary.latest)}` : ""}
-            </span>
-          </div>
-          <p className="px-4 pt-2 text-[13px] text-[var(--ink-3)]">{chosen.blurb}</p>
-          {chosenGroups.map((g) => (
-            <div key={g.kind}>
-              <h3 className="eyebrow border-b border-[var(--rule)] px-4 pb-1 pt-3">
-                {KIND_LABEL[g.kind] ?? g.kind} <span className="num font-normal">({n(g.items.length)})</span>
-              </h3>
-              <ul className="feed px-4 py-1">
-                {g.items.map((i) => (
-                  <li key={i.slug}>
-                    <Link
-                      href={`/browse/${i.slug}`}
-                      className="flex items-baseline justify-between gap-3 py-1.5 text-[13.5px]"
-                    >
-                      <span className="min-w-0 flex-1 hover:underline">{i.title}</span>
-                      <span className="num whitespace-nowrap text-[12px] text-[var(--ink-4)]">
-                        {i.pdf_only
-                          ? `${n(i.page_count || i.pdf_page_count || 0)} pp PDF`
-                          : i.provision_count
-                            ? `${n(i.provision_count)} ${unitPlural(i.kind)}`
-                            : "text not loaded"}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+      <div className={chosen ? "mx-auto max-w-3xl" : "grid gap-6 md:grid-cols-2 xl:grid-cols-3"}>
+        {blocks.map((b) => (
+          <section key={b.subject.key} className={`panel sub-rule ${subjectClass(b.subject.key)} flex flex-col`}>
+            <div className="px-5 pt-4">
+              <h2 className="serif text-[17px] font-semibold tracking-tight">
+                <Link href={`/browse?subject=${b.subject.key}`} className="hover:underline">
+                  {b.subject.name}
+                </Link>
+              </h2>
+              <p className="mt-0.5 text-[12.5px] text-[var(--ink-3)]">{b.subject.blurb}</p>
             </div>
-          ))}
-          <div className="flex flex-wrap gap-x-4 border-t border-[var(--rule)] px-4 py-2 text-[12.5px]">
-            <Link href={`/documents?regulator=${chosen.regulators[0]}`} className="text-[var(--link)] hover:underline">
-              {chosen.name} notifications and circulars &rarr;
+
+            {b.subject.search && (
+              <form action="/find" role="search" className="flex gap-2 px-5 pt-4">
+                <label htmlFor={`q-${b.subject.key}`} className="sr-only">
+                  Search {b.subject.name}
+                </label>
+                <input
+                  id={`q-${b.subject.key}`}
+                  name="q"
+                  className="field min-w-0 flex-1"
+                  placeholder={b.subject.search}
+                />
+                <button className="btn">Search</button>
+              </form>
+            )}
+
+            <ul className="flex-1 px-5 py-4">
+              {b.picked.map((i) => (
+                <Entry key={i.slug} i={i} />
+              ))}
+              {b.picked.length === 0 && (
+                <li className="py-2 text-[13px] text-[var(--ink-3)]">Text not loaded yet.</li>
+              )}
+            </ul>
+
+            {b.extra.length > 0 && (
+              <div className="px-5 pb-4">
+                <h3 className="eyebrow border-t border-[var(--rule)] pt-3">
+                  {b.subject.featuredPrefixHeading ?? "Also"}
+                </h3>
+                <ul className="pt-1.5">
+                  {b.extra.map((i) => (
+                    <Entry key={i.slug} i={i} hideKind />
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {b.documents.length > 0 && (
+              <div className="px-5 pb-4">
+                <h3 className="eyebrow border-t border-[var(--rule)] pt-3">
+                  Latest {b.subject.regulators[0]} circulars and notifications
+                </h3>
+                <ul className="pt-1.5">
+                  {b.documents.map((d) => (
+                    <li key={d.id} className="py-[5px] leading-6">
+                      <Link href={`/documents/${d.id}`} className="text-[13.5px] hover:underline">
+                        {d.title}
+                      </Link>
+                      <span className="num ml-2 whitespace-nowrap text-[12px] text-[var(--ink-4)]">
+                        {fmtDate(d.date_issued)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {b.recent.length > 0 && (
+              <div className="px-5 pb-4">
+                <h3 className="eyebrow border-t border-[var(--rule)] pt-3">Recently notified</h3>
+                <ul className="pt-1.5">
+                  {b.recent.map((d) => (
+                    <li key={d.id} className="flex items-baseline gap-2.5 py-[5px] leading-6">
+                      <span className="feed-date w-[4.6rem] shrink-0">{fmtDate(d.date_issued) || "—"}</span>
+                      <Link href={`/documents/${d.id}`} className="min-w-0 flex-1 text-[13.5px] hover:underline">
+                        {d.title}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="mt-auto flex flex-wrap gap-x-5 gap-y-1 border-t border-[var(--rule)] px-5 py-2.5 text-[12.5px]">
+              {b.subject.compare && (
+                <Link href={COMPARE_HREF} className="text-[var(--link)] hover:underline">
+                  Compare the 1961 and 2025 Acts
+                </Link>
+              )}
+              <Link
+                href={`/browse?subject=${b.subject.key}`}
+                className="text-[var(--ink-3)] hover:text-[var(--link)] hover:underline"
+              >
+                Everything in {b.subject.name} &rarr;
+              </Link>
+            </div>
+          </section>
+        ))}
+      </div>
+
+      {!chosen && (
+        <section className="border-t border-[var(--rule)] pt-4 text-[13px]">
+          <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-[var(--ink-3)]">
+            <Link href="/documents" className="hover:text-[var(--link)] hover:underline">
+              Every notification and circular
             </Link>
-            <Link href={`/browse?subject=${chosen.key}`} className="text-[var(--link)] hover:underline">
-              Full listing with dates &rarr;
+            <Link href="/browse" className="hover:text-[var(--link)] hover:underline">
+              Every tracked instrument
+            </Link>
+            <Link href="/status" className="hover:text-[var(--link)] hover:underline">
+              Collection status
             </Link>
           </div>
         </section>
       )}
-
-      {/* --- the one box that answers "where is 80C" ------------------------ */}
-      <section className="panel px-6 py-6">
-        <h1 className="page-title">Look up any section, rule or regulation</h1>
-        <p className="mt-1.5 max-w-3xl text-[13.5px] text-[var(--ink-2)]">
-          {n(totals.instruments)} Acts, Rules, Regulations and Master Directions · {n(totals.provisions)} provisions ·{" "}
-          {n(totals.documents)} notifications and circulars since 2014. Every screen shows the regulator&rsquo;s own
-          text and links to the official document it came from.
-        </p>
-        <form action="/find" role="search" className="mt-4 flex flex-wrap gap-2">
-          <label htmlFor="home-q" className="sr-only">
-            Search sections, regulations and notifications
-          </label>
-          <input
-            id="home-q"
-            name="q"
-            autoFocus
-            className="field field-lg min-w-0 flex-1"
-            placeholder="A section number, a regulation name, or any phrase — 80C, LODR 17, all-in-cost ceiling"
-          />
-          <button className="btn btn-primary px-6 text-[15px]">Search</button>
-        </form>
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-[12px] text-[var(--ink-4)]">Try</span>
-          {EXAMPLES.map((e) => (
-            <Link key={e.q} href={`/find?q=${encodeURIComponent(e.q)}`} className="chip">
-              {e.label}
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* --- what's new, split by subject ---------------------------------- */}
-      <section>
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-[var(--rule)] pb-2">
-          <h2 className="section-title">What&rsquo;s new, by subject</h2>
-          <p className="meta">
-            {n(totals.last30)} documents published in the last 30 days ·{" "}
-            <Link href="/documents" className="text-[var(--link)] hover:underline">
-              every notification and circular
-            </Link>
-          </p>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-          {(chosen ? subjects.filter((c) => c.subject.key === chosen.key) : subjects).map((c) => (
-            <section key={c.subject.key} className={`panel sub-rule ${subjectClass(c.subject.key)} flex flex-col`}>
-              <div className="panel-head">
-                <h3 className="serif text-[16px] font-semibold">
-                  <Link href={`/documents?regulator=${c.subject.regulators[0]}`} className="hover:underline">
-                    {c.subject.name}
-                  </Link>
-                </h3>
-                <span className="meta num ml-auto">
-                  {c.last30 ? `${n(c.last30)} in 30 days` : c.last90 ? `${n(c.last90)} in 90 days` : "nothing recent"}
-                  {c.latest ? ` · latest ${fmtDate(c.latest)}` : ""}
-                </span>
-              </div>
-              <ol className="feed flex-1 px-3 py-1">
-                {c.items.map((d) => (
-                  <li key={d.id} className="py-1.5">
-                    <div className="flex items-baseline gap-2">
-                      <span className="feed-date w-[4.6rem] shrink-0">{fmtDate(d.date_issued) || "no date"}</span>
-                      <Link href={`/documents/${d.id}`} className="min-w-0 flex-1 text-[13.5px] hover:underline">
-                        {d.title}
-                      </Link>
-                    </div>
-                    <p className="mt-0.5 pl-[5.1rem] text-[12px] text-[var(--ink-3)]">
-                      <Affected d={d} />
-                    </p>
-                  </li>
-                ))}
-                {c.items.length === 0 && (
-                  <li className="py-4 text-[13px] text-[var(--ink-3)]">Nothing recorded for this subject yet.</li>
-                )}
-              </ol>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-[var(--rule)] px-3 py-2 text-[12.5px]">
-                <Link href={`/documents?regulator=${c.subject.regulators[0]}`} className="text-[var(--link)] hover:underline">
-                  All {n(c.documents)} {c.subject.name} documents
-                </Link>
-                <Link href={`/browse?subject=${c.subject.key}`} className="text-[var(--link)] hover:underline">
-                  {n(c.instruments)} instruments
-                </Link>
-                {c.effects > 0 && (
-                  <span className="ml-auto text-[var(--ink-4)]">{n(c.effects)} recorded amendments</span>
-                )}
-              </div>
-            </section>
-          ))}
-        </div>
-      </section>
-
-      {/* --- open a regulation --------------------------------------------- */}
-      <section>
-        <div className="mb-3 border-b border-[var(--rule)] pb-2">
-          <h2 className="section-title">Open a regulation</h2>
-          <p className="meta mt-0.5">
-            Each instrument has its own page: what it is, who issued it, when the text is stated as, and everything
-            recorded against it.
-          </p>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {(chosen ? subjects.filter((c) => c.subject.key === chosen.key) : subjects).map((c) => (
-            <article key={c.subject.key} className="panel flex flex-col">
-              <div className="panel-head">
-                <h3 className="serif text-[16px] font-semibold">
-                  <Link href={`/browse?subject=${c.subject.key}`} className="hover:underline">
-                    {c.subject.name}
-                  </Link>
-                </h3>
-                <span className="meta num ml-auto">{n(c.instruments)} instruments</span>
-              </div>
-              <p className="px-3 pt-2 text-[12.5px] leading-snug text-[var(--ink-3)]">{c.subject.blurb}</p>
-              <ul className="feed flex-1 px-3 py-2">
-                {c.featured.map((i) => (
-                  <li key={i.slug}>
-                    <Link href={`/browse/${i.slug}`} className="flex items-baseline justify-between gap-3 py-1.5 text-[13.5px]">
-                      <span className="truncate hover:underline" title={i.title}>
-                        {shortTitle(i.title)}
-                      </span>
-                      <span className="num whitespace-nowrap text-[12px] text-[var(--ink-4)]">
-                        {i.pdf_only
-                          ? `${n(i.page_count || i.pdf_page_count || 0)} pp PDF`
-                          : `${n(i.provision_count)} ${unitPlural(i.kind)}`}
-                      </span>
-                    </Link>
-                  </li>
-                ))}
-                {c.featured.length === 0 && (
-                  <li className="py-2 text-[13px] text-[var(--ink-3)]">Not seeded yet.</li>
-                )}
-              </ul>
-              <div className="border-t border-[var(--rule)] px-3 py-2 text-[12.5px]">
-                <Link href={`/browse?subject=${c.subject.key}`} className="text-[var(--link)] hover:underline">
-                  All {c.subject.name} instruments &rarr;
-                </Link>
-              </div>
-            </article>
-          ))}
-
-          <article className="panel flex flex-col">
-            <div className="panel-head">
-              <h3 className="serif text-[16px] font-semibold">Working tools</h3>
-            </div>
-            <ul className="feed flex-1 px-3 py-2 text-[13.5px]">
-              <li className="py-1.5">
-                <Link href="/compare/income-tax" className="hover:underline">
-                  Income-tax Act 1961 &harr; 2025 mapping
-                </Link>
-                <p className="text-[12px] text-[var(--ink-3)]">CBDT&rsquo;s own concordance, section by section.</p>
-              </li>
-              <li className="py-1.5">
-                <Link href="/documents" className="hover:underline">
-                  Notifications, circulars and gazette copies
-                </Link>
-                <p className="text-[12px] text-[var(--ink-3)]">Filter by regulator, instrument, type and date; export CSV.</p>
-              </li>
-              <li className="py-1.5">
-                <Link href="/browse" className="hover:underline">
-                  Every tracked instrument
-                </Link>
-                <p className="text-[12px] text-[var(--ink-3)]">Acts, Rules, Regulations and Master Directions in one list.</p>
-              </li>
-              <li className="py-1.5">
-                <Link href="/status" className="hover:underline">
-                  Collection status
-                </Link>
-                <p className="text-[12px] text-[var(--ink-3)]">What ran, what failed, and what needs a second look.</p>
-              </li>
-            </ul>
-          </article>
-        </div>
-      </section>
     </div>
   );
 }
 
-// What a document did, in the reader's terms — never guessed: either instruments we tagged it to, or
-// the document type the regulator gave it.
-function Affected({ d }: { d: FeedItem }) {
-  if (d.affects) {
-    return (
-      <>
-        amends <span className="font-medium text-[var(--ink-2)]">{d.affects}</span>
-        {d.effects > 0 ? ` · ${d.effects} provision${d.effects === 1 ? "" : "s"} changed` : ""}
-      </>
-    );
-  }
-  const type = DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type.replace(/_/g, " ");
-  return <>{d.is_amending === false ? `${type} · not amending` : type}</>;
+// One entry point: what it is called, and — quietly — the date the regulator states its text as.
+function Entry({ i, hideKind }: { i: InstrumentRow; hideKind?: boolean }) {
+  return (
+    <li className="py-[7px] leading-6">
+      <Link href={`/browse/${i.slug}`} className="group block">
+        <span className="text-[14px] text-[var(--ink)] group-hover:underline">{shortTitle(i.title)}</span>
+        <span className="ml-2 whitespace-nowrap text-[12px] text-[var(--ink-4)]">
+          {hideKind ? "" : (KIND_LABEL[i.kind] ?? i.kind)}
+          {i.official_updated_as_on ? `${hideKind ? "" : " · "}as on ${fmtDate(i.official_updated_as_on)}` : ""}
+          {i.pdf_only ? " · official PDF" : ""}
+        </span>
+      </Link>
+    </li>
+  );
 }

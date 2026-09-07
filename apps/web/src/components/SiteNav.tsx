@@ -7,7 +7,6 @@ const NAV = [
   { href: "/", label: "Home" },
   { href: "/browse", label: "Acts & Rules" },
   { href: "/documents", label: "Notifications" },
-  { href: "/compare/income-tax", label: "1961 ↔ 2025" },
   { href: "/status", label: "Status" },
 ];
 

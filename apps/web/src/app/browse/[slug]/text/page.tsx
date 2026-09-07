@@ -314,14 +314,14 @@ function Contents({
       </div>
 
       {groups.map((g, gi) => (
-        <section key={gi} className="panel panel-body">
-          {g.title && <h2 className="eyebrow mb-2">{g.title}</h2>}
-          <ul className="grid gap-x-6 gap-y-0.5 sm:grid-cols-2 xl:grid-cols-3">
+        <section key={gi} className="panel px-5 py-4">
+          {g.title && <h2 className="eyebrow mb-2.5">{g.title}</h2>}
+          <ul className="columns-1 gap-x-10 text-[13.5px] leading-7 sm:columns-2 xl:columns-3">
             {g.items.map((i) => (
-              <li key={i.id} className="min-w-0">
+              <li key={i.id} className="break-inside-avoid">
                 <Link
                   href={`/browse/${slug}/text?p=${encodeURIComponent(i.number)}${suffix}`}
-                  className="block truncate rounded px-1 py-0.5 text-[13.5px] hover:bg-[var(--ground-sunk)]"
+                  className="block truncate hover:underline"
                   title={i.heading ? `${i.number} — ${i.heading}` : i.number}
                 >
                   <span className="num font-medium">{i.number}</span>

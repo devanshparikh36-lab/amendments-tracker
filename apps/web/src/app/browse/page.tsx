@@ -103,59 +103,34 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
             <h2 className="serif text-[16px] font-semibold">{g.subject.name}</h2>
             <span className="meta num ml-auto">{n(g.items.length)} instruments</span>
           </div>
-          <div className="scroll-x">
-            <table className="dtable">
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Type</th>
-                  <th>Issued by</th>
-                  <th>Text as on</th>
-                  <th className="text-right">Contents</th>
-                  <th className="text-right">Documents</th>
-                </tr>
-              </thead>
-              <tbody>
-                {g.items.map((i) => (
-                  <tr key={i.id}>
-                    <td>
-                      <Link href={`/browse/${i.slug}`} className="font-medium hover:underline">
-                        {i.title}
+          <ul className="px-5 py-2">
+            {g.items.map((i) => (
+              <li key={i.id} className="border-b border-[var(--rule)] py-2.5 last:border-b-0">
+                <Link href={`/browse/${i.slug}`} className="text-[14px] hover:underline">
+                  {i.title}
+                </Link>
+                <p className="meta mt-0.5">
+                  {KIND_LABEL[i.kind] ?? i.kind} · {REGULATOR_LABEL[i.regulator_code] ?? i.regulator_code}
+                  {i.official_updated_as_on && <> · text as on {fmtDate(i.official_updated_as_on)}</>}
+                  {i.pdf_only ? (
+                    <> · served as the official PDF{i.page_count ? `, ${n(i.page_count)} pages` : ""}</>
+                  ) : i.provision_count ? (
+                    <> · {n(i.provision_count)} {unitPlural(i.kind)}</>
+                  ) : (
+                    <> · text not loaded yet</>
+                  )}
+                  {i.doc_count > 0 && (
+                    <>
+                      {" · "}
+                      <Link href={`/documents?instrument=${i.slug}`} className="text-[var(--link)] hover:underline">
+                        {n(i.doc_count)} document{i.doc_count === 1 ? "" : "s"}
                       </Link>
-                      {i.pdf_only ? (
-                        <span className="ml-2 text-[11.5px] text-[var(--ink-3)]">served as the official PDF</span>
-                      ) : (
-                        i.provision_count === 0 && (
-                          <span className="ml-2 text-[11.5px] text-[var(--ink-4)]">text not loaded yet</span>
-                        )
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap text-[var(--ink-2)]">{KIND_LABEL[i.kind] ?? i.kind}</td>
-                    <td className="whitespace-nowrap text-[var(--ink-2)]">
-                      {REGULATOR_LABEL[i.regulator_code] ?? i.regulator_code}
-                    </td>
-                    <td className="num whitespace-nowrap text-[var(--ink-2)]">{fmtDate(i.official_updated_as_on)}</td>
-                    <td className="num whitespace-nowrap text-right text-[var(--ink-2)]">
-                      {i.pdf_only
-                        ? `${n(i.page_count || i.pdf_page_count || 0)} pages`
-                        : i.provision_count
-                          ? `${n(i.provision_count)} ${unitPlural(i.kind)}`
-                          : ""}
-                    </td>
-                    <td className="num text-right">
-                      {i.doc_count ? (
-                        <Link href={`/documents?instrument=${i.slug}`} className="hover:underline">
-                          {n(i.doc_count)}
-                        </Link>
-                      ) : (
-                        ""
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </>
+                  )}
+                </p>
+              </li>
+            ))}
+          </ul>
         </section>
       ))}
       {instruments.length === 0 && (
