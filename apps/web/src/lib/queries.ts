@@ -703,3 +703,13 @@ export async function recentEffects(limit = 50) {
     [limit],
   );
 }
+
+// When the collection last ran successfully, and when a document was last added: what "as of" means for
+// everything on the site.
+export async function lastRevised(): Promise<{ checked: string | null; added: string | null }> {
+  const rows = await query<{ checked: string | null; added: string | null }>(
+    `SELECT (SELECT max(finished_at) FROM source_run WHERE ok) AS checked,
+            (SELECT max(first_seen_at) FROM document) AS added`,
+  );
+  return rows[0] ?? { checked: null, added: null };
+}

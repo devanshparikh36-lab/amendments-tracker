@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+// Collection status is for whoever maintains the site, not for a reader looking up a section, so it is not
+// in the main navigation. The footer still links it.
 const NAV = [
   { href: "/", label: "Home" },
   { href: "/browse", label: "Acts & Rules" },
   { href: "/documents", label: "Notifications" },
-  { href: "/status", label: "Status" },
 ];
 
 export function SiteNav() {

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteNav } from "@/components/SiteNav";
+import { fmtDateTime } from "@/lib/format";
+import { lastRevised } from "@/lib/queries";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,7 +14,16 @@ export const metadata: Metadata = {
     "Consolidated Indian tax and corporate law with every amendment and the regulator's own text alongside. Internal research aid of K C Mehta & Co.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export const dynamic = "force-dynamic";
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Shown small, in the header: when the collection last checked the regulators' sites.
+  let revised: { checked: string | null; added: string | null } = { checked: null, added: null };
+  try {
+    revised = await lastRevised();
+  } catch {
+    // the header must render even if the database is briefly unreachable
+  }
   return (
     <html lang="en">
       <body className="min-h-screen antialiased">
@@ -33,6 +44,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 Regulation Tracker
               </span>
             </Link>
+
+            {(revised.checked || revised.added) && (
+              <Link
+                href="/status"
+                title="When the collector last checked the regulators' websites"
+                className="order-last w-full text-[11px] text-[var(--ink-4)] hover:text-[var(--ink-2)] sm:order-none sm:w-auto"
+              >
+                Last checked {fmtDateTime(revised.checked ?? revised.added)}
+              </Link>
+            )}
 
             <form action="/find" role="search" className="ml-auto flex min-w-[16rem] flex-1 items-center gap-1.5 sm:max-w-md">
               <label htmlFor="header-q" className="sr-only">
@@ -65,7 +86,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               automatically and have not been read by a person. Instruments the regulator issues only as a PDF are
               served as that PDF; text read out of those pages is a finding aid, never the official rendering.
             </p>
-            <p className="mt-1.5">Internal research aid of K C Mehta &amp; Co. Not legal advice.</p>
+            <p className="mt-1.5">
+              Internal research aid of K C Mehta &amp; Co. Not legal advice.{" "}
+              <Link href="/status" className="text-[var(--link)] hover:underline">
+                Collection status
+              </Link>
+              .
+            </p>
           </div>
         </footer>
       </body>
