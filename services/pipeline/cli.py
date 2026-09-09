@@ -143,4 +143,11 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        code = main()
+    finally:
+        # One Chromium is shared by every browser-backed adapter; shut it down before the process exits.
+        from amendments.browser import close_all
+
+        close_all()
+    sys.exit(code)
