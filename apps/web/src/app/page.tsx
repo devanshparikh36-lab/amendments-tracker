@@ -130,6 +130,12 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
               <p className="mt-0.5 text-[12.5px] text-[var(--ink-3)]">{b.subject.blurb}</p>
             </div>
 
+            {b.subject.compare && (
+              <div className="px-5 pt-4">
+                <CompareCallout />
+              </div>
+            )}
+
             {b.subject.search && (
               <form action="/find" role="search" className="flex gap-2 px-5 pt-4">
                 <label htmlFor={`q-${b.subject.key}`} className="sr-only">
@@ -204,11 +210,6 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
             )}
 
             <div className="mt-auto flex flex-wrap gap-x-5 gap-y-1 border-t border-[var(--rule)] px-5 py-2.5 text-[12.5px]">
-              {b.subject.compare && (
-                <Link href={COMPARE_HREF} className="text-[var(--link)] hover:underline">
-                  Compare the 1961 and 2025 Acts
-                </Link>
-              )}
               <Link
                 href={`/browse?subject=${b.subject.key}`}
                 className="text-[var(--ink-3)] hover:text-[var(--link)] hover:underline"
@@ -235,6 +236,22 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+// The concordance, stated plainly at the top of income tax rather than buried in a row of footer links:
+// matching a 1961 section to its 2025 counterpart is the main reason people open this subject.
+function CompareCallout({ label = "Compare the Income-tax Act, 1961 with the Income-tax Act, 2025" }: { label?: string }) {
+  return (
+    <div className="compare-cta">
+      <div className="min-w-[14rem] flex-1">
+        <h2>{label}</h2>
+        <p>Look up any section and read it beside its counterpart, on CBDT&rsquo;s own mapping.</p>
+      </div>
+      <Link href={COMPARE_HREF} className="btn btn-primary px-5 py-2 text-[14px]">
+        Open the comparison
+      </Link>
     </div>
   );
 }

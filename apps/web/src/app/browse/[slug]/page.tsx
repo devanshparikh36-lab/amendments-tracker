@@ -142,6 +142,18 @@ export default async function InstrumentPage({ params, searchParams }: { params:
         )}
       </header>
 
+      {compareLabel && (
+        <div className="compare-cta no-print">
+          <div className="min-w-[14rem] flex-1">
+            <h2>{compareLabel}</h2>
+            <p>Look up any section and read it beside its counterpart, on CBDT&rsquo;s own mapping.</p>
+          </div>
+          <Link href={COMPARE_HREF} className="btn btn-primary px-5 py-2 text-[14px]">
+            Open the comparison
+          </Link>
+        </div>
+      )}
+
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
         <div className="min-w-0 space-y-5">
           {/* --- the details of this instrument --------------------------- */}
@@ -438,11 +450,6 @@ export default async function InstrumentPage({ params, searchParams }: { params:
               </div>
               <div className="panel-body space-y-1.5 text-[13px]">
                 <p className="text-[var(--ink-3)]">{subject.blurb}</p>
-                {compareLabel && (
-                  <Link href={COMPARE_HREF} className="block text-[var(--link)] hover:underline">
-                    {compareLabel}
-                  </Link>
-                )}
                 <Link href={`/browse?subject=${subject.key}`} className="block text-[var(--link)] hover:underline">
                   All {subject.name} instruments
                 </Link>

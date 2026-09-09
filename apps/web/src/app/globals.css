@@ -138,6 +138,35 @@ summary:focus-visible,
   font-variant-numeric: tabular-nums;
 }
 
+/* The 1961-to-2025 concordance is the one tool people open income tax to reach, so it is stated
+   at the top of the income tax screens as a full-width call-out rather than a link in a footer. */
+.compare-cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+  padding: 0.95rem 1.15rem;
+  border: 1px solid var(--rule-strong);
+  border-left: 4px solid var(--sub-income-tax);
+  border-radius: 4px;
+  background: linear-gradient(var(--paper), #f7f9fd);
+}
+
+.compare-cta h2 {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.compare-cta p {
+  margin-top: 0.15rem;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+
 /* --- controls ------------------------------------------------------------ */
 
 .btn {
