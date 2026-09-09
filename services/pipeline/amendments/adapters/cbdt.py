@@ -241,11 +241,12 @@ def _clean_text(html_or_text: str) -> str:
     return re.sub(r"\n{3,}", "\n\n", t).strip()
 
 
-def _rule_sections(rule_cat_id: int) -> list[ParsedProvision]:
+def _rule_sections(rule_cat_id: int, page_url: str | None = None) -> list[ParsedProvision]:
     """Rules of one Rule set (blueprint used by the portal's own Rules page)."""
     return _sections(
         rule_cat_id,
         0,
+        page_url=page_url,
         blueprint="RULE_CONTENT_LIST_BP_ERC",
         extra={
             "search.experiences.rule_id": rule_cat_id,
@@ -264,6 +265,7 @@ def _sections(
     blueprint: str = "ACT_SECTIONS_BP_ERC",
     extra: dict | None = None,
     drop_act_keys: bool = False,
+    page_url: str | None = None,
 ) -> list[ParsedProvision]:
     """Every section/rule of an Act or Rule set, with its text, from the portal's own listing API."""
     provisions: list[ParsedProvision] = []
@@ -323,7 +325,10 @@ def _sections(
                     chapter_label=chapter or None,
                     footnotes=[footnotes] if footnotes else [],
                     html=_provision_html(number, heading, official_html, footnotes_html),
-                    source_url=(BASE + pdf_url) if pdf_url else (f"{BASE}/documents/d/guest/{cms_id}" if cms_id else None),
+                    # The portal has no per-section address (it is a single-page app), so a section links to
+                    # the department's page for the Act or Rules it belongs to. `/documents/d/guest/<cmsId>`
+                    # looks like a deep link but 404s.
+                    source_url=(BASE + pdf_url) if pdf_url else page_url,
                 )
             )
         if len(items) < size:
@@ -356,15 +361,16 @@ def _sort_key(number: str) -> tuple:
 def official_text(instrument: dict, cfg: dict) -> tuple[list[ParsedProvision], date | None, str]:
     """Seeder for the Income-tax Acts and Rules: returns provisions directly (text comes section-wise)."""
     year_id, year_label = _latest_year_id()
+    page_url = BASE + (cfg.get("page") or "")
     if cfg.get("kind") == "rules":
-        provisions = _rule_sections(_rule_id(cfg["match"]))
+        provisions = _rule_sections(_rule_id(cfg["match"]), page_url=page_url)
     else:
         cat = _act_id(cfg["match"])
-        provisions = _sections(cat, year_id if cfg.get("use_year", True) else 0)
+        provisions = _sections(cat, year_id if cfg.get("use_year", True) else 0, page_url=page_url)
     if len(provisions) < 5:
         raise RuntimeError(f"{instrument['slug']}: portal returned only {len(provisions)} provisions")
     log.info("%s: %d provisions (as amended, %s)", instrument["slug"], len(provisions), year_label)
-    return provisions, date.today(), BASE + (cfg.get("page") or "")
+    return provisions, date.today(), page_url
 
 
 # ----------------------------------------------------------------- 1961 <-> 2025 section map

@@ -451,12 +451,15 @@ export async function instrumentIndex(): Promise<InstrumentRow[]> {
   );
 }
 
-export async function provisionDocuments(provisionId: number) {
-  return query<{
-    id: number; title: string; number: string | null; date_issued: string | null; change_type: string | null;
-    verification_status: string | null; relation: string | null;
-  }>(
-    `SELECT DISTINCT d.id, d.title, d.number, d.date_issued, e.change_type, e.verification_status, t.relation
+export type ProvisionDocument = {
+  id: number; title: string; number: string | null; date_issued: string | null; change_type: string | null;
+  verification_status: string | null; relation: string | null; source_url: string; doc_type: string;
+};
+
+export async function provisionDocuments(provisionId: number): Promise<ProvisionDocument[]> {
+  return query<ProvisionDocument>(
+    `SELECT DISTINCT d.id, d.title, d.number, d.date_issued, d.source_url, d.doc_type,
+            e.change_type, e.verification_status, t.relation
      FROM document d
      LEFT JOIN amendment_effect e ON e.document_id = d.id AND e.provision_id = $1
      LEFT JOIN document_tag t ON t.document_id = d.id AND t.provision_id = $1
@@ -464,6 +467,15 @@ export async function provisionDocuments(provisionId: number) {
      ORDER BY d.date_issued DESC NULLS LAST`,
     [provisionId],
   );
+}
+
+// The most recent document that actually amends this provision (as opposed to merely citing it), so the
+// reader is told what last changed the text and can open that notification.
+export function lastAmendment(docs: ProvisionDocument[]): ProvisionDocument | null {
+  const amending = docs.filter(
+    (d) => (d.change_type && d.change_type !== "cannot_apply") || d.relation === "amends" || d.relation === "supersedes",
+  );
+  return amending[0] ?? null;
 }
 
 export async function instrumentDocuments(instrumentId: number) {

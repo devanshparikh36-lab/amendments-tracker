@@ -12,6 +12,7 @@ import {
   getProvision,
   listProvisionIndex,
   listProvisions,
+  lastAmendment,
   provisionDocuments,
   searchInstrumentPages,
   type InstrumentRow,
@@ -188,6 +189,7 @@ function ProvisionView({
   asOn?: string;
 }) {
   const showEmbed = source?.kind === "pdf";
+  const last = lastAmendment(docs);
   return (
     <div className={showEmbed ? "grid gap-4 xl:grid-cols-2" : ""}>
       <article className="panel">
@@ -227,6 +229,29 @@ function ProvisionView({
             </Link>
           </div>
         </header>
+        {last && (
+          <div className="border-b border-[var(--rule)] bg-[var(--amend-bg)] px-5 py-2.5 text-[13px]">
+            <span className="font-medium text-[var(--ink-1)]">Last amended by</span>{" "}
+            <Link href={`/documents/${last.id}`} className="text-[var(--link)] hover:underline">
+              {last.number ? `${last.number} — ` : ""}
+              {last.title}
+            </Link>
+            {last.date_issued && <span className="num text-[var(--ink-2)]">, dated {fmtDate(last.date_issued)}</span>}
+            {last.source_url && (
+              <>
+                {" · "}
+                <a href={last.source_url} target="_blank" rel="noreferrer" className="text-[var(--link)] hover:underline">
+                  official notification
+                </a>
+              </>
+            )}
+            <p className="mt-0.5 text-[12px] text-[var(--ink-3)]">
+              The text above is the regulator&rsquo;s consolidation
+              {inst.official_updated_as_on ? ` as on ${fmtDate(inst.official_updated_as_on)}` : ""}. Read it with the
+              amendments listed below.
+            </p>
+          </div>
+        )}
         <div className="px-5 py-4">
           <div className="no-print mb-3">
             <Provenance p={p} regulator={inst.regulator_code} />

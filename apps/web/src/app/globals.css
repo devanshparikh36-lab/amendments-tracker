@@ -7,6 +7,8 @@
 --------------------------------------------------------------------------- */
 
 :root {
+  /* the strip that says what last amended a provision */
+  --amend-bg: #fbf7ec;
   color-scheme: light;
 
   --paper: #ffffff;
