@@ -43,34 +43,38 @@ An eleven-day gap is their cadence, not a fault. Do not read a flat MCA feed as 
 `_pw` and sends the next adapter back through `sync_playwright().start()` — the original bug. Only `cli.py`
 calls it, in a `finally` at process exit. Keep it that way.
 
-## Open — the free tiers, which is now the live risk
+## Resolved — the free tiers, with room to spare
 
-`cli.py storage` reports both limits. As of 11 Sept:
+Neon was at 68% of its 500 MB free plan, which is the nearest thing this project has to an outage: past the
+limit the free plan stops accepting writes and collection halts. It is now at **34%**.
 
-| | used | free limit | |
+| | before | after | free limit |
 |---|---|---|---|
-| Cloudflare R2 | 3.34 GB | 10 GB | 33% |
-| **Neon Postgres** | **342 MB** | **500 MB** | **68%** |
+| Cloudflare R2 | 3.34 GB | 3.34 GB (33%) | 10 GB |
+| Neon Postgres | 342 MB (68%) | **171 MB (34%)** | 500 MB |
 
-**Neon is the binding constraint.** Past 500 MB the free plan stops accepting writes and collection halts; the
-next plan is $19/month. R2 merely starts charging (~$0.015/GB/month) past 10 GB.
+`cli.py compact --apply --full` cleared 103 MB of text that cost nothing to lose and handed the space back:
 
-`c4a1318` drops the warning threshold from 75% to 60% and makes `cli.py storage` exit non-zero when a limit is
-filling up. The new **Free-tier watch** workflow runs it daily and therefore fails — which makes GitHub email
-the repository owner. That is the only alerting channel here that costs nothing and needs no secret. It is
-failing *right now* by design, because Neon is at 68%.
+- **70 MB** — 6564 attachments whose `extracted_text` was byte-identical to their own document's. The document
+  copy is the one that matters (`document_fts_idx` indexes it, `_doc_full_text` already skipped the duplicate),
+  and the PDFs stay in R2, so the column is rebuildable by re-extracting.
+- **33 MB** — `raw_html` on 7994 documents. Every adapter wrote it; nothing ever read it back.
 
-**103 MB is reclaimable whenever you want it** — `cli.py compact` reports, `cli.py compact --apply` clears:
+**The order is the trick, and it is easy to get wrong.** Clearing alone moved the reported size almost not at
+all — 341.97 to 338.33 MB — because a plain VACUUM only marks space reusable, and `document` grew by the new
+row versions about as fast as `attachment` shrank. `VACUUM FULL` hands it back, but needs room for a second
+copy of the table it rewrites, and `document` at 176 MB does not fit under a 500 MB limit with 162 MB free.
+Rewriting `attachment` first (88 MB → 8 MB) releases enough room for `document` to follow. `--full` does this
+in the right order and skips any table that will not fit. Whole thing took 34 seconds.
 
-- **70 MB** — 6564 attachments whose `extracted_text` is byte-identical to their own document's. The document
-  copy is the one that matters (`document_fts_idx` indexes it, `_document_text` already skips a duplicate), and
-  the PDF stays in R2 so the column can be rebuilt by re-extracting.
-- **33 MB** — `raw_html` on 7994 documents. Every adapter writes it; nothing reads it back, in the pipeline or
-  the web app.
+**Do not run `--full` while discovery is writing.** Its lock is ACCESS EXCLUSIVE. Running the clearing half
+during a live `discover` deadlocked `sebi_regulations` mid-upsert; Postgres picked the adapter as the victim.
+Nothing was lost, but it cost a re-run.
 
-Applying takes Neon to roughly 48%. It is dry by default because it deletes collected data. Note that a plain
-VACUUM makes the space *reusable* but does not shrink the reported size; that needs `VACUUM FULL`, which needs
-room for a second copy of the table — so do it one table at a time, and not at 68%.
+**Alerting:** `c4a1318` drops the warning threshold from 75% to **60%** and makes `cli.py storage` exit
+non-zero when a limit passes it. The **Free-tier watch** workflow runs it daily, so a breach fails the workflow
+and GitHub emails the repository owner — the only channel here that costs nothing and needs no secret. Both
+limits currently report `[ok]` and the watch exits 0.
 
 ## Open — five adapters were collecting nothing while reporting `ok`
 
@@ -93,13 +97,26 @@ unit of work timing out. The adapters catch failures per unit and continue by de
 `EmptyDiscovery`, lands in `source_run.error` and fires the adapter-failure alert. **A detector, not a cure** —
 if collection is still broken these five go red on the next run, which is the intended outcome.
 
-**Best lead: the runner's egress.** Probed from this machine, both regulators are healthy — SEBI listings
-HTTP 200 in ~1.5s, CBIC portal root 200. Two independent regulators breaking on the same run while answering in
-a second from an ordinary Indian IP fits a datacentre-IP block far better than coincident outages; Indian
-government sites commonly refuse cloud ranges. Untested from the runner, so treat as hypothesis. If it holds,
-the free fix is to move discovery to the Railway cron (`cli.py run` already is what Railway runs) rather than
-GitHub Actions. The CBIC category endpoint also returns HTTP 500, but that is a red herring — `_categories`
-retries and falls back to its built-in list, costing minutes rather than documents.
+**Best lead: the runner's egress. All five adapters were run from this machine and every one of them worked**,
+returning its exact historical count:
+
+| adapter | on the runner | from here |
+|---|---|---|
+| `cbic_gst_notifications` | 0, after 39m | **5**, 17s |
+| `cbic_gst_circulars` | 0, after 43m | **3**, 17s |
+| `sebi_circulars` | 0, after 8m | **1371**, ~7m |
+| `sebi_master_circulars` | 0, after 8m | **133**, ~8s |
+| `sebi_regulations` | 0, after 33m | **1137**, ~5m |
+
+Same commit, same code, same regulators; the only variable is where the request comes from. Two independent
+regulators breaking on one run while answering in seconds from an ordinary Indian IP fits a datacentre-IP block
+far better than coincident outages — Indian government sites commonly refuse cloud ranges. Still untested
+*from* the runner, which is the one piece missing; the next scheduled run supplies it now that `EmptyDiscovery`
+makes a zero-yield run fail loudly. If it holds, the free fixes are moving discovery to the Railway cron
+(`cli.py run` is already what Railway runs) or a self-hosted runner on a residential connection.
+
+The CBIC category endpoint also returns HTTP 500, but that is a red herring — `_categories` retries and falls
+back to its built-in list, costing minutes rather than documents.
 
 ## Open — not started
 
