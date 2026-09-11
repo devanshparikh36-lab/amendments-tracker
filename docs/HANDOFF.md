@@ -51,7 +51,22 @@ the run's start time. Pushes from this machine fail silently often enough (see E
 
 ## Open — verify first
 
-**1. MCA, still unproven.** The next scheduled run is the first that will carry `5cb3b11`. Check:
+**1. MCA: the fix is proven locally, still unconfirmed on CI.** Running the exact failing pair on this machine —
+`python cli.py discover --adapter cbdt_circulars --adapter mca_circulars` — reproduced the CI conditions and
+cleared the bug:
+
+- `cbdt_circulars` listed **309 documents through the browser**, so Chromium was up and owned by CBDT.
+- `mca_circulars` then got a context off that same Chromium and reached `browser.py:106`, `page.goto(...)`.
+  `_engine().new_context()` and `new_page()` both succeeded. The `sync_playwright().start()` frame that used to
+  raise is gone from the traceback entirely.
+
+MCA then failed on `net::ERR_NAME_NOT_RESOLVED` — local DNS, not code (see Environment). CBDT failed too, but
+*after* its 309 documents, on `psycopg.OperationalError: the connection is lost` writing to Neon: the same
+network episode. Neither failure touches the Playwright question.
+
+What remains is confirming it on the runner, which is Linux + Xvfb + headed Chromium rather than Windows. The
+mechanism is identical and the failing line no longer exists, so this is confirmation rather than a real doubt.
+Check after the next run:
 - `/status` shows `mca_circulars` and `mca_notifications` as `ok` with a non-zero found count.
 - `/?subject=companies` lists circulars later than **31 Aug 2026**. The feed is frozen there; notifications are
   frozen at 12 Aug 2026.
@@ -79,6 +94,21 @@ a cure** — if the underlying collection is still broken, these five will go re
 outcome; red is information. The cause still has to be chased, starting with the per-unit warnings in the run
 log, which say exactly which HTTP calls failed.
 
+**Best current lead: the runner's egress, not the regulators.** Probed from this machine, both sites are healthy:
+
+```
+sebi circulars listing      HTTP 200   46276 bytes   1.4s
+sebi regulations listing    HTTP 200   41737 bytes   1.5s
+cbic portal root            HTTP 200    3067 bytes   1.4s
+cbic notification categories  HTTP 500    196 bytes   0.8s   <- jhipster error, but handled
+```
+
+Two independent regulators breaking on the same run, while both answer in about a second from an ordinary Indian
+IP, fits a datacentre-IP block far better than coincident outages — Indian government sites commonly refuse
+cloud egress ranges. Treat as a hypothesis, not a finding: it has not been tested from the runner. The CBIC 500
+is real but a red herring, because `_categories` retries and then falls back to its built-in list; it costs
+minutes, not documents.
+
 Nothing has been ingested from any source since 9 Sept.
 
 ## Open — not started
@@ -103,10 +133,18 @@ Nothing has been ingested from any source since 9 Sept.
 
 ## Environment — this machine, not the code
 
-- The router's resolver (`192.168.0.1`) intermittently times out for **every** external name: `github.com`,
-  `mca.gov.in`, `rbi.org.in`, the Neon host. Public resolvers work. Pushes and database calls fail with "Could
-  not resolve host" during these episodes; retry, or point the machine at `8.8.8.8` / `1.1.1.1`. This is the most
-  likely reason `5cb3b11` sat unpushed for two days.
+- **The local resolver fails for `.gov.in` names and for the Neon host.** Whichever resolver the machine is
+  currently using — `192.168.0.1` on the router, `172.20.10.1` when tethered to a phone, which is what it was on
+  11 Sept — it returns "DNS server failure" while public resolvers answer instantly:
+
+  ```
+  DEFAULT  www.mca.gov.in -> FAILED: DNS server failure
+  GOOGLE   www.mca.gov.in -> 23.45.91.142, 23.45.91.131
+  ```
+
+  This is what stopped the local MCA run, and what dropped the Neon connection mid-write in the same minute. Set
+  the Wi-Fi adapter's DNS to `8.8.8.8` / `1.1.1.1` before running discovery or a link check locally. It is also
+  the most likely reason `5cb3b11` sat unpushed for two days.
 - The network also does **TLS interception**, so scripted HTTPS fails certificate validation against some
   official sites. The link checker uses `verify=False` for this reason; `curl` needs `-k`. Do not read either
   symptom as a fault in the site or in a regulator's endpoint — verify by IP
