@@ -979,7 +979,7 @@ def load_section_map() -> dict[str, int]:
 
 # ----------------------------------------------------------------------------- prune
 
-def compact_duplicated_text(*, apply: bool = False) -> dict[str, Any]:
+def compact_duplicated_text(*, apply: bool = False, full: bool = False) -> dict[str, Any]:
     """Reclaim Neon space held by text stored twice, or stored and never read back.
 
     Two candidates, neither of which costs the site anything it serves:
@@ -993,8 +993,10 @@ def compact_duplicated_text(*, apply: bool = False) -> dict[str, Any]:
 
     Dry by default; pass apply=True to clear them. Postgres marks the old rows dead rather than handing the
     space back, so a plain VACUUM follows: that makes the space reusable and stops the database growing into
-    new storage. Shrinking the *reported* size needs VACUUM FULL, which rewrites a table and needs room for a
-    second copy of it — do that one table at a time and only with real headroom, never at 68% of the limit.
+    new storage, but the size the free-tier check reads barely moves — clearing 103 MB this way took the
+    database from 341.97 MB only to 338.33 MB, because `document` grew by the new row versions as fast as
+    `attachment` shrank. Pass full=True to rewrite the tables as well and hand the space back; that took the
+    same database to 170.76 MB. See `_vacuum_full` for why it locks and why the order matters.
     """
     with db.transaction() as conn:
         dup = db.fetch_one(
@@ -1033,12 +1035,45 @@ def compact_duplicated_text(*, apply: bool = False) -> dict[str, Any]:
     try:
         conn.autocommit = True
         with conn.cursor() as cur:
-            cur.execute("VACUUM (ANALYZE) attachment")
-            cur.execute("VACUUM (ANALYZE) document")
+            for table in VACUUM_ORDER:
+                cur.execute(f"VACUUM (ANALYZE) {table}")
+            if full:
+                out["rewritten"] = _vacuum_full(cur)
+            cur.execute("SELECT pg_database_size(current_database())::bigint AS n")
+            out["database_bytes"] = int(cur.fetchone()["n"])
     finally:
         conn.close()
     log.info("compacted %s attachment rows and %s raw_html rows", out["attachments_cleared"], out["raw_html_cleared"])
     return out
+
+
+# Smallest-but-most-bloated first. VACUUM FULL rewrites a table, so it needs free space worth a second copy of
+# it; rewriting `attachment` first releases enough room for `document`, which is the one that will not fit
+# otherwise. Doing it in the other order stalls at the largest table with nowhere to put the copy.
+VACUUM_ORDER = ("attachment", "document", "instrument_page", "provision_version")
+
+
+def _vacuum_full(cur) -> list[str]:
+    """Rewrite each table so freed space goes back to the file, skipping any that will not fit.
+
+    Plain VACUUM only marks space reusable, so the size the free-tier check reads does not move until this runs.
+    The lock is ACCESS EXCLUSIVE — reads and writes on that table stall for the rewrite — so this is opt-in, and
+    must not run while discovery is writing.
+    """
+    from .storage.usage import NEON_FREE_BYTES
+
+    done = []
+    for table in VACUUM_ORDER:
+        cur.execute("SELECT pg_database_size(current_database())::bigint AS db, pg_total_relation_size(%s)::bigint AS t", (table,))
+        row = cur.fetchone()
+        headroom = NEON_FREE_BYTES - int(row["db"])
+        if headroom < int(row["t"]):
+            log.warning("skipping VACUUM FULL %s: needs %.0f MB for the rewrite, only %.0f MB free",
+                        table, int(row["t"]) / 1024**2, headroom / 1024**2)
+            continue
+        cur.execute(f"VACUUM FULL {table}")
+        done.append(table)
+    return done
 
 
 def prune_before_cutoff() -> dict[str, int]:

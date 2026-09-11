@@ -39,6 +39,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
     p_compact = sub.add_parser("compact", help="reclaim database space held by duplicated or never-read text")
     p_compact.add_argument("--apply", action="store_true", help="actually clear it; without this the command only reports")
+    p_compact.add_argument("--full", action="store_true",
+                           help="also rewrite the tables so the space returns to the file (locks them; never during a run)")
     sub.add_parser("storage", help="report R2 and database usage against the free limits, warning if either is filling up")
     sub.add_parser("sectionmap", help="load CBDT's official Income-tax Act 1961 <-> 2025 provision mapping")
     p_run = sub.add_parser("run")
@@ -110,14 +112,18 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "compact":
-        r = pipeline.compact_duplicated_text(apply=args.apply)
+        r = pipeline.compact_duplicated_text(apply=args.apply, full=args.full)
         mb = r["reclaimable_bytes"] / 1024**2
         dup, html = r["duplicate_attachment_text"], r["unread_raw_html"]
         print(f"attachment text duplicated on its document : {dup['rows']:>6} rows  {dup['bytes'] / 1024**2:8.1f} MB")
         print(f"raw_html that nothing ever reads           : {html['rows']:>6} rows  {html['bytes'] / 1024**2:8.1f} MB")
         print(f"{'cleared' if r['applied'] else 'reclaimable'}: {mb:.1f} MB")
+        if r.get("rewritten"):
+            print(f"rewrote: {', '.join(r['rewritten'])}")
+        if r.get("database_bytes"):
+            print(f"database now {r['database_bytes'] / 1024**2:.2f} MB")
         if not r["applied"]:
-            print("dry run - pass --apply to clear it")
+            print("dry run - pass --apply to clear it, --apply --full to also hand the space back")
         return 0
 
     if args.cmd == "retag":
