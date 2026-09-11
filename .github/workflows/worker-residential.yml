@@ -1,0 +1,87 @@
+name: Worker (residential IP)
+
+# Collects the five sources that return zero from GitHub's runners while answering in seconds from an ordinary
+# Indian IP -- see docs/HANDOFF.md. Runs on a self-hosted Windows runner so the requests leave a residential
+# connection instead of a datacentre range.
+#
+# Deliberately narrow: it discovers and fetches only those five adapters. Everything else stays on the
+# GitHub-hosted worker in worker.yml, which still works and still runs on its own schedule. Do not widen this
+# to a full `run` without also disabling worker.yml's schedule, or both will collect the same sources twice.
+#
+# Runs on the hour, half an hour ahead of worker.yml, and shares its concurrency group so the two can never
+# write at once -- whichever starts second waits. If this runner is asleep or offline the job simply does not
+# run and worker.yml remains the baseline; nothing is lost but these five sources, which already fail there.
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: worker                # shared with worker.yml: never let the two run concurrently
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: [self-hosted, windows, residential]
+    timeout-minutes: 120
+    defaults:
+      run:
+        working-directory: services/pipeline
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      AI_ENABLED: "false"
+      MIN_DOCUMENT_YEAR: "2014"
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      R2_BUCKET: ${{ secrets.R2_BUCKET }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
+      TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+      SITE_URL: ${{ secrets.SITE_URL }}
+      REQUEST_DELAY_SECONDS: "1.0"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: services/pipeline/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -q -r requirements.txt
+
+      # No apt-get, no Xvfb: this is Windows and it has a real desktop, so headed Chromium runs as-is.
+      # --with-deps is Linux-only and fails here.
+      - name: Install Chromium
+        run: python -m playwright install chromium
+
+      - name: Apply migrations
+        run: python cli.py migrate
+
+      - name: Discover the sources GitHub's runners cannot reach
+        run: >
+          python cli.py discover
+          --adapter cbic_gst_notifications
+          --adapter cbic_gst_circulars
+          --adapter sebi_circulars
+          --adapter sebi_master_circulars
+          --adapter sebi_regulations
+
+      # Fetch them from here too: a document discovered on a residential IP is no use if its text is then
+      # fetched from a blocked one.
+      - name: Fetch what it found
+        run: >
+          python cli.py work --limit 500
+          --adapter cbic_gst_notifications
+          --adapter cbic_gst_circulars
+          --adapter sebi_circulars
+          --adapter sebi_master_circulars
+          --adapter sebi_regulations
+
+      # Never leave a Chromium behind on a machine somebody actually uses.
+      - name: Stop stray browsers
+        if: always()
+        run: Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*ms-playwright*' } | Stop-Process -Force
+        shell: pwsh
