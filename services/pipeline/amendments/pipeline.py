@@ -177,6 +177,32 @@ def _seed_config(slug: str) -> dict | None:
 
 # ----------------------------------------------------------------------------- discovery
 
+class EmptyDiscovery(RuntimeError):
+    """An adapter listed nothing although it has listed documents recently.
+
+    Adapters tolerate failures unit by unit on purpose: one dead category or listing page must not cost us the rest.
+    The price is that a site-wide outage looks exactly like a source that is genuinely empty — every unit fails, the
+    warnings go to the log, and `discover` returns an empty list. Recorded as a successful run, that leaves the
+    collector green on /status while it quietly collects nothing, which is how five adapters went a full day
+    without anyone noticing. So an empty result from an adapter that was productive days ago is raised as a failure.
+    """
+
+
+def _recent_peak(conn: psycopg.Connection, adapter_name: str, days: int = 30) -> int:
+    """The most documents this adapter listed in any successful run of the last `days` days.
+
+    Deliberately a time window rather than a run count: a run-count window fills with zeros during a long outage and
+    stops flagging precisely when the outage is worst.
+    """
+    row = db.fetch_one(
+        conn,
+        """SELECT coalesce(max(docs_found), 0) AS peak FROM source_run
+            WHERE adapter = %s AND ok IS TRUE AND started_at > now() - (%s || ' days')::interval""",
+        (adapter_name, days),
+    )
+    return int(row["peak"]) if row else 0
+
+
 def run_discovery(adapter_names: list[str] | None = None, *, since_year: int | None = None) -> dict[str, int]:
     """List documents on every adapter, upsert them, and queue fetches for new ones."""
     names = adapter_names or list(registry.keys())
@@ -189,6 +215,14 @@ def run_discovery(adapter_names: list[str] | None = None, *, since_year: int | N
         try:
             docs = adapter.discover(since_year=since_year)
             found = len(docs)
+            if found == 0:
+                with db.transaction() as conn:
+                    peak = _recent_peak(conn, name)
+                if peak:
+                    raise EmptyDiscovery(
+                        f"listed 0 documents, but listed up to {peak} in a successful run within the last 30 days. "
+                        "Every unit of work inside the adapter failed; the per-unit warnings are above this line."
+                    )
             with db.transaction() as conn:
                 reg_id = db.regulator_id(conn, adapter.regulator_code)
                 for d in docs:
