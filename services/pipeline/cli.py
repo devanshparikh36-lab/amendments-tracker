@@ -14,9 +14,19 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from datetime import datetime, timezone
 
 from amendments import db, pipeline
 from amendments.instruments import PHASE1_INSTRUMENTS
+
+
+def _exit_code_for_failed_adapters(started: datetime) -> int:
+    """Non-zero if any adapter failed, so the workflow goes red and GitHub emails someone."""
+    failed = pipeline.adapters_failed_since(started)
+    if not failed:
+        return 0
+    print(f"FAILED adapters: {', '.join(failed)}")
+    return 1
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -79,8 +89,9 @@ def main(argv: list[str] | None = None) -> int:
         return rc
 
     if args.cmd == "discover":
+        started = datetime.now(timezone.utc)
         print(pipeline.run_discovery(args.adapter, since_year=args.since_year))
-        return 0
+        return _exit_code_for_failed_adapters(started)
 
     if args.cmd == "work":
         requeued = pipeline.requeue_stale_jobs()
@@ -145,6 +156,7 @@ def main(argv: list[str] | None = None) -> int:
             stale = pipeline.enqueue_stale_instruments(conn)
             if stale:
                 print(f"queued {stale} instruments for a re-read of the regulator's text")
+        started = datetime.now(timezone.utc)
         print(pipeline.run_discovery())
         print("processed", pipeline.process_jobs(limit=args.limit))
         try:
@@ -154,7 +166,8 @@ def main(argv: list[str] | None = None) -> int:
                 print(u.human())
         except Exception as exc:
             logging.warning("storage check failed: %s", exc)
-        return 0
+        # Reported after the work step, so a broken adapter never costs us the fetching of everything else.
+        return _exit_code_for_failed_adapters(started)
 
     if args.cmd == "backfill":
         with db.transaction() as conn:

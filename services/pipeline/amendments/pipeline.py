@@ -203,6 +203,24 @@ def _recent_peak(conn: psycopg.Connection, adapter_name: str, days: int = 30) ->
     return int(row["peak"]) if row else 0
 
 
+def adapters_failed_since(when: datetime) -> list[str]:
+    """Adapters whose run since `when` ended in failure.
+
+    `run_discovery` swallows one adapter's failure on purpose so the rest still collect, which means the process
+    exits 0 no matter how many broke. With no Teams webhook configured that is completely silent — five adapters
+    collected nothing for a full day and `/status` was the only place that said so. The CLI turns this into a
+    non-zero exit so the workflow goes red and GitHub emails the repository owner, the same free channel the
+    free-tier watch uses.
+    """
+    with db.transaction() as conn:
+        rows = db.fetch_all(
+            conn,
+            "SELECT DISTINCT adapter FROM source_run WHERE started_at >= %s AND ok IS FALSE ORDER BY adapter",
+            (when,),
+        )
+    return [r["adapter"] for r in rows]
+
+
 def run_discovery(adapter_names: list[str] | None = None, *, since_year: int | None = None) -> dict[str, int]:
     """List documents on every adapter, upsert them, and queue fetches for new ones."""
     names = adapter_names or list(registry.keys())
