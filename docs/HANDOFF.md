@@ -143,6 +143,44 @@ is broken by leaving this half-finished.
 Once it is running, confirm the five go green on `/status`, then consider whether `worker.yml`'s schedule
 should stay — today it is the safety net, but it will keep raising `EmptyDiscovery` for these five every run.
 
+## Open — 16 instrument pages serve nothing, and one of them is FEMA
+
+This is the largest gap in the site and it had not been written down. Of 195 instruments:
+
+| | count | what a reader sees |
+|---|---|---|
+| parsed into provisions | 75 | full section-level text and amendment history |
+| official PDF only | 104 | the regulator's PDF — by design, `EMPTY_PROVISION_LIMIT` serves the PDF when a parse is untrustworthy |
+| **nothing at all** | **16** | an empty page |
+
+The 16 come from the same root as the 136 failed `selfcheck_instrument` jobs — which are only **10 distinct
+instruments** retried once per run over ~26 runs, not 136 separate problems. Get them with:
+
+```sql
+SELECT slug FROM instrument i WHERE pdf_storage_key IS NULL
+  AND NOT EXISTS (SELECT 1 FROM provision p WHERE p.instrument_id = i.id);
+```
+
+**`fema-1999` is the one that matters** — the flagship instrument of a FEMA-first site, with zero provisions, no
+PDF and `last_checked_at = NULL`. It has never seeded successfully. The cause is not ours: `rbi_fema_act`
+follows whatever RBI's Act page links for FEMA, and RBI still links
+`indiacode.nic.in/handle/123456789/1988`, which now returns a real 404. India Code has moved to
+`indiacode.gov.in/act/<uuid>/sections`, and **that entire new platform returned HTTP 502** at the root when
+checked on 11 Sept. So there is currently no working official URL for the FEMA text; deliberately nothing was
+hardcoded, since no candidate could be verified to return the real Act. Re-check `indiacode.gov.in`, and if it
+is back, set `text_url` in the `fema-1999` seed config (the adapter already honours it) rather than waiting for
+RBI to fix its link.
+
+`fem-export-of-goods-and-services-regulations-2000` fails differently and the failure is *correct*: "parsed into
+only 2 provisions; refusing to overwrite". That guard is protecting good data from a bad parse — do not
+weaken it to make the error go away.
+
+Some of the 16 look like double registrations of an instrument that already has content — `...educatuion-fund...`
+next to `...education-fund...`, and `...stock-exchanges-cash-market` next to `...stock-exchange-cash-market`.
+Fuzzy title matching suggested as many as 12, but it also paired attestation-of-documents with delisting and
+igst-rules with igst-act, so that number is not trustworthy; the pairs above are the ones that survive reading.
+Each needs a human decision before anything is merged or deleted.
+
 ## Open — not started
 
 - **Teams and Resend are still unconfigured**, so the daily digest and the richer alerts go nowhere. No code
