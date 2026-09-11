@@ -175,11 +175,25 @@ RBI to fix its link.
 only 2 provisions; refusing to overwrite". That guard is protecting good data from a bad parse — do not
 weaken it to make the error go away.
 
-Some of the 16 look like double registrations of an instrument that already has content — `...educatuion-fund...`
-next to `...education-fund...`, and `...stock-exchanges-cash-market` next to `...stock-exchange-cash-market`.
-Fuzzy title matching suggested as many as 12, but it also paired attestation-of-documents with delisting and
-igst-rules with igst-act, so that number is not trustworthy; the pairs above are the ones that survive reading.
-Each needs a human decision before anything is merged or deleted.
+**The four SEBI master circulars cannot be fixed from our side — SEBI publishes empty pages.** Fetched
+directly, `master-circular-for-stock-exchanges-cash-market_22556.html` is 7800 bytes of HTML containing a
+title, a breadcrumb and a date: **184 characters of visible text and no PDF link at all**. Same for the 2014
+and 2015 ones. The adapter's "yielded only 1302 characters" refusal is the guard working — there is no text
+there to collect, and no amount of browser rendering or parser work will invent it. Treat as a regulator-side
+gap alongside the GST and MCA base texts.
+
+Some of the 16 look like double registrations of an instrument that already has content. The clearest is that
+same pair: `...stock-exchange**s**-cash-market` is an empty stub while `...stock-exchange-cash-market` serves a
+PDF — one regulation registered twice, and the site is showing the dead twin. `...educatuion-fund...` next to
+`...education-fund...` is the same story with a typo. Fuzzy title matching suggested as many as 12, but it also
+paired attestation-of-documents with delisting and igst-rules with igst-act — Rules and an Act are different
+instruments — so that number is not trustworthy. The two pairs above are the ones that survive reading, and
+each still needs a human decision before anything is merged or deleted.
+
+**The `sebi_master_circulars` fetch backlog is cleared.** 73 documents were queued and could not be fetched by
+GitHub's runners (blocked adapter); running `cli.py work --adapter sebi_master_circulars` from this machine
+collected all 73, and no document from that source is now missing its text. This is the concrete argument for
+the residential runner: that backlog would otherwise have sat there indefinitely.
 
 ## Open — not started
 
