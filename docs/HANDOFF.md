@@ -118,6 +118,31 @@ makes a zero-yield run fail loudly. If it holds, the free fixes are moving disco
 The CBIC category endpoint also returns HTTP 500, but that is a red herring — `_categories` retries and falls
 back to its built-in list, costing minutes rather than documents.
 
+### The self-hosted runner — installed, not yet registered
+
+`C:\actions-runner` holds actions-runner v2.337.0 for win-x64, downloaded from the official `actions/runner`
+releases and verified against its published SHA-256 (`1150692a…85cfc`). The repository is **private**, which is
+what makes this acceptable at all: on a public repo any stranger's pull request would execute on this machine.
+
+`worker-residential.yml` is committed and waits on the label `[self-hosted, windows, residential]`. Until a
+runner claims that label the job simply never starts, and `worker.yml` carries on as the baseline — so nothing
+is broken by leaving this half-finished.
+
+**Three things remain, all of them on the machine rather than in the repo:**
+
+1. **Stop it sleeping.** `STANDBYIDLE` is `0x12c` — five minutes on AC. A runner on a sleeping machine misses
+   essentially every six-hourly run. `powercfg /change standby-timeout-ac 0`.
+2. **Register it**, from Settings → Actions → Runners → New self-hosted runner, for the token:
+   `cd C:\actions-runner && .\config.cmd --url https://github.com/devanshparikh36-lab/amendments-tracker
+   --labels self-hosted,windows,residential --unattended --token <TOKEN>`. Add `--runasservice` from an
+   elevated terminal to survive logout; without it the runner only exists while `run.cmd` is open.
+3. **Tesseract is not installed**, and `worker.yml` only ever got it through `apt-get`. Discovery does not need
+   it; OCR fallback for scanned PDFs during `work` does, so expect `ocr_used` to stay false on this path until
+   it is installed.
+
+Once it is running, confirm the five go green on `/status`, then consider whether `worker.yml`'s schedule
+should stay — today it is the safety net, but it will keep raising `EmptyDiscovery` for these five every run.
+
 ## Open — not started
 
 - **Teams and Resend are still unconfigured**, so the daily digest and the richer storage alert go nowhere. No
