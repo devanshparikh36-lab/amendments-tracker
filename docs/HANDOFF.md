@@ -145,9 +145,13 @@ should stay — today it is the safety net, but it will keep raising `EmptyDisco
 
 ## Open — not started
 
-- **Teams and Resend are still unconfigured**, so the daily digest and the richer storage alert go nowhere. No
-  code change needed: `worker.yml` already wires `TEAMS_WEBHOOK_URL`, `RESEND_API_KEY`, `DIGEST_FROM`,
-  `DIGEST_TO`, `SITE_URL` as secrets. The GitHub failure email above covers storage in the meantime.
+- **Teams and Resend are still unconfigured**, so the daily digest and the richer alerts go nowhere. No code
+  change needed: `worker.yml` already wires `TEAMS_WEBHOOK_URL`, `RESEND_API_KEY`, `DIGEST_FROM`, `DIGEST_TO`,
+  `SITE_URL` as secrets. Until then both kinds of breakage route through GitHub's failure email instead, which
+  costs nothing and needs no secret: storage via the Free-tier watch, and collection because `discover` and
+  `run` now exit non-zero if any adapter failed. **Expect `worker.yml` to go red every six hours** until the
+  five blocked sources move to the residential runner — they are genuinely broken there and have been since
+  10 Sept, and the silence was the actual bug.
 - **Known data gaps**, regulator-side: GST base texts dated 2020–2022, MCA 2014–2021 (neither has republished);
   three RBI Master Directions have ~30% empty paragraphs with no PDF fallback.
 - `AI_ENABLED` is `false` on the worker, so the AI merge path (`ai_note`, `cannot_apply`) is inert on scheduled
