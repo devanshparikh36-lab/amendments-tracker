@@ -979,6 +979,68 @@ def load_section_map() -> dict[str, int]:
 
 # ----------------------------------------------------------------------------- prune
 
+def compact_duplicated_text(*, apply: bool = False) -> dict[str, Any]:
+    """Reclaim Neon space held by text stored twice, or stored and never read back.
+
+    Two candidates, neither of which costs the site anything it serves:
+
+      * `attachment.extracted_text` that is byte-identical to its document's own `extracted_text`. The document
+        copy is the one that matters — `document_fts_idx` indexes it, and `_document_text` already skips an
+        attachment whose text it has already seen. Both read paths that fall back to the attachment
+        (`adapters/__init__.py`, the backfill below) only fire when the document has *no* text, which by
+        definition is not the case here. The PDF stays in R2, so the column can be rebuilt by re-extracting.
+      * `document.raw_html`, which every adapter writes and nothing anywhere reads back.
+
+    Dry by default; pass apply=True to clear them. Postgres marks the old rows dead rather than handing the
+    space back, so a plain VACUUM follows: that makes the space reusable and stops the database growing into
+    new storage. Shrinking the *reported* size needs VACUUM FULL, which rewrites a table and needs room for a
+    second copy of it — do that one table at a time and only with real headroom, never at 68% of the limit.
+    """
+    with db.transaction() as conn:
+        dup = db.fetch_one(
+            conn,
+            """SELECT count(*) AS rows, coalesce(sum(pg_column_size(a.extracted_text)), 0)::bigint AS bytes
+                 FROM attachment a JOIN document d ON d.id = a.document_id
+                WHERE a.extracted_text IS NOT NULL AND a.extracted_text = d.extracted_text""",
+        )
+        html = db.fetch_one(
+            conn,
+            """SELECT count(*) AS rows, coalesce(sum(pg_column_size(raw_html)), 0)::bigint AS bytes
+                 FROM document WHERE raw_html IS NOT NULL AND extracted_text IS NOT NULL""",
+        )
+    out: dict[str, Any] = {
+        "duplicate_attachment_text": {"rows": dup["rows"], "bytes": int(dup["bytes"])},
+        "unread_raw_html": {"rows": html["rows"], "bytes": int(html["bytes"])},
+        "reclaimable_bytes": int(dup["bytes"]) + int(html["bytes"]),
+        "applied": apply,
+    }
+    if not apply:
+        return out
+
+    with db.transaction() as conn:
+        out["attachments_cleared"] = db.execute(
+            conn,
+            """UPDATE attachment a SET extracted_text = NULL FROM document d
+                WHERE d.id = a.document_id AND a.extracted_text IS NOT NULL
+                  AND a.extracted_text = d.extracted_text""",
+        )
+        out["raw_html_cleared"] = db.execute(
+            conn,
+            "UPDATE document SET raw_html = NULL WHERE raw_html IS NOT NULL AND extracted_text IS NOT NULL",
+        )
+    # VACUUM cannot run inside a transaction block, so it needs its own autocommit connection.
+    conn = db.connect()
+    try:
+        conn.autocommit = True
+        with conn.cursor() as cur:
+            cur.execute("VACUUM (ANALYZE) attachment")
+            cur.execute("VACUUM (ANALYZE) document")
+    finally:
+        conn.close()
+    log.info("compacted %s attachment rows and %s raw_html rows", out["attachments_cleared"], out["raw_html_cleared"])
+    return out
+
+
 def prune_before_cutoff() -> dict[str, int]:
     """Delete already-stored documents that fall before MIN_DOCUMENT_YEAR (same keep-rules as discovery),
     including their files in storage and any pending jobs."""

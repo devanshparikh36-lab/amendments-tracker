@@ -5,6 +5,7 @@
   python cli.py discover [--since-year Y]    list documents on every adapter and queue new ones
   python cli.py work [--limit N]             process queued jobs (fetch, tag, merge, selfcheck)
   python cli.py digest                       send the daily email digest
+  python cli.py compact [--apply]            reclaim database space held by duplicated or never-read text
   python cli.py run                          discover + work (what the Railway cron runs)
   python cli.py backfill --since-year 2000   discover archive years then work through everything
 """
@@ -36,6 +37,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("digest")
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
+    p_compact = sub.add_parser("compact", help="reclaim database space held by duplicated or never-read text")
+    p_compact.add_argument("--apply", action="store_true", help="actually clear it; without this the command only reports")
     sub.add_parser("storage", help="report R2 and database usage against the free limits, warning if either is filling up")
     sub.add_parser("sectionmap", help="load CBDT's official Income-tax Act 1961 <-> 2025 provision mapping")
     p_run = sub.add_parser("run")
@@ -104,6 +107,17 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "prune":
         print(pipeline.prune_before_cutoff())
+        return 0
+
+    if args.cmd == "compact":
+        r = pipeline.compact_duplicated_text(apply=args.apply)
+        mb = r["reclaimable_bytes"] / 1024**2
+        dup, html = r["duplicate_attachment_text"], r["unread_raw_html"]
+        print(f"attachment text duplicated on its document : {dup['rows']:>6} rows  {dup['bytes'] / 1024**2:8.1f} MB")
+        print(f"raw_html that nothing ever reads           : {html['rows']:>6} rows  {html['bytes'] / 1024**2:8.1f} MB")
+        print(f"{'cleared' if r['applied'] else 'reclaimable'}: {mb:.1f} MB")
+        if not r["applied"]:
+            print("dry run - pass --apply to clear it")
         return 0
 
     if args.cmd == "retag":
