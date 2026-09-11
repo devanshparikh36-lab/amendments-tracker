@@ -19,7 +19,10 @@ log = logging.getLogger(__name__)
 
 R2_FREE_BYTES = 10 * 1024**3          # 10 GB
 NEON_FREE_BYTES = 500 * 1024**2       # 500 MB
-WARN_AT = 0.75                        # warn once three quarters of a limit is used
+# Warn at 60% rather than 75%. Getting back under a limit means reclaiming space and redeploying, which takes a
+# session; by 75% of Neon there is little room left to be calm about it, and past 100% the free plan stops
+# accepting writes and collection halts outright.
+WARN_AT = 0.60
 CRITICAL_AT = 0.90
 
 

@@ -95,9 +95,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "storage":
         from amendments.storage import usage
 
-        for u in usage.check():
+        usages = usage.check()
+        for u in usages:
             print(f"{u.human():55} {u.detail:22} [{u.level}]")
-        return 0
+        # Exit non-zero when a limit is filling up, so the CI step fails and GitHub emails the repo owner.
+        # That is the only alerting channel here that costs nothing and needs no secret configured.
+        return 1 if any(u.level != "ok" for u in usages) else 0
 
     if args.cmd == "prune":
         print(pipeline.prune_before_cutoff())
