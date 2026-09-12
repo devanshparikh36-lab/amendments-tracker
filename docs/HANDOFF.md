@@ -124,9 +124,17 @@ back to its built-in list, costing minutes rather than documents.
 releases and verified against its published SHA-256 (`1150692a…85cfc`). The repository is **private**, which is
 what makes this acceptable at all: on a public repo any stranger's pull request would execute on this machine.
 
-`worker-residential.yml` is committed and waits on the label `[self-hosted, windows, residential]`. Until a
-runner claims that label the job simply never starts, and `worker.yml` carries on as the baseline — so nothing
-is broken by leaving this half-finished.
+`worker-residential.yml` is committed and waits on the label `[self-hosted, windows, residential]`. It is
+**`workflow_dispatch` only** — the cron lines are commented out. Uncomment them once `config.cmd` has actually
+registered this machine, and not before.
+
+> **This already caused an outage, so do not undo it.** The workflow originally ran on a schedule *and* shared
+> `worker.yml`'s concurrency group. With no runner holding its label, it fired at 12:00, queued forever waiting
+> for a runner that did not exist, and kept holding the group — so `worker.yml` queued behind a job that could
+> never start. **Scheduled collection stopped for 19 hours**: the 12:30, 18:30 and 00:30 runs never ran, and
+> the last real one was 11 Sept 04:59 UTC. A queued job still owns its concurrency group. Hence two rules:
+> never share a concurrency group with a workflow that has to keep running, and never schedule work for a
+> runner that might not exist. It now has its own group and `cancel-in-progress: true`.
 
 **Three things remain, all of them on the machine rather than in the repo:**
 
