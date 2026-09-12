@@ -23,6 +23,7 @@ import sys
 import threading
 import time
 from typing import Any
+from urllib.parse import urlsplit
 
 log = logging.getLogger(__name__)
 
@@ -192,22 +193,41 @@ class BrowserSession:
         )
 
     def get_bytes(self, url: str) -> tuple[bytes, str | None]:
-        """Download a file using the browser context's own network stack.
+        """Download a file, from inside the page when that is possible and from the context when it is not.
 
-        Not an in-page fetch(), which is subject to CORS: RBI serves its pages from www.rbi.org.in and its
-        PDFs from rbidocs.rbi.org.in, and that second host sends no CORS headers, so a fetch() issued inside
-        the page fails with "TypeError: Failed to fetch" no matter how real the browser is. This request
-        carries the context's cookies and TLS fingerprint -- which is what gets past the bot wall -- while
-        being a browser-level request rather than a page-level one, so cross-origin is simply not its problem.
-        It also skips the base64 bridge, which mattered more the larger the file.
+        The two routes are not interchangeable, and using either one everywhere breaks the other site.
+
+        Same origin as the page: fetch from inside it. The request then carries the page's Referer and its
+        Sec-Fetch metadata, which is exactly what Akamai inspects — mca.gov.in answers 403 to a request that
+        lacks them, even from the same browser with the same cookies. This route pays a base64 bridge, which
+        is the price of being indistinguishable from the page asking for its own file.
+
+        Cross origin: the page cannot, because CORS stops it. RBI serves pages from www.rbi.org.in and PDFs
+        from rbidocs.rbi.org.in, which sends no CORS headers, so an in-page fetch fails with "Failed to fetch"
+        however real the browser is. The context's request API carries the same cookies and TLS fingerprint
+        without being subject to CORS.
         """
         self.start()
-        with self._lock:
-            self._throttle()
-            resp = self._ctx.request.get(url, timeout=120_000)
-            if not resp.ok:
-                raise RuntimeError(f"{resp.status} for {url}")
-            return resp.body(), resp.headers.get("content-type")
+        same_origin = urlsplit(url).netloc.lower() == urlsplit(self.home_url).netloc.lower()
+        if not same_origin:
+            with self._lock:
+                self._throttle()
+                resp = self._ctx.request.get(url, timeout=120_000)
+                if not resp.ok:
+                    raise RuntimeError(f"{resp.status} for {url}")
+                return resp.body(), resp.headers.get("content-type")
+
+        out = self._eval(
+            """async u => { const r = await fetch(u); if (!r.ok) throw new Error(r.status + ' for ' + u);
+                 const b = await r.arrayBuffer(); const bytes = new Uint8Array(b);
+                 let s = ''; const chunk = 0x8000;
+                 for (let i = 0; i < bytes.length; i += chunk) s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+                 return {b64: btoa(s), type: r.headers.get('content-type')}; }""",
+            url,
+        )
+        import base64
+
+        return base64.b64decode(out["b64"]), out.get("type")
 
 
 _sessions: dict[str, BrowserSession] = {}
