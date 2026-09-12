@@ -719,3 +719,59 @@ export async function lastRevised(): Promise<{ checked: string | null; added: st
   );
   return rows[0] ?? { checked: null, added: null };
 }
+
+// ----------------------------------------------------------------------------- definitions
+
+export type DefinitionHit = {
+  slug: string;
+  instrument_title: string;
+  short_code: string;
+  kind: string;
+  pdf_storage_key: string | null;
+  number: string;
+  heading: string | null;
+  pdf_page: number | null;
+  snippet: string;
+  in_definitions_section: boolean;
+};
+
+// How Indian drafting introduces a defined term. Kept deliberately narrow: "means" and "includes" after a
+// quoted term are definitional, whereas the same words in running prose are not, which is why the quotes are
+// required rather than optional.
+const DEFINING = "(means|includes|shall\\s+mean|shall\\s+include|shall\\s+be\\s+deemed|has\\s+the\\s+meaning|shall\\s+have\\s+the\\s+meaning)";
+
+/** Every place a word is *defined*, across every Act, Rule and Regulation that has text. */
+export async function searchDefinitions(term: string, limit = 80): Promise<DefinitionHit[]> {
+  const cleaned = term.trim();
+  if (!cleaned) return [];
+  const escaped = cleaned.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  // Text read out of a PDF uses curly quotes as often as straight ones, and drops the space after the opening
+  // quote unpredictably, so accept either. The bounded gap allows "'X', in relation to a company, means ..."
+  // without letting a match run on into the next sentence.
+  // \y, not \b: this regex runs in Postgres, whose POSIX syntax reads \b as a literal backspace, so a pattern
+  // written with \b matches nothing at all and does it silently.
+  const pattern = `[“"'‘]\\s*${escaped}\\s*[”"'’][^.;]{0,90}?\\y${DEFINING}\\y`;
+  return query<DefinitionHit>(
+    `SELECT i.slug, i.title AS instrument_title, i.short_code, i.kind, i.pdf_storage_key,
+            p.number, p.heading,
+            coalesce(p.pdf_page, pg.page_no) AS pdf_page,
+            substring(v.text from greatest(1, strpos(lower(v.text), lower($2)) - 60) for 420) AS snippet,
+            (p.heading ~* '(definition|interpretation)') AS in_definitions_section
+       FROM provision p
+       JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
+       JOIN instrument i ON i.id = p.instrument_id
+       -- provision.pdf_page is only filled in for instruments the regulator publishes as a PDF -- 156 of
+       -- several thousand provisions. For the rest we still hold the official PDF page by page, so look the
+       -- definition up there with the same pattern: the page that states the definition is the page to open.
+       LEFT JOIN LATERAL (
+         SELECT ip.page_no FROM instrument_page ip
+          WHERE ip.instrument_id = i.id AND ip.text ~* $1
+          ORDER BY ip.page_no LIMIT 1
+       ) pg ON p.pdf_page IS NULL
+      WHERE v.text ILIKE '%' || $2 || '%' AND v.text ~* $1
+      ORDER BY (p.heading ~* '(definition|interpretation)') DESC, i.title, p.sort_key
+      LIMIT $3`,
+    // The cheap ILIKE runs first and throws out almost everything before the regex is considered.
+    [pattern, cleaned, limit],
+  );
+}
