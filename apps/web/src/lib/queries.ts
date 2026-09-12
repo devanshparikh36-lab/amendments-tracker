@@ -96,9 +96,17 @@ export async function listProvisions(instrumentId: number, asOn?: string): Promi
     `SELECT p.id, p.number, p.heading, p.level, p.parent_id, p.sort_key,
             p.pdf_storage_key, p.pdf_page, p.source_url,
             v.id AS version_id, v.text, v.html, v.source_kind, v.effective_from, v.footnote, v.merge_confidence,
-            (SELECT count(*) FROM amendment_effect e WHERE e.provision_id = p.id)::int AS effect_count,
-            (SELECT count(*) FROM amendment_effect e WHERE e.provision_id = p.id AND e.verification_status = 'differs_from_official')::int AS differs
+            coalesce(ec.effect_count, 0) AS effect_count,
+            coalesce(ec.differs, 0) AS differs
      FROM provision p ${versionJoin}
+     -- Both counts in one grouped pass rather than two correlated subqueries per provision: reading the whole
+     -- Income-tax Act meant 1,870 of them for numbers that come from a table of barely a thousand rows.
+     LEFT JOIN (
+       SELECT provision_id,
+              count(*)::int AS effect_count,
+              count(*) FILTER (WHERE verification_status = 'differs_from_official')::int AS differs
+         FROM amendment_effect GROUP BY provision_id
+     ) ec ON ec.provision_id = p.id
      WHERE p.instrument_id = $1
      ORDER BY p.sort_key, v.id DESC`,
     params,
@@ -119,11 +127,19 @@ export type ProvisionIndexRow = {
 
 export async function listProvisionIndex(instrumentId: number): Promise<ProvisionIndexRow[]> {
   return query<ProvisionIndexRow>(
+    // The discrepancy count is joined once and grouped, not asked per provision. As a correlated subquery it
+    // ran 935 times for the Income-tax Act -- 360ms of the page -- to produce a column that is currently zero
+    // everywhere, since nothing has populated verification_status yet. Grouped, the same answer costs 156ms.
     `SELECT p.id, p.number, p.heading, p.level, p.parent_id, p.sort_key,
             coalesce(v.source_kind = 'machine_merged', false) AS machine,
-            (SELECT count(*) FROM amendment_effect e WHERE e.provision_id = p.id AND e.verification_status = 'differs_from_official')::int AS differs
+            coalesce(d.differs, 0) AS differs
      FROM provision p
      LEFT JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
+     LEFT JOIN (
+       SELECT provision_id, count(*)::int AS differs
+         FROM amendment_effect WHERE verification_status = 'differs_from_official'
+        GROUP BY provision_id
+     ) d ON d.provision_id = p.id
      WHERE p.instrument_id = $1
      ORDER BY p.sort_key, p.id`,
     [instrumentId],
