@@ -1,4 +1,4 @@
-import { query } from "@/db";
+import { LIVE_SECONDS, query } from "@/db";
 
 export type DocumentRow = {
   id: number;
@@ -682,12 +682,16 @@ export async function homeStats() {
 export async function sourceRuns() {
   return query<{ id: number; adapter: string; started_at: string; finished_at: string | null; docs_found: number; docs_new: number; ok: boolean | null; error: string | null }>(
     `SELECT * FROM source_run ORDER BY started_at DESC LIMIT 60`,
+    [],
+    LIVE_SECONDS,
   );
 }
 
 export async function jobStats() {
   return query<{ type: string; status: string; n: number; last_error: string | null }>(
     `SELECT type, status, count(*)::int AS n, max(error) AS last_error FROM job GROUP BY type, status ORDER BY type, status`,
+    [],
+    LIVE_SECONDS,
   );
 }
 
@@ -710,6 +714,8 @@ export async function lastRevised(): Promise<{ checked: string | null; added: st
   const rows = await query<{ checked: string | null; added: string | null }>(
     `SELECT (SELECT max(finished_at) FROM source_run WHERE ok) AS checked,
             (SELECT max(first_seen_at) FROM document) AS added`,
+    [],
+    LIVE_SECONDS,
   );
   return rows[0] ?? { checked: null, added: null };
 }

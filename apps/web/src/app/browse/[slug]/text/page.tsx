@@ -52,6 +52,12 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
   const selectedDocs = selected ? await provisionDocuments(selected.id) : [];
   const source = officialSource(inst, selected);
   const sections = index.filter((i) => i.level !== "chapter");
+  // Neighbours of the section being read, in the instrument's own order, so it can be read straight through
+  // without going back to the contents list between every section. Chapters are excluded above, so "next"
+  // is the next readable section rather than a chapter heading.
+  const atIdx = selected ? sections.findIndex((s) => s.number === selected.number) : -1;
+  const prevSection = atIdx > 0 ? sections[atIdx - 1] : null;
+  const nextSection = atIdx >= 0 && atIdx < sections.length - 1 ? sections[atIdx + 1] : null;
   // The sidebar ships to the browser: send trimmed headings so a 900-section Act stays light.
   const navItems = index.map((i) => ({
     ...i,
@@ -120,7 +126,18 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
 
         <div className="print-full min-w-0 space-y-4">
           {selected ? (
-            <ProvisionView inst={inst} p={selected} slug={slug} unit={unit} source={source} docs={selectedDocs} asOn={sp.asOn} />
+            <ProvisionView
+              inst={inst}
+              p={selected}
+              slug={slug}
+              unit={unit}
+              source={source}
+              docs={selectedDocs}
+              asOn={sp.asOn}
+              prev={prevSection}
+              next={nextSection}
+              suffix={suffix}
+            />
           ) : fullText ? (
             <article className="space-y-3">
               <p className="provenance no-print">
@@ -171,6 +188,32 @@ function NotSeeded() {
   );
 }
 
+type Neighbour = { number: string; heading: string | null } | null;
+
+function SectionStep({ slug, suffix, prev, next, unit }: { slug: string; suffix: string; prev: Neighbour; next: Neighbour; unit: string }) {
+  if (!prev && !next) return null;
+  const href = (n: NonNullable<Neighbour>) => `/browse/${slug}/text?p=${encodeURIComponent(n.number)}${suffix}`;
+  const label = (n: NonNullable<Neighbour>) => (n.heading ? `${n.number} — ${n.heading.replace(/[.\-\s]+$/, "")}` : n.number);
+  return (
+    <nav className="no-print flex items-center justify-between gap-3 border-t border-[var(--rule)] px-5 py-2.5 text-[12px]">
+      {prev ? (
+        <Link href={href(prev)} className="min-w-0 truncate text-[var(--link)] hover:underline" title={label(prev)}>
+          &larr; {unit} {label(prev)}
+        </Link>
+      ) : (
+        <span className="text-[var(--ink-4)]">Start of the {unit === "section" ? "Act" : "instrument"}</span>
+      )}
+      {next ? (
+        <Link href={href(next)} className="min-w-0 truncate text-right text-[var(--link)] hover:underline" title={label(next)}>
+          {unit} {label(next)} &rarr;
+        </Link>
+      ) : (
+        <span className="text-[var(--ink-4)]">End</span>
+      )}
+    </nav>
+  );
+}
+
 function ProvisionView({
   inst,
   p,
@@ -179,6 +222,9 @@ function ProvisionView({
   source,
   docs,
   asOn,
+  prev,
+  next,
+  suffix,
 }: {
   inst: InstrumentRow;
   p: ProvisionRow;
@@ -187,6 +233,9 @@ function ProvisionView({
   source: OfficialSource;
   docs: Awaited<ReturnType<typeof provisionDocuments>>;
   asOn?: string;
+  prev: Neighbour;
+  next: Neighbour;
+  suffix: string;
 }) {
   const showEmbed = source?.kind === "pdf";
   const last = lastAmendment(docs);
@@ -229,6 +278,7 @@ function ProvisionView({
             </Link>
           </div>
         </header>
+        <SectionStep slug={slug} suffix={suffix} prev={prev} next={next} unit={unit} />
         {last && (
           <div className="border-b border-[var(--rule)] bg-[var(--amend-bg)] px-5 py-2.5 text-[13px]">
             <span className="font-medium text-[var(--ink-1)]">Last amended by</span>{" "}
@@ -285,6 +335,8 @@ function ProvisionView({
             </ul>
           </section>
         )}
+        {/* Repeated after the text: a long section would otherwise need scrolling back up to move on. */}
+        <SectionStep slug={slug} suffix={suffix} prev={prev} next={next} unit={unit} />
       </article>
 
       {showEmbed && source?.embed && (

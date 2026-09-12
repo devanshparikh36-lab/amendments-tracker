@@ -45,28 +45,33 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </span>
             </Link>
 
-            {(revised.checked || revised.added) && (
-              <Link
-                href="/status"
-                title="When the collector last checked the regulators' websites"
-                className="order-last w-full text-[11px] text-[var(--ink-4)] hover:text-[var(--ink-2)] sm:order-none sm:w-auto"
-              >
-                Last checked {fmtDateTime(revised.checked ?? revised.added)}
-              </Link>
-            )}
+            {/* The stamp sits in the top corner, above the search box: it qualifies everything on the page
+                ("as of when?"), so it belongs where the eye lands last on the header rather than inline
+                beside the masthead, where it read as part of the title. */}
+            <div className="ml-auto flex w-full flex-col gap-1 sm:w-auto sm:items-end">
+              {(revised.checked || revised.added) && (
+                <Link
+                  href="/status"
+                  title="When the collector last checked the regulators' websites"
+                  className="text-[11px] leading-none text-[var(--ink-4)] hover:text-[var(--ink-2)]"
+                >
+                  Last checked {fmtDateTime(revised.checked ?? revised.added)}
+                </Link>
+              )}
 
-            <form action="/find" role="search" className="ml-auto flex min-w-[16rem] flex-1 items-center gap-1.5 sm:max-w-md">
-              <label htmlFor="header-q" className="sr-only">
-                Search sections, regulations and notifications
-              </label>
-              <input
-                id="header-q"
-                name="q"
-                className="field min-w-0 flex-1"
-                placeholder="80C · LODR 17 · section 16 CGST · ECB"
-              />
-              <button className="btn">Look up</button>
-            </form>
+              <form action="/find" role="search" className="flex min-w-[16rem] items-center gap-1.5 sm:w-[26rem]">
+                <label htmlFor="header-q" className="sr-only">
+                  Search sections, regulations and notifications
+                </label>
+                <input
+                  id="header-q"
+                  name="q"
+                  className="field min-w-0 flex-1"
+                  placeholder="80C · LODR 17 · section 16 CGST · ECB"
+                />
+                <button className="btn">Look up</button>
+              </form>
+            </div>
           </div>
           <div className="mx-auto max-w-[1360px] px-3.5 pt-1">
             <SiteNav />
