@@ -177,6 +177,15 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
                   </Link>
                   <div className="meta num">
                     {fmtDate(r.date_issued)} {r.number && <>· {r.number}</>}
+                    {" · "}
+                    <a
+                      href={`/api/jump?doc=${r.id}&q=${encodeURIComponent(q)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[var(--link)] hover:underline"
+                    >
+                      open the PDF here
+                    </a>
                   </div>
                   <p
                     className="snippet mt-0.5 text-[13px] text-[var(--ink-2)]"
@@ -194,10 +203,21 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
             <ul className="feed px-4 py-1">
               {text.attachments.map((r) => (
                 <li key={r.id} className="py-2">
-                  <Link href={`/documents/${r.document_id}`} className="font-medium hover:underline">
+                  {/* The hit is inside this file, so the file opened at the matching page is the useful
+                      destination -- the document page is one more click away from what was searched for. */}
+                  <a
+                    href={`/api/jump?att=${r.id}&q=${encodeURIComponent(q)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium hover:underline"
+                  >
                     {r.filename}
-                  </Link>
-                  <div className="meta">{r.document_title}</div>
+                  </a>
+                  <div className="meta">
+                    <Link href={`/documents/${r.document_id}`} className="hover:underline">
+                      {r.document_title}
+                    </Link>
+                  </div>
                   <p
                     className="snippet mt-0.5 text-[13px] text-[var(--ink-2)]"
                     dangerouslySetInnerHTML={{ __html: r.snippet }}
