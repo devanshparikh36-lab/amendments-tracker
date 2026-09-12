@@ -169,12 +169,25 @@ returning its exact historical count:
 | `sebi_master_circulars` | 0, after 8m | **133**, ~8s |
 | `sebi_regulations` | 0, after 33m | **1137**, ~5m |
 
-Same commit, same code, same regulators; the only variable is where the request comes from. Two independent
-regulators breaking on one run while answering in seconds from an ordinary Indian IP fits a datacentre-IP block
-far better than coincident outages — Indian government sites commonly refuse cloud ranges. Still untested
-*from* the runner, which is the one piece missing; the next scheduled run supplies it now that `EmptyDiscovery`
-makes a zero-yield run fail loudly. If it holds, the free fixes are moving discovery to the Railway cron
-(`cli.py run` is already what Railway runs) or a self-hosted runner on a residential connection.
+Same commit, same code, same regulators; the only variable is where the request comes from.
+
+**Do not treat "datacentre IPs are blocked" as established — it is an inference, and evidence is against it.**
+Fetched from Anthropic's cloud infrastructure on 12 Sept, SEBI's circular listing returned HTTP 200 with 2,802
+records, so SEBI plainly does not refuse cloud ranges as such. CBIC could not be tested the same way, but only
+because that client lacks the Sectigo intermediate this repo bundles (`amendments/certs/`, committed, so the
+runner has it) — with it, CBIC returns 200 from here too. What is actually established is narrower: these five
+adapters return their full counts from a residential connection and zero from GitHub's runners after tens of
+minutes of retries. The cause could equally be a timeout profile, DNS on the runner, or the retry path itself.
+
+**The decisive evidence is unread.** Each adapter logs the real exception per failed unit
+(`log.warning("notifications %s %s failed: %s", ...)`), so run #20's log names the cause outright — a 403 means
+blocking, a timeout means something else. Those lines could not be reached in this session: the log viewer only
+loads when its pane is rendered, and there is no `gh` CLI here. Read them before committing to any
+architecture, via "… → Download log archive" on the run page, which sidesteps the browser entirely.
+
+This matters because a whole architecture rests on it. If it is a block, the answers are a residential runner
+or a local scheduled task, and this machine is permanently in the loop. If it is a bug or a timeout, the fix is
+in the code, nothing needs to run here, and the seven-of-twelve compromise disappears.
 
 The CBIC category endpoint also returns HTTP 500, but that is a red herring — `_categories` retries and falls
 back to its built-in list, costing minutes rather than documents.
