@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("digest")
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
+    p_refetch = sub.add_parser("refetch", help="queue a re-fetch for documents whose attachment file is missing")
+    p_refetch.add_argument("--limit", type=int, default=2000)
     p_pages = sub.add_parser("pageindex", help="write per-page text for stored PDFs to object storage, for in-PDF search")
     p_pages.add_argument("--limit", type=int, default=500, help="attachments to process this pass")
     p_retain = sub.add_parser("retain", help="drop the oldest ordinary documents per instrument, once storage is tight")
@@ -128,6 +130,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "prune":
         print(pipeline.prune_before_cutoff())
+        return 0
+
+    if args.cmd == "refetch":
+        n = pipeline.requeue_missing_attachments(limit=args.limit)
+        print(f"queued {n} documents for re-fetch; run 'work' to process")
         return 0
 
     if args.cmd == "pageindex":

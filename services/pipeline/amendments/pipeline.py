@@ -1107,6 +1107,30 @@ def _is_bot_wall(pages: list[str]) -> bool:
     return bool(pages) and bool(_BOT_WALL.search(" ".join(pages)[:2000]))
 
 
+def requeue_missing_attachments(limit: int = 2000) -> int:
+    """Queue a re-fetch for every document that has an attachment with no stored file.
+
+    Clearing a bad file is not enough on its own: the document's fetch job is already marked done, so nothing
+    would ever look at it again. This is what turns "we know that file is wrong" into "fetch it again", and it
+    is the follow-up to any bulk reset -- such as discarding the 545 anti-bot pages that were stored as PDFs.
+    """
+    with db.transaction() as conn:
+        docs = db.fetch_all(
+            conn,
+            """SELECT DISTINCT a.document_id AS id FROM attachment a
+                WHERE a.storage_key IS NULL
+                  AND NOT EXISTS (SELECT 1 FROM job j
+                                   WHERE j.type = 'fetch_document' AND j.status IN ('pending', 'running')
+                                     AND (j.payload->>'document_id')::int = a.document_id)
+                ORDER BY a.document_id LIMIT %s""",
+            (limit,),
+        )
+        for d in docs:
+            enqueue(conn, "fetch_document", {"document_id": d["id"]})
+    log.info("re-queued %d documents whose attachments are missing", len(docs))
+    return len(docs)
+
+
 def index_attachment_pages(limit: int = 500) -> dict[str, int]:
     """Write per-page text for stored PDFs to object storage, so a reader can search inside one.
 

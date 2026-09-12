@@ -8,7 +8,7 @@ from datetime import date
 from .. import http
 from ..instruments import FEMA_MD_TITLE_PATTERNS
 from .base import Adapter, DiscoveredDocument, FetchedAttachment, FetchedDocument, SeedResult
-from .rbi_common import RBI_BASE, canonical, extract_detail, filename_from_url, parse_listing, updated_as_on
+from .rbi_common import RBI_BASE, RBI_HOME, canonical, extract_detail, filename_from_url, parse_listing, updated_as_on
 
 log = logging.getLogger(__name__)
 
@@ -29,6 +29,9 @@ def md_detail_url(rbi_md_id: int) -> str:
 class RbiMasterDirections(Adapter):
     name = "rbi_master_directions"
     regulator_code = "RBI"
+    # Files only: discovery still uses plain HTTP. See RBI_HOME in rbi_common.
+    needs_browser = True
+    browser_home = RBI_HOME
 
     def discover(self, *, since_year: int | None = None) -> list[DiscoveredDocument]:
         html = http.get_text(LISTING_URL)

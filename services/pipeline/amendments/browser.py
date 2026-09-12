@@ -105,7 +105,27 @@ class BrowserSession:
         self._page = self._ctx.new_page()
         self._page.goto(self.home_url, wait_until="domcontentloaded", timeout=90_000)
         self._page.wait_for_timeout(2500)
+        self._choose_english()
         log.info("browser session ready at %s", self.home_url)
+
+    def _choose_english(self) -> None:
+        """Click through a language gate if the site opens with one.
+
+        rbi.org.in covers its home page with a Hindi/English chooser before showing anything. Requests issued
+        from inside the page would mostly still work, but the site sets its language cookie on that click, and
+        a session that never made the choice is a session the site can treat as unestablished. Best-effort and
+        short: every other site here shows no such gate, and absence must cost nothing.
+        """
+        for selector in ("button:has-text('English')", "input[value='English']", "a:has-text('English')"):
+            try:
+                el = self._page.locator(selector).first
+                el.wait_for(state="visible", timeout=1500)
+                el.click(timeout=2000)
+                self._page.wait_for_timeout(1200)
+                log.info("chose English on the language gate at %s", self.home_url)
+                return
+            except Exception:
+                continue
 
     def close(self) -> None:
         """Drop this site's context only; the shared Chromium stays up for the other sites."""
@@ -172,18 +192,22 @@ class BrowserSession:
         )
 
     def get_bytes(self, url: str) -> tuple[bytes, str | None]:
-        """Download a file through the page (base64 across the bridge)."""
-        out = self._eval(
-            """async u => { const r = await fetch(u); if (!r.ok) throw new Error(r.status + ' for ' + u);
-                 const b = await r.arrayBuffer(); const bytes = new Uint8Array(b);
-                 let s = ''; const chunk = 0x8000;
-                 for (let i = 0; i < bytes.length; i += chunk) s += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
-                 return {b64: btoa(s), type: r.headers.get('content-type')}; }""",
-            url,
-        )
-        import base64
+        """Download a file using the browser context's own network stack.
 
-        return base64.b64decode(out["b64"]), out.get("type")
+        Not an in-page fetch(), which is subject to CORS: RBI serves its pages from www.rbi.org.in and its
+        PDFs from rbidocs.rbi.org.in, and that second host sends no CORS headers, so a fetch() issued inside
+        the page fails with "TypeError: Failed to fetch" no matter how real the browser is. This request
+        carries the context's cookies and TLS fingerprint -- which is what gets past the bot wall -- while
+        being a browser-level request rather than a page-level one, so cross-origin is simply not its problem.
+        It also skips the base64 bridge, which mattered more the larger the file.
+        """
+        self.start()
+        with self._lock:
+            self._throttle()
+            resp = self._ctx.request.get(url, timeout=120_000)
+            if not resp.ok:
+                raise RuntimeError(f"{resp.status} for {url}")
+            return resp.body(), resp.headers.get("content-type")
 
 
 _sessions: dict[str, BrowserSession] = {}

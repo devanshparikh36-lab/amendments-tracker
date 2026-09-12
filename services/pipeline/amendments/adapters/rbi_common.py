@@ -15,6 +15,12 @@ log = logging.getLogger(__name__)
 
 RBI_BASE = "https://www.rbi.org.in/Scripts/"
 
+# Attachments are downloaded through a real browser anchored here. RBI sits behind Imperva, which answers a
+# scripted PDF request with an HTML interstitial -- "Please enable JavaScript to view the page content" --
+# carrying HTTP 200 and a .pdf name. 545 of those were stored as if they were documents before anything
+# noticed, so listing pages may be fetched plainly but files must come through the browser session.
+RBI_HOME = "https://www.rbi.org.in/"
+
 # PDFs linked from every RBI page (site chrome), never document attachments.
 _SITEWIDE_PDF = re.compile(r"/(Accessibility\d*|Utkarsh\d*|GS1093_\d+|GazetteNotification16072019)\.pdf$", re.I)
 

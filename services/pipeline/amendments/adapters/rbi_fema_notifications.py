@@ -8,6 +8,7 @@ from datetime import date
 from .. import http
 from .base import Adapter, DiscoveredDocument, FetchedAttachment, FetchedDocument
 from .rbi_common import (
+    RBI_HOME,
     RBI_BASE,
     canonical,
     extract_detail,
@@ -55,6 +56,9 @@ def clean_number(raw: str | None) -> str | None:
 class RbiFemaNotifications(Adapter):
     name = "rbi_fema_notifications"
     regulator_code = "RBI"
+    # Files only: discovery still uses plain HTTP. See RBI_HOME in rbi_common.
+    needs_browser = True
+    browser_home = RBI_HOME
 
     def discover(self, *, since_year: int | None = None) -> list[DiscoveredDocument]:
         pages = [http.get_text(LISTING_URL)]
