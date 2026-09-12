@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
 
+// Exactly what this list renders, and nothing else. It is sent to the browser once per section, so a
+// 935-section Act pays for every field here 935 times; parent_id and sort_key were being carried along by a
+// spread and read by nobody.
 export type SectionItem = {
   id: number;
   number: string;
   heading: string | null;
   level: string;
-  parent_id: number | null;
   machine: boolean;
   differs: number;
 };

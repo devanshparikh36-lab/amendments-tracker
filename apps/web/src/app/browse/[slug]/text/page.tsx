@@ -58,9 +58,14 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
   const atIdx = selected ? sections.findIndex((s) => s.number === selected.number) : -1;
   const prevSection = atIdx > 0 ? sections[atIdx - 1] : null;
   const nextSection = atIdx >= 0 && atIdx < sections.length - 1 ? sections[atIdx + 1] : null;
-  // The sidebar ships to the browser: send trimmed headings so a 900-section Act stays light.
+  // The sidebar ships to the browser, so send only the fields it renders and trim the headings: a 935-section
+  // Act pays for every property 935 times, and a spread was carrying parent_id and sort_key across for nobody.
   const navItems = index.map((i) => ({
-    ...i,
+    id: i.id,
+    number: i.number,
+    level: i.level,
+    machine: i.machine,
+    differs: i.differs,
     heading: i.heading && i.heading.length > 80 ? `${i.heading.slice(0, 80)}…` : i.heading,
   }));
 
