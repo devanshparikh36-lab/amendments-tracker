@@ -58,9 +58,15 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
   const atIdx = selected ? sections.findIndex((s) => s.number === selected.number) : -1;
   const prevSection = atIdx > 0 ? sections[atIdx - 1] : null;
   const nextSection = atIdx >= 0 && atIdx < sections.length - 1 ? sections[atIdx + 1] : null;
-  // The sidebar ships to the browser, so send only the fields it renders and trim the headings: a 935-section
-  // Act pays for every property 935 times, and a spread was carrying parent_id and sort_key across for nobody.
-  const navItems = index.map((i) => ({
+  // The sidebar ships to the browser, so send only the fields it renders, trim the headings, and send a window
+  // rather than the whole Act. The full contents used to go as props, which wrote all 935 sections into the
+  // HTML and serialised them again for hydration -- the list paid for twice, 600 KB to read one section. The
+  // rest arrives from /api/sections once the page is up, so the first paint carries the provision that was
+  // asked for instead of the table of contents.
+  const NAV_WINDOW = 60;
+  const at = selected ? index.findIndex((i) => i.number === selected.number) : -1;
+  const from = at >= 0 ? Math.max(0, at - Math.floor(NAV_WINDOW / 3)) : 0;
+  const navItems = index.slice(from, from + NAV_WINDOW).map((i) => ({
     id: i.id,
     number: i.number,
     level: i.level,
@@ -126,7 +132,7 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
 
       <div className="grid gap-4 lg:grid-cols-[288px_minmax(0,1fr)]">
         <aside className="panel no-print sticky top-3 h-[calc(100vh-5.5rem)] overflow-hidden">
-          <SectionFilter items={navItems} slug={slug} selected={sp.p} suffix={suffix} unit={unit} />
+          <SectionFilter items={navItems} total={sections.length} slug={slug} selected={sp.p} suffix={suffix} unit={unit} />
         </aside>
 
         <div className="print-full min-w-0 space-y-4">
