@@ -1,8 +1,14 @@
 name: Daily email digest
 
+# MANUAL-ONLY. The digest now runs from the local scheduled task, immediately after collection -- see
+# services/pipeline/run-local.ps1. It reports what collection found, and collection is local, so if this
+# machine was off there is nothing new to report; running it here on its own schedule would just mail an empty
+# digest, and could not run at all until the Actions allowance resets on 1 Oct.
+#
+# Kept dispatchable for a one-off digest, and as the way back if collection ever returns to GitHub runners.
 on:
-  schedule:
-    - cron: "30 2 * * *"        # 08:00 IST daily
+  # schedule:
+  #   - cron: "30 2 * * *"      # 08:00 IST daily
   workflow_dispatch:
 
 jobs:

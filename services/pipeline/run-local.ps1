@@ -47,13 +47,23 @@ $collect = (Start-Process -FilePath $env:ComSpec `
     -ArgumentList ('/c ""{0}" cli.py run --limit 500" >> "{1}" 2>&1' -f $python, $log) `
     -Wait -PassThru -NoNewWindow).ExitCode
 
+# The digest runs here rather than in digest.yml because it reports what collection found, and collection is
+# local: if this machine was off there is nothing new to report anyway, so coupling them is honest. It also
+# means the digest works now, instead of waiting for the Actions allowance to reset.
+# Silent until RESEND_API_KEY and DIGEST_TO are set in services/pipeline/.env -- it exits non-zero in that
+# case, which is deliberate, so "no mail configured" cannot look like "nothing changed".
+"==== digest $(Get-Date -Format s) ====" | Out-File -FilePath $log -Append -Encoding utf8
+$digestOut = & $python cli.py digest 2>&1
+$digest = $LASTEXITCODE
+$digestOut | Out-File -FilePath $log -Append -Encoding utf8
+
 # Short enough that buffering does not matter, and we want the text in hand to put in the notification.
 "==== storage $(Get-Date -Format s) ====" | Out-File -FilePath $log -Append -Encoding utf8
 $storageOut = & $python cli.py storage 2>&1
 $storage = $LASTEXITCODE
 $storageOut | Out-File -FilePath $log -Append -Encoding utf8
 
-"==== end $(Get-Date -Format s)  collection=$collect  storage=$storage ====" |
+"==== end $(Get-Date -Format s)  collection=$collect  digest=$digest  storage=$storage ====" |
     Out-File -FilePath $log -Append -Encoding utf8
 
 if ($storage -ne 0) {
