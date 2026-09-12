@@ -4,7 +4,8 @@ State of the Regulation Tracker, and what the next session should pick up.
 
 ## Live
 
-- Site: https://teal-strudel-5db88d.netlify.app (passcode gate; `SITE_PASSCODE`)
+- Site: the Netlify deployment, behind a passcode gate. URL and passcode are the `SITE_URL` and `SITE_PASSCODE`
+  secrets — deliberately not written down here, so this file stays safe to publish.
 - `main` is deployed and clean. Recent commits:
   - `00631db` Add a compact command for the 103 MB of text the database stores for nothing
   - `c4a1318` Warn at 60% of a free tier, and make the warning actually reach someone
@@ -120,7 +121,7 @@ limits currently report `[ok]` and the watch exits 0.
 > the repo cannot control. Checked at `github.com/settings/notifications` on the `devanshparikh36-lab` account:
 >
 > ```
-> Default notifications email:  the address in the DIGEST_TO secret
+> Default notifications email:  <the owner's address - matches DIGEST_TO>
 > Actions:  Notify me: on GitHub, Email.  (Failed workflows only)
 > ```
 >
@@ -263,11 +264,10 @@ the residential runner: that backlog would otherwise have sat there indefinitely
 
 - **Teams and Resend are still unconfigured**, so the daily digest and the richer alerts go nowhere. No code
   change needed: `worker.yml` already wires `TEAMS_WEBHOOK_URL`, `RESEND_API_KEY`, `DIGEST_FROM`, `DIGEST_TO`,
-  `SITE_URL` as secrets. **`DIGEST_TO` is `the address in the DIGEST_TO secret`** — deliberately *not* the address in
-  `git config user.email` (`the account address`), which is the account address and would mail the wrong person
-  despite the committer name reading `DEVANSH`. The same goes for GitHub's failure emails, whose destination is
-  a setting on the `devanshparikh36-lab` account rather than anything this repo controls — worth confirming
-  there, since it is currently the only alerting channel that works. Until then both kinds of breakage route through GitHub's failure email instead, which
+  `SITE_URL` as secrets. **Do not infer `DIGEST_TO` from this repository.** The address in
+  `git config user.email` is the account address and is *not* the digest recipient, despite the committer name
+  reading `DEVANSH` — mail configured from that signal goes to the wrong person every day. The correct address
+  is already set in the `DIGEST_TO` secret and on the GitHub account's notification settings; read it there. Until then both kinds of breakage route through GitHub's failure email instead, which
   costs nothing and needs no secret: storage via the Free-tier watch, and collection because `discover` and
   `run` now exit non-zero if any adapter failed. **Expect `worker.yml` to go red every six hours** until the
   five blocked sources move to the residential runner — they are genuinely broken there and have been since
