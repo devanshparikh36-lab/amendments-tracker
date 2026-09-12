@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
 
 import fitz  # PyMuPDF
 
@@ -27,8 +30,40 @@ def _clean(text: str) -> str:
     return text.strip()
 
 
+# Where Tesseract ends up on Windows. winget installs per-user when it is not run elevated, which puts it
+# under LOCALAPPDATA and leaves it off PATH entirely -- so `which` alone reports no OCR on a machine that has
+# it installed and working.
+_TESSERACT_DIRS = (
+    Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Tesseract-OCR",
+    Path(r"C:\Program Files\Tesseract-OCR"),
+    Path(r"C:\Program Files (x86)\Tesseract-OCR"),
+)
+
+
+@lru_cache(maxsize=1)
 def _ocr_available() -> bool:
-    return shutil.which("tesseract") is not None
+    """Whether OCR can run, arranging the environment it needs if so.
+
+    Two things must be true, and only the first is obvious: the binary must be locatable, and PyMuPDF must be
+    able to find the language data, which it reads from TESSDATA_PREFIX. Miss the second and OCR fails per
+    page with a message about tessdata rather than saying it is not configured.
+    """
+    exe = shutil.which("tesseract")
+    if not exe:
+        for d in _TESSERACT_DIRS:
+            candidate = d / "tesseract.exe"
+            if candidate.is_file():
+                os.environ["PATH"] = f"{d}{os.pathsep}{os.environ.get('PATH', '')}"
+                exe = str(candidate)
+                break
+    if not exe:
+        return False
+    if not os.environ.get("TESSDATA_PREFIX"):
+        tessdata = Path(exe).parent / "tessdata"
+        if tessdata.is_dir():
+            os.environ["TESSDATA_PREFIX"] = str(tessdata)
+    log.info("OCR available: %s", exe)
+    return True
 
 
 def extract_pdf_text(data: bytes) -> PdfText:

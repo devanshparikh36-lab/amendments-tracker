@@ -1107,6 +1107,75 @@ def _is_bot_wall(pages: list[str]) -> bool:
     return bool(pages) and bool(_BOT_WALL.search(" ".join(pages)[:2000]))
 
 
+def ocr_backlog(*, minutes: float = 20.0) -> dict[str, Any]:
+    """Read the scanned PDFs that carry no text layer, until the time budget runs out.
+
+    Bounded by wall clock rather than count, because OCR cost is per page and the backlog is wildly uneven:
+    284 documents, but 76 SEBI master circulars average 166 pages each while most others are under five. A
+    count-based limit would make one run take a minute and the next take hours.
+
+    Resumable by construction. `ocr_used` is set on every attachment we attempt, whether or not the attempt
+    yielded anything, so a document is never read twice and closing the laptop costs at most the file in
+    flight. Smallest first, so the number of *documents* that become searchable climbs as fast as possible.
+    """
+    import time as _time
+
+    store = storage()
+    deadline = _time.monotonic() + minutes * 60
+    done = pages = chars = failed = 0
+    while _time.monotonic() < deadline:
+        with db.transaction() as conn:
+            row = db.fetch_one(
+                conn,
+                """SELECT a.id, a.document_id, a.storage_key, a.page_count
+                     FROM attachment a JOIN document d ON d.id = a.document_id
+                    WHERE a.storage_key IS NOT NULL AND a.ocr_used IS NOT TRUE
+                      AND coalesce(a.page_count, 0) > 0
+                      AND coalesce(length(a.extracted_text), 0) < 200
+                      AND coalesce(length(d.extracted_text), 0) < 200
+                    ORDER BY a.page_count, a.id LIMIT 1""",
+            )
+        if not row:
+            break
+        try:
+            extracted = extract_pdf_text(store.get(row["storage_key"]))
+            text = extracted.text
+        except Exception as exc:
+            log.warning("OCR failed for attachment %s: %s", row["id"], str(exc)[:120])
+            text, failed = "", failed + 1
+        with db.transaction() as conn:
+            # ocr_used is set even when nothing came back: the attempt is the fact worth recording, otherwise
+            # an unreadable scan is retried on every run for ever.
+            db.execute(
+                conn,
+                "UPDATE attachment SET extracted_text = %s, ocr_used = true WHERE id = %s",
+                (text or None, row["id"]),
+            )
+            if text:
+                db.execute(
+                    conn,
+                    """UPDATE document SET extracted_text = %s
+                        WHERE id = %s AND coalesce(length(extracted_text), 0) < 200""",
+                    (text, row["document_id"]),
+                )
+        done += 1
+        pages += row["page_count"] or 0
+        chars += len(text)
+    with db.transaction() as conn:
+        left = db.fetch_one(
+            conn,
+            """SELECT count(*) AS n, coalesce(sum(a.page_count), 0) AS pages
+                 FROM attachment a JOIN document d ON d.id = a.document_id
+                WHERE a.storage_key IS NOT NULL AND a.ocr_used IS NOT TRUE
+                  AND coalesce(a.page_count, 0) > 0
+                  AND coalesce(length(a.extracted_text), 0) < 200
+                  AND coalesce(length(d.extracted_text), 0) < 200""",
+        )
+    log.info("ocr: %d documents, %d pages, %d characters, %d failed", done, pages, chars, failed)
+    return {"documents": done, "pages": pages, "characters": chars, "failed": failed,
+            "remaining": left["n"], "remaining_pages": int(left["pages"])}
+
+
 def requeue_missing_attachments(limit: int = 2000) -> int:
     """Queue a re-fetch for every document that has an attachment with no stored file.
 

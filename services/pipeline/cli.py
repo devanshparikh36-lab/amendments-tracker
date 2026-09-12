@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("digest")
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
+    p_ocr = sub.add_parser("ocr", help="read scanned PDFs that carry no text layer, within a time budget")
+    p_ocr.add_argument("--minutes", type=float, default=20.0, help="wall-clock budget for this pass")
     p_refetch = sub.add_parser("refetch", help="queue a re-fetch for documents whose attachment file is missing")
     p_refetch.add_argument("--limit", type=int, default=2000)
     p_pages = sub.add_parser("pageindex", help="write per-page text for stored PDFs to object storage, for in-PDF search")
@@ -130,6 +132,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "prune":
         print(pipeline.prune_before_cutoff())
+        return 0
+
+    if args.cmd == "ocr":
+        r = pipeline.ocr_backlog(minutes=args.minutes)
+        print(f"read {r['documents']} documents ({r['pages']} pages, {r['characters']:,} characters), "
+              f"{r['failed']} failed")
+        print(f"{r['remaining']} documents ({r['remaining_pages']} pages) still to read")
         return 0
 
     if args.cmd == "refetch":

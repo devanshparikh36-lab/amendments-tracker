@@ -34,6 +34,13 @@ REM mails nobody is the failure this project keeps having.
 set "RCD=%ERRORLEVEL%"
 echo ---- digest exit %RCD% ---- >> "%LOG%"
 
+REM Read a slice of the scanned-PDF backlog. Time-bounded rather than count-bounded so a run stays
+REM predictable: OCR costs about five seconds a page, and the backlog is uneven enough that a count limit
+REM would make one run take a minute and the next take hours. It resumes where it stopped, so closing the
+REM laptop costs at most the file in flight.
+".venv\Scripts\python.exe" cli.py ocr --minutes 20 >> "%LOG%" 2>&1
+echo ---- ocr pass done ---- >> "%LOG%"
+
 REM The free-tier check. storage.yml does this on GitHub and emails on a breach, but it cannot run while the
 REM Actions allowance is exhausted -- which is most of the month. Running it here too means the 60%% warning
 REM still reaches somebody in the meantime, via a desktop notification rather than mail.
