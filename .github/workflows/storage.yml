@@ -13,7 +13,9 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    # Self-hosted: GitHub-hosted minutes run out mid-month, and a free-tier alarm that stops running for three
+    # weeks of every month is worse than no alarm, because its silence reads as "everything is fine".
+    runs-on: [self-hosted, windows, residential]
     defaults:
       run:
         working-directory: services/pipeline

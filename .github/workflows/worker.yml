@@ -1,8 +1,19 @@
 name: Regulation tracker worker
 
+# MANUAL-ONLY FALLBACK. Collection now runs on the self-hosted runner in worker-residential.yml.
+#
+# The schedule is disabled because this workload cannot run free on GitHub-hosted runners: about an hour a run,
+# four times a day, is ~7,200 minutes a month against the 2,000 included with GitHub Free on a private repo.
+# It exhausted the allowance around 8 Sept 2026 and every job was refused thereafter ("the job was not started
+# because recent account payments have failed or your spending limit needs to be increased"), which is how
+# collection stopped without anything in the code being wrong.
+#
+# Keep this workflow: it is the way back if the self-hosted runner is retired, and it is worth dispatching
+# manually after the monthly reset to compare GitHub-hosted behaviour against the residential runner --
+# notably for CBIC and SEBI, which return zero from here and full counts from a residential IP.
 on:
-  schedule:
-    - cron: "30 */6 * * *"      # every 6 hours (UTC); 06:00 / 12:00 / 18:00 / 00:00 IST
+  # schedule:
+  #   - cron: "30 */6 * * *"    # re-enable only if the self-hosted runner is abandoned AND minutes allow
   workflow_dispatch:
     inputs:
       command:

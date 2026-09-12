@@ -1,34 +1,35 @@
-name: Worker (residential IP)
+name: Worker (self-hosted, residential IP)
 
-# Collects the five sources that return zero from GitHub's runners while answering in seconds from an ordinary
-# Indian IP -- see docs/HANDOFF.md. Runs on a self-hosted Windows runner so the requests leave a residential
-# connection instead of a datacentre range.
+# The primary collector. Runs the full pipeline on a self-hosted Windows runner, for two reasons:
 #
-# Deliberately narrow: it discovers and fetches only those five adapters. Everything else stays on the
-# GitHub-hosted worker in worker.yml, which still works and still runs on its own schedule. Do not widen this
-# to a full `run` without also disabling worker.yml's schedule, or both will collect the same sources twice.
+#   1. Cost. A run takes about an hour, four times a day -- roughly 7,200 minutes a month against the 2,000
+#      included with GitHub Free on a private repository, exhausted around the 8th of every month. Jobs on a
+#      self-hosted runner consume no GitHub-hosted minutes at all, so the ceiling disappears entirely.
+#   2. Reach. CBIC and SEBI return zero to GitHub's runners after tens of minutes of retries, and their exact
+#      historical counts from an ordinary Indian IP in seconds. Requests from here leave a residential
+#      connection. See docs/HANDOFF.md.
 #
-# MANUAL ONLY until a runner actually claims the label below. Re-enable the schedule by uncommenting the two
-# cron lines, and only once `config.cmd` has registered this machine.
+# worker.yml remains as the GitHub-hosted fallback, manual-only, for when this runner is retired or offline
+# past a deadline that matters.
 #
-# This previously ran on a schedule and shared worker.yml's concurrency group, which stopped scheduled
-# collection dead for 19 hours: with no runner holding the `self-hosted, windows, residential` label the job
-# queued forever, and because it held the shared group, worker.yml queued behind a job that could never start.
-# A queued job still owns its concurrency group. Two lessons, both now enforced below -- never share a group
-# with a workflow that must keep running, and never schedule work for a runner that might not exist.
+# The machine does NOT need to be awake at the scheduled moment: GitHub holds a job for up to 24 hours waiting
+# for a self-hosted runner, so whenever this machine next comes online the queued run executes. If it is off
+# for days, pending runs supersede one another rather than piling up.
 on:
-  # schedule:
-  #   - cron: "0 */6 * * *"     # on the hour, half an hour ahead of worker.yml
+  schedule:
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 concurrency:
-  group: worker-residential    # deliberately NOT worker.yml's group; it must never be able to block that one
-  cancel-in-progress: true     # a stale queued run must never accumulate or hold the group
+  # Deliberately NOT worker.yml's group. A queued job owns its concurrency group, so sharing one with a
+  # workflow that must keep running lets an offline runner block it indefinitely -- that already happened.
+  group: worker-residential
+  cancel-in-progress: false
 
 jobs:
-  collect:
+  run:
     runs-on: [self-hosted, windows, residential]
-    timeout-minutes: 120
+    timeout-minutes: 300
     defaults:
       run:
         working-directory: services/pipeline
@@ -57,36 +58,22 @@ jobs:
       - name: Install dependencies
         run: pip install -q -r requirements.txt
 
-      # No apt-get, no Xvfb: this is Windows and it has a real desktop, so headed Chromium runs as-is.
-      # --with-deps is Linux-only and fails here.
+      # No apt-get and no Xvfb: this is Windows and has a real desktop, so headed Chromium runs as-is, and
+      # playwright's --with-deps is Linux-only. Tesseract is not installed here, so OCR fallback for scanned
+      # PDFs is unavailable; text PDFs extract normally.
       - name: Install Chromium
         run: python -m playwright install chromium
 
       - name: Apply migrations
         run: python cli.py migrate
 
-      - name: Discover the sources GitHub's runners cannot reach
-        run: >
-          python cli.py discover
-          --adapter cbic_gst_notifications
-          --adapter cbic_gst_circulars
-          --adapter sebi_circulars
-          --adapter sebi_master_circulars
-          --adapter sebi_regulations
+      # Exits non-zero if any adapter failed, so a broken collector fails the workflow and GitHub emails the
+      # owner -- the only alerting channel here that costs nothing.
+      - name: Discover and fetch
+        run: python cli.py run --limit 500
 
-      # Fetch them from here too: a document discovered on a residential IP is no use if its text is then
-      # fetched from a blocked one.
-      - name: Fetch what it found
-        run: >
-          python cli.py work --limit 500
-          --adapter cbic_gst_notifications
-          --adapter cbic_gst_circulars
-          --adapter sebi_circulars
-          --adapter sebi_master_circulars
-          --adapter sebi_regulations
-
-      # Never leave a Chromium behind on a machine somebody actually uses.
+      # Never leave a browser behind on a machine somebody actually uses.
       - name: Stop stray browsers
         if: always()
-        run: Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*ms-playwright*' } | Stop-Process -Force
         shell: pwsh
+        run: Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*ms-playwright*' } | Stop-Process -Force

@@ -7,7 +7,10 @@ on:
 
 jobs:
   digest:
-    runs-on: ubuntu-latest
+    # Self-hosted for the same reason as the worker: GitHub-hosted minutes are exhausted around the 8th of
+    # each month, and a digest that cannot run is a digest that tells nobody anything. Needs no browser, only
+    # Python and the database.
+    runs-on: [self-hosted, windows, residential]
     timeout-minutes: 15
     defaults:
       run:
