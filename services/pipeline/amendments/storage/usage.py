@@ -98,23 +98,43 @@ def database_usage() -> Usage:
     return Usage("Neon database", int(row["n"]), NEON_FREE_BYTES, f"{docs['n']} documents")
 
 
+WHY_IT_MATTERS = (
+    "Cloudflare R2 costs about $0.015 per GB per month beyond the free 10 GB. Neon's free plan stops "
+    "accepting writes at 500 MB; the next plan is $19 a month. Raising either is a paid change, so this "
+    "is a heads-up rather than something the pipeline will do on its own."
+)
+
+
 def check(*, notify: bool = True) -> list[Usage]:
-    """Report both limits, and raise an alert when either passes the warning threshold."""
+    """Report both limits, and raise an alert on every configured channel when either passes 60%.
+
+    Sends to Teams *and* email rather than one or the other, because each has a way of being unavailable: the
+    Teams webhook has never been set, and the GitHub-workflow-failure route -- which is what actually delivers
+    this today -- cannot run while the Actions allowance is exhausted. An alarm nobody receives is the failure
+    mode this whole check exists to prevent, so it takes every path it has.
+    """
     usages = [object_storage_usage(), database_usage()]
     for u in usages:
         log.info("%s - %s", u.human(), u.detail)
     at_risk = [u for u in usages if u.level != "ok"]
-    if at_risk and notify:
-        from ..notify import teams
+    if not (at_risk and notify):
+        return usages
 
-        worst = max(at_risk, key=lambda u: u.fraction)
-        headline = "Storage almost full" if worst.level == "critical" else "Storage filling up"
-        teams.send_teams(
-            f"{headline}: {worst.label}",
-            [(u.label, f"{u.human()} - {u.detail}") for u in usages],
-            settings.site_url + "/status",
-            "Cloudflare R2 costs about $0.015 per GB per month beyond the free 10 GB. Neon's free plan stops "
-            "accepting writes at 500 MB; the next plan is $19 a month. Raising either is a paid change, so this "
-            "is a heads-up rather than something the pipeline will do on its own.",
-        )
+    from ..notify import email as email_notify
+    from ..notify import teams
+
+    worst = max(at_risk, key=lambda u: u.fraction)
+    headline = "Storage almost full" if worst.level == "critical" else "Storage filling up"
+    subject = f"{headline}: {worst.label}"
+    rows = [(u.label, f"{u.human()} - {u.detail}") for u in usages]
+
+    sent_teams = teams.send_teams(subject, rows, settings.site_url + "/status", WHY_IT_MATTERS)
+    body = (
+        f"<h2>{subject}</h2><ul>"
+        + "".join(f"<li><b>{label}</b>: {detail}</li>" for label, detail in rows)
+        + f"</ul><p>{WHY_IT_MATTERS}</p><p><a href='{settings.site_url}/status'>Status page</a></p>"
+    )
+    sent_email = email_notify.send_digest(subject, body)
+    if not (sent_teams or sent_email):
+        log.warning("%s - but no alert channel is configured, so nobody was told", subject)
     return usages
