@@ -1107,6 +1107,75 @@ def _is_bot_wall(pages: list[str]) -> bool:
     return bool(pages) and bool(_BOT_WALL.search(" ".join(pages)[:2000]))
 
 
+# An amendment is mechanically applicable only when it names both sides in quotes: "for the words 'X', the
+# words 'Y' shall be substituted". Anything else -- an insertion described by position, an omission, a new
+# clause spanning paragraphs -- requires reading comprehension and is not attempted here.
+_MECHANICAL = re.compile(
+    r"for\s+the\s+(?:words|figures|letters|brackets|expression)[^“\"‘']{0,40}"
+    r"[“\"‘'](?P<old>[^”\"’']{2,200})[”\"’'].{0,80}?"
+    r"[“\"‘'](?P<new>[^”\"’']{2,200})[”\"’'].{0,60}?substitut",
+    re.I | re.S,
+)
+
+
+def preview_mechanical_merges(limit: int = 500) -> dict[str, Any]:
+    """What a deterministic, AI-free merge would change -- without changing anything.
+
+    Reports only. Applying an amendment rewrites what the site presents as the law, so this exists to be read
+    by a person first.
+
+    The safety rule is the single match: a substitution is only proposed when the quoted old text appears
+    exactly once in the provision it targets. Zero matches means the amendment does not fit the text we hold
+    -- often because an earlier amendment already changed it -- and several matches means we cannot tell which
+    occurrence was meant. Both are refusals, not guesses, because a wrong substitution produces a statute that
+    reads as authoritative and is wrong.
+    """
+    with db.transaction() as conn:
+        rows = db.fetch_all(
+            conn,
+            """SELECT e.id, e.change_type, coalesce(e.ai_note, '') AS note,
+                      p.number AS provision_number, i.slug, i.short_code,
+                      v.text AS current_text
+                 FROM amendment_effect e
+                 JOIN provision p ON p.id = e.provision_id
+                 JOIN instrument i ON i.id = p.instrument_id
+                 LEFT JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
+                WHERE e.new_version_id IS NULL AND e.change_type = 'substitute'
+                ORDER BY e.id LIMIT %s""",
+            (limit,),
+        )
+    applicable: list[dict[str, Any]] = []
+    counts = {"considered": len(rows), "not_mechanical": 0, "no_text": 0, "not_found": 0, "ambiguous": 0}
+    for r in rows:
+        m = _MECHANICAL.search(r["note"])
+        if not m:
+            counts["not_mechanical"] += 1
+            continue
+        text = r["current_text"] or ""
+        if not text:
+            counts["no_text"] += 1
+            continue
+        old, new = m.group("old").strip(), " ".join(m.group("new").split())
+        hits = text.count(old)
+        if hits == 0:
+            counts["not_found"] += 1
+            continue
+        if hits > 1:
+            counts["ambiguous"] += 1
+            continue
+        at = text.find(old)
+        applicable.append({
+            "effect_id": r["id"],
+            "instrument": r["short_code"],
+            "provision": r["provision_number"],
+            "old": old,
+            "new": new,
+            "context": " ".join(text[max(0, at - 70) : at + len(old) + 70].split()),
+        })
+    counts["applicable"] = len(applicable)
+    return {"counts": counts, "applicable": applicable}
+
+
 def ocr_backlog(*, minutes: float = 20.0) -> dict[str, Any]:
     """Read the scanned PDFs that carry no text layer, until the time budget runs out.
 

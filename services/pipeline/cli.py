@@ -47,6 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("digest")
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
+    p_mp = sub.add_parser("mergepreview", help="report what an AI-free deterministic merge would change (writes nothing)")
+    p_mp.add_argument("--limit", type=int, default=500)
+    p_mp.add_argument("--show", type=int, default=10, help="how many proposed substitutions to print")
     p_ocr = sub.add_parser("ocr", help="read scanned PDFs that carry no text layer, within a time budget")
     p_ocr.add_argument("--minutes", type=float, default=20.0, help="wall-clock budget for this pass")
     p_refetch = sub.add_parser("refetch", help="queue a re-fetch for documents whose attachment file is missing")
@@ -132,6 +135,23 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "prune":
         print(pipeline.prune_before_cutoff())
+        return 0
+
+    if args.cmd == "mergepreview":
+        r = pipeline.preview_mechanical_merges(limit=args.limit)
+        c = r["counts"]
+        print(f"considered {c['considered']} unapplied substitutions")
+        print(f"  not mechanical (needs reading)      {c['not_mechanical']}")
+        print(f"  provision has no stored text        {c['no_text']}")
+        print(f"  old wording not found in provision  {c['not_found']}")
+        print(f"  old wording appears more than once  {c['ambiguous']}")
+        print(f"  APPLICABLE, unambiguous             {c['applicable']}")
+        for a in r["applicable"][: args.show]:
+            print(f"\n  {a['instrument']} {a['provision']}  (effect {a['effect_id']})")
+            print(f"    replace : {a['old'][:90]}")
+            print(f"    with    : {a['new'][:90]}")
+            print(f"    context : …{a['context'][:120]}…")
+        print("\nnothing was written; this command only reports")
         return 0
 
     if args.cmd == "ocr":
