@@ -193,7 +193,12 @@ registered this machine, and not before.
 > were the cause, and run #21 failed on billing before this workflow existed. Worth remembering when the next
 > outage has one obvious culprit: check billing before blaming the most recent change.
 
-**Three things remain, all of them on the machine rather than in the repo:**
+**Everything scheduled now targets this runner** — `worker-residential.yml` (full pipeline, 6-hourly),
+`digest.yml` and `storage.yml`. `worker.yml` is a manual-only GitHub-hosted fallback. Only `keepalive.yml`
+still spends GitHub minutes, monthly, for seconds. So until the runner is registered, **nothing runs at all** —
+which is no worse than today, since the minutes are exhausted until 1 Oct regardless.
+
+**What remains, all on the machine rather than in the repo:**
 
 1. **Stop it sleeping.** `STANDBYIDLE` is `0x12c` — five minutes on AC. A runner on a sleeping machine misses
    essentially every six-hourly run. `powercfg /change standby-timeout-ac 0`.
