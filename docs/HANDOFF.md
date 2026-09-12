@@ -319,8 +319,13 @@ the residential runner: that backlog would otherwise have sat there indefinitely
   10 Sept, and the silence was the actual bug.
 - **Known data gaps**, regulator-side: GST base texts dated 2020–2022, MCA 2014–2021 (neither has republished);
   three RBI Master Directions have ~30% empty paragraphs with no PDF fallback.
-- `AI_ENABLED` is `false` on the worker, so the AI merge path (`ai_note`, `cannot_apply`) is inert on scheduled
-  runs. Consistent with official-text-only, but worth knowing before debugging why effects are not applied.
+- **`AI_ENABLED` is `false`, and that is a decision — not a bug to fix.** Reconfirmed 12 Sept 2026 with the
+  trade-off put directly: applying an amendment means an LLM call per amending document, which costs money per
+  document, and references-only was chosen. So all **1,195 `amendment_effect` rows keep `new_version_id = NULL`
+  on purpose**. The site shows which provision each notification amends and links the regulator's own text; it
+  never publishes a machine-written consolidation of a legal provision that nobody has checked. If effects look
+  "not applied", that is the intended state, not a broken merge. `cli.py retag` reprocesses if it is ever
+  reversed.
 
 ## Environment — this machine, not the code
 
