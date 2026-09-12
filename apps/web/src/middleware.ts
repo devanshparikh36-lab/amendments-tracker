@@ -15,7 +15,16 @@ export async function middleware(req: NextRequest) {
   const passcode = process.env.SITE_PASSCODE;
   if (!passcode) return NextResponse.next();
   const { pathname } = req.nextUrl;
-  if (pathname.startsWith("/login") || pathname.startsWith("/api/login") || pathname.startsWith("/_next") || pathname === "/favicon.ico") {
+  // /api/health is outside the gate on purpose: it is the warm-up ping, and a redirect to /login would keep
+  // the function and the database asleep, which is the whole thing it exists to prevent. It returns no data
+  // about the contents -- only whether the database answered, and how long it took.
+  if (
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/api/login") ||
+    pathname === "/api/health" ||
+    pathname.startsWith("/_next") ||
+    pathname === "/favicon.ico"
+  ) {
     return NextResponse.next();
   }
   const cookie = req.cookies.get(COOKIE)?.value;
