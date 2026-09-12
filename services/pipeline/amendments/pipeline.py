@@ -1094,6 +1094,119 @@ def _vacuum_full(cur) -> list[str]:
     return done
 
 
+# Retention only ever runs when space is genuinely short. Below the trigger it reports and stops, because
+# deleting an official record that a regulator later removes from its own site is not recoverable, and there
+# is no reason to pay that risk while there is room.
+RETENTION_TRIGGER = 0.70
+RETENTION_TARGET = 0.60
+# Even under pressure, this many of the most recent documents per instrument are never touched.
+RETENTION_KEEP_PER_INSTRUMENT = 200
+# Never deletable, whatever the pressure: these are the texts the site is *for*, not traffic about them.
+RETENTION_PROTECTED_TYPES = ("act", "rules", "regulations", "master_direction", "master_circular")
+
+
+def retain_documents(*, apply: bool = False, force: bool = False) -> dict[str, Any]:
+    """Drop the oldest ordinary circulars and notifications per instrument, once storage is genuinely tight.
+
+    What is never deleted, in order of how much it would hurt:
+
+      * base texts -- Acts, Rules, Regulations, Master Directions and Master Circulars. The site exists to
+        serve these; a notification is a pointer to them.
+      * anything an instrument names as its official text, which would blank that instrument's reading view.
+      * anything tagged `is_amending`, because it is the evidence for an amendment already applied. Deleting
+        it would leave a provision whose history cites a document nobody can open.
+      * the most recent `RETENTION_KEEP_PER_INSTRUMENT` documents of every instrument, so no instrument is
+        ever reduced to a thin recent slice.
+
+    Dry by default and idle by default: below `RETENTION_TRIGGER` it deletes nothing at all and says so. Pass
+    force=True to evaluate the rule regardless, which is how to see what it *would* do while there is room.
+    """
+    from .storage.usage import check as usage_check
+
+    usages = usage_check(notify=False)
+    pressure = max((u.fraction for u in usages), default=0.0)
+    out: dict[str, Any] = {
+        "pressure": round(pressure, 4),
+        "trigger": RETENTION_TRIGGER,
+        "armed": pressure >= RETENTION_TRIGGER,
+        "applied": False,
+        "documents": 0,
+        "files": 0,
+    }
+    if pressure < RETENTION_TRIGGER and not force:
+        log.info("retention idle: %.0f%% used, trigger is %.0f%%", pressure * 100, RETENTION_TRIGGER * 100)
+        return out
+
+    with db.transaction() as conn:
+        victims = db.fetch_all(
+            conn,
+            """
+            WITH ranked AS (
+              SELECT d.id, d.date_issued, t.instrument_id,
+                     row_number() OVER (PARTITION BY t.instrument_id
+                                        ORDER BY d.date_issued DESC NULLS LAST, d.id DESC) AS recency
+                FROM document d
+                JOIN document_tag t ON t.document_id = d.id
+               WHERE d.is_amending IS NOT TRUE
+                 AND d.doc_type <> ALL(%s)
+                 -- A document whose date we failed to parse sorts as the oldest thing we hold and would be
+                 -- deleted first, though it may have been published last week. Age we cannot establish is
+                 -- not age: leave it alone.
+                 AND d.date_issued IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM instrument i WHERE i.official_url = d.source_url)
+            )
+            SELECT DISTINCT id, date_issued FROM ranked WHERE recency > %s
+             ORDER BY date_issued NULLS FIRST, id
+            """,
+            (list(RETENTION_PROTECTED_TYPES), RETENTION_KEEP_PER_INSTRUMENT),
+        )
+    out["candidates"] = len(victims)
+    out["oldest"] = str(victims[0]["date_issued"]) if victims else None
+    out["newest"] = str(victims[-1]["date_issued"]) if victims else None
+    if not apply or not victims:
+        return out
+
+    ids = [v["id"] for v in victims]
+    out["files"] = _delete_stored_files(ids)
+    with db.transaction() as conn:
+        db.execute(conn, "DELETE FROM job WHERE (payload->>'document_id')::int = ANY(%s)", (ids,))
+        out["documents"] = db.execute(conn, "DELETE FROM document WHERE id = ANY(%s)", (ids,))
+    out["applied"] = True
+    log.info("retention removed %s documents and %s files", out["documents"], out["files"])
+    return out
+
+
+def _delete_stored_files(document_ids: list[int]) -> int:
+    """Remove the R2 objects belonging to these documents. Shared by retention and the year-cutoff prune."""
+    if not document_ids:
+        return 0
+    store = storage()
+    with db.transaction() as conn:
+        keys = [
+            a["storage_key"]
+            for a in db.fetch_all(
+                conn,
+                "SELECT storage_key FROM attachment WHERE document_id = ANY(%s) AND storage_key IS NOT NULL",
+                (document_ids,),
+            )
+        ]
+    removed = 0
+    for i in range(0, len(keys), 1000):
+        chunk = keys[i : i + 1000]
+        try:
+            if store.remote:
+                store._s3.delete_objects(
+                    Bucket=settings.r2_bucket, Delete={"Objects": [{"Key": k} for k in chunk], "Quiet": True}
+                )
+            else:
+                for k in chunk:
+                    (settings.local_storage_dir / k).unlink(missing_ok=True)
+            removed += len(chunk)
+        except Exception as exc:
+            log.warning("could not delete a batch of files: %s", exc)
+    return removed
+
+
 def prune_before_cutoff() -> dict[str, int]:
     """Delete already-stored documents that fall before MIN_DOCUMENT_YEAR (same keep-rules as discovery),
     including their files in storage and any pending jobs."""

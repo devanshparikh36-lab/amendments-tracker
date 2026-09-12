@@ -47,6 +47,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("digest")
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
+    p_retain = sub.add_parser("retain", help="drop the oldest ordinary documents per instrument, once storage is tight")
+    p_retain.add_argument("--apply", action="store_true", help="actually delete; without this the command only reports")
+    p_retain.add_argument("--force", action="store_true", help="evaluate the rule even below the trigger, to see what it would do")
     p_compact = sub.add_parser("compact", help="reclaim database space held by duplicated or never-read text")
     p_compact.add_argument("--apply", action="store_true", help="actually clear it; without this the command only reports")
     p_compact.add_argument("--full", action="store_true",
@@ -123,6 +126,20 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "prune":
         print(pipeline.prune_before_cutoff())
+        return 0
+
+    if args.cmd == "retain":
+        r = pipeline.retain_documents(apply=args.apply, force=args.force)
+        print(f"storage at {r['pressure'] * 100:.0f}%, retention triggers at {r['trigger'] * 100:.0f}%")
+        if not r["armed"] and not args.force:
+            print("idle - nothing deleted, and nothing will be until storage is tight")
+            return 0
+        print(f"deletable now: {r.get('candidates', 0)} documents"
+              + (f" issued {r['oldest']} to {r['newest']}" if r.get("oldest") else ""))
+        if r["applied"]:
+            print(f"deleted {r['documents']} documents and {r['files']} files")
+        else:
+            print("dry run - pass --apply to delete")
         return 0
 
     if args.cmd == "compact":
