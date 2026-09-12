@@ -15,9 +15,13 @@ name: Worker (self-hosted, residential IP)
 # The machine does NOT need to be awake at the scheduled moment: GitHub holds a job for up to 24 hours waiting
 # for a self-hosted runner, so whenever this machine next comes online the queued run executes. If it is off
 # for days, pending runs supersede one another rather than piling up.
+# MANUAL-ONLY. Collection runs locally via the "Regulation Tracker collection" scheduled task, which needs no
+# runner registration and no GitHub minutes. This schedule is commented out because a job queued for a label
+# no runner claims sits in the queue for 24 hours and then fails -- generating a failure email a day about a
+# runner nobody intends to register. Uncomment only after config.cmd has actually registered this machine.
 on:
-  schedule:
-    - cron: "0 */6 * * *"
+  # schedule:
+  #   - cron: "0 */6 * * *"
   workflow_dispatch:
 
 concurrency:
