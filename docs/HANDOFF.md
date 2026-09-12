@@ -43,6 +43,45 @@ An eleven-day gap is their cadence, not a fault. Do not read a flat MCA feed as 
 `_pw` and sends the next adapter back through `sync_playwright().start()` — the original bug. Only `cli.py`
 calls it, in a `finally` at process exit. Keep it that way.
 
+## Blocking everything — GitHub Actions minutes are exhausted
+
+**Collection has not run since 11 Sept 04:59 UTC, and the cause is billing, not code.** Runs #21 and #24 both
+failed within seconds with:
+
+```
+The job was not started because recent account payments have failed or your spending limit
+needs to be increased.
+```
+
+`github.com/settings/billing/summary` on 12 Sept:
+
+```
+Actions minutes:  2,000 min used / 2,000 min included     <- 100% consumed
+Actions storage:  0 GB / 0.5 GB
+amendments-tracker: $11.64 of $12.00 gross metered usage, fully covered by included discounts
+Included usage limits reset in 19 days (1 Oct)
+```
+
+Nothing is being charged — the plan is GitHub Free and billable spend is $0. Jobs are simply **refused**
+because there is no spending limit, which is the correct outcome for a project that must cost nothing.
+
+**This is structural, not a one-off.** A worker run takes about an hour and fires four times a day: roughly
+**7,200 minutes a month against a 2,000-minute allowance**, exhausted around the 8th of every month. Private
+repositories on GitHub Free get 2,000 minutes; public repositories get unlimited. This project has never been
+able to run free on GitHub-hosted runners — it simply had not hit the ceiling before.
+
+**Two ways out, both free:**
+
+1. **The self-hosted runner** (already downloaded, see below). Jobs on self-hosted runners consume *no*
+   GitHub-hosted minutes at all, so the ceiling disappears. It also fixes the CBIC/SEBI blocking, since the
+   requests then leave a residential IP. This makes the runner **essential rather than an optimisation**, and
+   means the full worker should move to it, not just the five blocked adapters.
+2. **Make the repository public**, which grants unlimited Actions minutes. It removes the billing ceiling but
+   not the IP blocking, and it would make a self-hosted runner unsafe on this machine — any stranger's pull
+   request would execute on it. Only sensible if the runner idea is abandoned.
+
+Until one of these happens, nothing collects until 1 Oct.
+
 ## Resolved — the free tiers, with room to spare
 
 Neon was at 68% of its 500 MB free plan, which is the nearest thing this project has to an outage: past the
@@ -144,10 +183,14 @@ registered this machine, and not before.
 > **This already caused an outage, so do not undo it.** The workflow originally ran on a schedule *and* shared
 > `worker.yml`'s concurrency group. With no runner holding its label, it fired at 12:00, queued forever waiting
 > for a runner that did not exist, and kept holding the group — so `worker.yml` queued behind a job that could
-> never start. **Scheduled collection stopped for 19 hours**: the 12:30, 18:30 and 00:30 runs never ran, and
-> the last real one was 11 Sept 04:59 UTC. A queued job still owns its concurrency group. Hence two rules:
-> never share a concurrency group with a workflow that has to keep running, and never schedule work for a
-> runner that might not exist. It now has its own group and `cancel-in-progress: true`.
+> never start — runs #22 and #23 of `worker.yml` were cancelled while pending behind it. A queued job still
+> owns its concurrency group. Hence two rules: never share a concurrency group with a workflow that has to keep
+> running, and never schedule work for a runner that might not exist. It now has its own group and
+> `cancel-in-progress: true`.
+>
+> This was *not* why collection stopped, though it looked exactly like it. The exhausted Actions minutes above
+> were the cause, and run #21 failed on billing before this workflow existed. Worth remembering when the next
+> outage has one obvious culprit: check billing before blaming the most recent change.
 
 **Three things remain, all of them on the machine rather than in the repo:**
 
