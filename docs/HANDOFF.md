@@ -214,10 +214,29 @@ registered this machine, and not before.
 > were the cause, and run #21 failed on billing before this workflow existed. Worth remembering when the next
 > outage has one obvious culprit: check billing before blaming the most recent change.
 
-**Everything scheduled now targets this runner** — `worker-residential.yml` (full pipeline, 6-hourly),
-`digest.yml` and `storage.yml`. `worker.yml` is a manual-only GitHub-hosted fallback. Only `keepalive.yml`
-still spends GitHub minutes, monthly, for seconds. So until the runner is registered, **nothing runs at all** —
-which is no worse than today, since the minutes are exhausted until 1 Oct regardless.
+**The runner is no longer on the critical path.** Collection runs from a Windows scheduled task instead, so
+nothing waits on registration. What the runner would still buy is running collection *without* this machine,
+which is worth having only if the CBIC/SEBI failure really is an IP block — unresolved, see above.
+
+### What actually runs, as of 12 Sept
+
+| what | where | when | why there |
+|---|---|---|---|
+| Full pipeline | **this machine**, task `RegulationTracker` | daily 09:30 | no minute ceiling; reaches CBIC/SEBI |
+| `storage.yml` (60% alarm) | GitHub-hosted | daily | a failed workflow **emails**; a failed task tells nobody |
+| `digest.yml` | GitHub-hosted | daily 08:00 IST | same, and must not depend on the laptop being awake |
+| `worker.yml` | GitHub-hosted | **manual only** | fallback if the task is removed |
+| `worker-residential.yml` | self-hosted | **manual only** | waits on a runner that may never be registered |
+
+GitHub usage is now ~90 minutes a month against 2,000 — 4%, no monthly cliff, where the 6-hourly worker needed
+~7,200. The two alarms cannot run until the allowance resets on **1 Oct**; the local task is unaffected.
+
+`services/pipeline/run-local.ps1` is the task's script. `StartWhenAvailable` is set, so a laptop asleep at 09:30
+runs the job on its next wake rather than skipping the day, and `MultipleInstances IgnoreNew` stops a slow run
+colliding with the next. It exits with the pipeline's own code, so a failed adapter shows in the task history
+rather than passing quietly, and keeps a fortnight of logs in `services/pipeline/logs/` (git-ignored).
+
+Remove it with `Unregister-ScheduledTask -TaskName 'RegulationTracker' -Confirm:$false`.
 
 **What remains, all on the machine rather than in the repo:**
 
