@@ -4,6 +4,18 @@
   command = "npm run build"
   publish = ".next"
 
+  # Build only when something the site actually renders has changed.
+  #
+  # This is a monorepo: the Python pipeline, the handoff notes and the Windows task scripts all live beside the
+  # website, and every commit to any of them was triggering a full Next.js build. On 12 Sept that was 35 builds
+  # in a day, 27 of which rebuilt the site for changes it cannot see -- against a free allowance of 300 build
+  # minutes a month, which a few such days would exhaust outright.
+  #
+  # Netlify runs this command and skips the build when it exits 0. `git diff --quiet` exits 0 when the paths
+  # are unchanged, which is exactly the condition to skip. If CACHED_COMMIT_REF is missing -- a first build, or
+  # a cleared cache -- the command fails, exits non-zero, and the site builds: the safe direction to err in.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- apps/web netlify.toml package.json package-lock.json"
+
 [build.environment]
   NODE_VERSION = "22"
 
