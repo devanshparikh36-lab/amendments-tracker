@@ -8,17 +8,22 @@ name: Worker (residential IP)
 # GitHub-hosted worker in worker.yml, which still works and still runs on its own schedule. Do not widen this
 # to a full `run` without also disabling worker.yml's schedule, or both will collect the same sources twice.
 #
-# Runs on the hour, half an hour ahead of worker.yml, and shares its concurrency group so the two can never
-# write at once -- whichever starts second waits. If this runner is asleep or offline the job simply does not
-# run and worker.yml remains the baseline; nothing is lost but these five sources, which already fail there.
+# MANUAL ONLY until a runner actually claims the label below. Re-enable the schedule by uncommenting the two
+# cron lines, and only once `config.cmd` has registered this machine.
+#
+# This previously ran on a schedule and shared worker.yml's concurrency group, which stopped scheduled
+# collection dead for 19 hours: with no runner holding the `self-hosted, windows, residential` label the job
+# queued forever, and because it held the shared group, worker.yml queued behind a job that could never start.
+# A queued job still owns its concurrency group. Two lessons, both now enforced below -- never share a group
+# with a workflow that must keep running, and never schedule work for a runner that might not exist.
 on:
-  schedule:
-    - cron: "0 */6 * * *"
+  # schedule:
+  #   - cron: "0 */6 * * *"     # on the hour, half an hour ahead of worker.yml
   workflow_dispatch:
 
 concurrency:
-  group: worker                # shared with worker.yml: never let the two run concurrently
-  cancel-in-progress: false
+  group: worker-residential    # deliberately NOT worker.yml's group; it must never be able to block that one
+  cancel-in-progress: true     # a stale queued run must never accumulate or hold the group
 
 jobs:
   collect:
