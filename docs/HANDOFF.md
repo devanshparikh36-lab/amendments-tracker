@@ -207,7 +207,11 @@ the residential runner: that backlog would otherwise have sat there indefinitely
 
 - **Teams and Resend are still unconfigured**, so the daily digest and the richer alerts go nowhere. No code
   change needed: `worker.yml` already wires `TEAMS_WEBHOOK_URL`, `RESEND_API_KEY`, `DIGEST_FROM`, `DIGEST_TO`,
-  `SITE_URL` as secrets. Until then both kinds of breakage route through GitHub's failure email instead, which
+  `SITE_URL` as secrets. **`DIGEST_TO` is `the address in the DIGEST_TO secret`** — deliberately *not* the address in
+  `git config user.email` (`the account address`), which is the account address and would mail the wrong person
+  despite the committer name reading `DEVANSH`. The same goes for GitHub's failure emails, whose destination is
+  a setting on the `devanshparikh36-lab` account rather than anything this repo controls — worth confirming
+  there, since it is currently the only alerting channel that works. Until then both kinds of breakage route through GitHub's failure email instead, which
   costs nothing and needs no secret: storage via the Free-tier watch, and collection because `discover` and
   `run` now exit non-zero if any adapter failed. **Expect `worker.yml` to go red every six hours** until the
   five blocked sources move to the residential runner — they are genuinely broken there and have been since
