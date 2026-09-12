@@ -7,10 +7,10 @@ on:
 
 jobs:
   digest:
-    # Self-hosted for the same reason as the worker: GitHub-hosted minutes are exhausted around the 8th of
-    # each month, and a digest that cannot run is a digest that tells nobody anything. Needs no browser, only
-    # Python and the database.
-    runs-on: [self-hosted, windows, residential]
+    # GitHub-hosted: a minute a day, ~30 a month against 2,000 included. Kept off the laptop so that the one
+    # thing whose job is to tell you what changed does not depend on the laptop being awake, and so its own
+    # failure raises a GitHub failure email. Cannot run until the allowance resets on 1 Oct.
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
       run:

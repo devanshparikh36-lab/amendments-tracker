@@ -11,3 +11,6 @@ services/pipeline/storage_dev/
 .claude/
 apps/web/dev.cmd
 services/pipeline/*.log
+
+# Local scheduled-collection logs (run-local.ps1)
+services/pipeline/logs/

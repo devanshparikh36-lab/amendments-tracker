@@ -13,9 +13,11 @@ on:
 
 jobs:
   check:
-    # Self-hosted: GitHub-hosted minutes run out mid-month, and a free-tier alarm that stops running for three
-    # weeks of every month is worse than no alarm, because its silence reads as "everything is fine".
-    runs-on: [self-hosted, windows, residential]
+    # GitHub-hosted on purpose, even though collection is not. This job is the alarm, and the alarm only works
+    # because a failed GitHub workflow emails the owner -- a scheduled task failing on a laptop tells nobody.
+    # It costs ~2 minutes a day, about 60 a month against the 2,000 included, so it fits easily even though the
+    # hourly worker never could. Note it cannot run until the allowance resets on 1 Oct.
+    runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: services/pipeline
