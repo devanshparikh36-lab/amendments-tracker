@@ -93,6 +93,17 @@ limit the free plan stops accepting writes and collection halts. It is now at **
 | Cloudflare R2 | 3.34 GB (as mis-measured) | **3.44 GB (34%)**, counted properly | 10 GB |
 | Neon Postgres | 342 MB (68%) | **171 MB (34%)** | 500 MB |
 
+**The 60% R2 trigger is about 1,018 days away**, so do not treat its delivery gap as urgent. Measured 12 Sept:
+the 3.4 GB ingested on 5 Sept was one-off backfill, and steady state since is **~2.6 MB/day (~77 MB/month)**
+across four observed days — 2 to 15 documents daily. Against 2.55 GB of headroom to the 6 GB mark, that is
+**~2.8 years**. Recompute from `document.first_seen_at` joined to `attachment.size_bytes`, excluding any day
+over 200 MB, or the backfill makes it look like one month.
+
+Alert delivery in the meantime: a desktop notification fires from the local scheduled run today, and GitHub's
+failure email — the channel verified as reaching the owner — resumes when the Actions allowance resets on
+1 Oct, roughly 999 days before the threshold could actually be crossed. Email via Resend remains unconfigured
+and would only matter for an alert arriving while the laptop is shut.
+
 **The R2 figure was wrong until 12 Sept.** `object_storage_usage` summed `attachment.size_bytes`, so anything
 written by a path that creates no attachment row was invisible — chiefly the official instrument PDFs, which
 `_store_official_pdf` writes under `official/` against `instrument.pdf_storage_key`. The alarm saw 7,336 files
