@@ -1,355 +1,110 @@
-# Handoff — 11 Sept 2026
+# Handoff — 12 Sept 2026
 
-State of the Regulation Tracker, and what the next session should pick up.
+State of the Regulation Tracker and what the next session should pick up. Supersedes the 11 Sept note, which
+described an architecture that no longer exists: collection has moved off GitHub Actions entirely.
 
 ## Live
 
-- Site: the Netlify deployment, behind a passcode gate. URL and passcode are the `SITE_URL` and `SITE_PASSCODE`
-  secrets — deliberately not written down here, so this file stays safe to publish.
-- `main` is deployed and clean. Recent commits:
-  - `00631db` Add a compact command for the 103 MB of text the database stores for nothing
-  - `c4a1318` Warn at 60% of a free tier, and make the warning actually reach someone
-  - `23ee0eb` Fail a discovery run that lists nothing when it listed documents days ago
-  - `5cb3b11` Share one Chromium across the browser-backed adapters
+- Site: the Netlify deployment, behind a passcode gate. URL and passcode are the `SITE_URL` and
+  `SITE_PASSCODE` secrets — deliberately not written here, so this file stays safe to publish.
+- 8,001 documents · 1,242 amendment effects · **12 of 12 adapters green**
 
-## Resolved — MCA collects again
+## How it runs now — three Windows scheduled tasks, no GitHub minutes
 
-The MCA collectors had failed on every scheduled run with `Playwright Sync API inside the asyncio loop`. Two
-things were wrong, and the second hid the first.
+GitHub Actions could never do this for free: a worker run is about an hour, four times a day, which is roughly
+7,200 minutes a month against the 2,000 included with GitHub Free on a private repo. It exhausted the allowance
+around the 8th of September and every job was refused thereafter — that, not any bug, is why collection stopped.
 
-**The fix was never deployed.** `5cb3b11` was committed 9 Sept 15:51 IST and pushed 11 Sept 12:52 IST — it sat
-here for two days. Every run that "proved it failing" had checked out `e445182`. The stored traceback showed
-`self._pw = sync_playwright().start()`, the per-instance shape that no longer exists in the file.
-
-**The fix itself is sound, and is now demonstrated.** Running `cli.py discover --adapter cbdt_circulars
---adapter mca_circulars --adapter mca_notifications` reproduced the exact CI sequence:
-
-```
-chromium launched                                   <- ONE Chromium
-browser session ready at www.incometaxindia.gov.in  <- site 1
-cbdt_circulars: 309 found, 0 new
-browser session ready at www.mca.gov.in             <- site 2, same Chromium
-mca_circulars: 228 found, 0 new
-mca_notifications: 684 found, 0 new
-```
-
-All three recorded `ok` in `source_run`. One `chromium launched`, two sites, no exception.
-
-**The "ten missing days" were never missing.** The earlier note expected a catch-up of circulars after
-31 Aug 2026. There is none to collect: the adapter reads MCA's whole feed (`228 documents since 2014, of 245
-published`) and MCA has issued four General Circulars all year — 01, 02 on 19 Jun, 03 on 8 Jul, 04 on 31 Aug.
-An eleven-day gap is their cadence, not a fault. Do not read a flat MCA feed as a broken collector.
-
-**Guard rail:** `close_all()` must never be reached *between* adapters. It calls `_stop_engine()`, which nulls
-`_pw` and sends the next adapter back through `sync_playwright().start()` — the original bug. Only `cli.py`
-calls it, in a `finally` at process exit. Keep it that way.
-
-## Blocking everything — GitHub Actions minutes are exhausted
-
-**Collection has not run since 11 Sept 04:59 UTC, and the cause is billing, not code.** Runs #21 and #24 both
-failed within seconds with:
-
-```
-The job was not started because recent account payments have failed or your spending limit
-needs to be increased.
-```
-
-`github.com/settings/billing/summary` on 12 Sept:
-
-```
-Actions minutes:  2,000 min used / 2,000 min included     <- 100% consumed
-Actions storage:  0 GB / 0.5 GB
-amendments-tracker: $11.64 of $12.00 gross metered usage, fully covered by included discounts
-Included usage limits reset in 19 days (1 Oct)
-```
-
-Nothing is being charged — the plan is GitHub Free and billable spend is $0. Jobs are simply **refused**
-because there is no spending limit, which is the correct outcome for a project that must cost nothing.
-
-**This is structural, not a one-off.** A worker run takes about an hour and fires four times a day: roughly
-**7,200 minutes a month against a 2,000-minute allowance**, exhausted around the 8th of every month. Private
-repositories on GitHub Free get 2,000 minutes; public repositories get unlimited. This project has never been
-able to run free on GitHub-hosted runners — it simply had not hit the ceiling before.
-
-**Two ways out, both free:**
-
-1. **The self-hosted runner** (already downloaded, see below). Jobs on self-hosted runners consume *no*
-   GitHub-hosted minutes at all, so the ceiling disappears. It also fixes the CBIC/SEBI blocking, since the
-   requests then leave a residential IP. This makes the runner **essential rather than an optimisation**, and
-   means the full worker should move to it, not just the five blocked adapters.
-2. **Make the repository public**, which grants unlimited Actions minutes. It removes the billing ceiling but
-   not the IP blocking, and it would make a self-hosted runner unsafe on this machine — any stranger's pull
-   request would execute on it. Only sensible if the runner idea is abandoned.
-
-Until one of these happens, nothing collects until 1 Oct.
-
-## Resolved — the free tiers, with room to spare
-
-Neon was at 68% of its 500 MB free plan, which is the nearest thing this project has to an outage: past the
-limit the free plan stops accepting writes and collection halts. It is now at **34%**.
-
-| | before | after | free limit |
-|---|---|---|---|
-| Cloudflare R2 | 3.34 GB (as mis-measured) | **3.44 GB (34%)**, counted properly | 10 GB |
-| Neon Postgres | 342 MB (68%) | **171 MB (34%)** | 500 MB |
-
-**The 60% R2 trigger is about 1,018 days away**, so do not treat its delivery gap as urgent. Measured 12 Sept:
-the 3.4 GB ingested on 5 Sept was one-off backfill, and steady state since is **~2.6 MB/day (~77 MB/month)**
-across four observed days — 2 to 15 documents daily. Against 2.55 GB of headroom to the 6 GB mark, that is
-**~2.8 years**. Recompute from `document.first_seen_at` joined to `attachment.size_bytes`, excluding any day
-over 200 MB, or the backfill makes it look like one month.
-
-Alert delivery in the meantime: a desktop notification fires from the local scheduled run today, and GitHub's
-failure email — the channel verified as reaching the owner — resumes when the Actions allowance resets on
-1 Oct, roughly 999 days before the threshold could actually be crossed. Email via Resend remains unconfigured
-and would only matter for an alert arriving while the laptop is shut.
-
-**The R2 figure was wrong until 12 Sept.** `object_storage_usage` summed `attachment.size_bytes`, so anything
-written by a path that creates no attachment row was invisible — chiefly the official instrument PDFs, which
-`_store_official_pdf` writes under `official/` against `instrument.pdf_storage_key`. The alarm saw 7,336 files
-and 3.34 GB against a real 7,477 objects and 3.445 GB. It now lists the bucket itself, so the 60% threshold
-measures what Cloudflare actually bills for; it falls back to the recorded sum only if the bucket is
-unreachable, labelled "recorded, not counted" so a degraded reading is obvious. Worth re-checking if anyone
-adds a third writer to R2 — the lesson is that the database only knows about writes it was told about.
-
-`cli.py compact --apply --full` cleared 103 MB of text that cost nothing to lose and handed the space back:
-
-- **70 MB** — 6564 attachments whose `extracted_text` was byte-identical to their own document's. The document
-  copy is the one that matters (`document_fts_idx` indexes it, `_doc_full_text` already skipped the duplicate),
-  and the PDFs stay in R2, so the column is rebuildable by re-extracting.
-- **33 MB** — `raw_html` on 7994 documents. Every adapter wrote it; nothing ever read it back.
-
-**The order is the trick, and it is easy to get wrong.** Clearing alone moved the reported size almost not at
-all — 341.97 to 338.33 MB — because a plain VACUUM only marks space reusable, and `document` grew by the new
-row versions about as fast as `attachment` shrank. `VACUUM FULL` hands it back, but needs room for a second
-copy of the table it rewrites, and `document` at 176 MB does not fit under a 500 MB limit with 162 MB free.
-Rewriting `attachment` first (88 MB → 8 MB) releases enough room for `document` to follow. `--full` does this
-in the right order and skips any table that will not fit. Whole thing took 34 seconds.
-
-**Do not run `--full` while discovery is writing.** Its lock is ACCESS EXCLUSIVE. Running the clearing half
-during a live `discover` deadlocked `sebi_regulations` mid-upsert; Postgres picked the adapter as the victim.
-Nothing was lost, but it cost a re-run.
-
-**Alerting:** `c4a1318` drops the warning threshold from 75% to **60%** and makes `cli.py storage` exit
-non-zero when a limit passes it. The **Free-tier watch** workflow runs it daily, so a breach fails the workflow
-and GitHub emails the repository owner — the only channel here that costs nothing and needs no secret. Both
-limits currently report `[ok]` and the watch exits 0.
-
-> **The channel this rests on is verified** (12 Sept 2026). Every free alert here — storage *and* collection
-> failures — depends on GitHub emailing the owner when a scheduled workflow fails, which is an account setting
-> the repo cannot control. Checked at `github.com/settings/notifications` on the `devanshparikh36-lab` account:
->
-> ```
-> Default notifications email:  <the owner's address - matches DIGEST_TO>
-> Actions:  Notify me: on GitHub, Email.  (Failed workflows only)
-> ```
->
-> Both correct — it reaches the right address, and "failed workflows only" means the four successful runs a day
-> stay quiet. If alerting ever appears to stop working, re-check this page first: turning off Actions email, or
-> changing the default notification address, silently removes the project's only functioning alert channel.
-
-## Open — five adapters were collecting nothing while reporting `ok`
-
-On the 11 Sept run:
-
-| adapter | found | previously | time burned |
-|---|---|---|---|
-| `cbic_gst_notifications` | 0 | 5, every run | 39m |
-| `cbic_gst_circulars` | 0 | 3, every run | 43m |
-| `sebi_regulations` | 0 | 1137, every run | 33m |
-| `sebi_master_circulars` | 0 | 133, every run | 8m |
-| `sebi_circulars` | 0 | ~1368, every run | 8m |
-
-All five previously finished in under a minute. Minutes of retries ending in zero is the signature of every
-unit of work timing out. The adapters catch failures per unit and continue by design (`cbic_gst.py:262`,
-`sebi.py:225`) — right on its own, but when *every* unit fails they return `[]` and the run is recorded
-`ok, found = 0`. This also cost ~2h11m, which is what pushed MCA to the end of the run.
-
-`23ee0eb` is the detector: an empty result from an adapter productive within the last 30 days now raises
-`EmptyDiscovery`, lands in `source_run.error` and fires the adapter-failure alert. **A detector, not a cure** —
-if collection is still broken these five go red on the next run, which is the intended outcome.
-
-**Best lead: the runner's egress. All five adapters were run from this machine and every one of them worked**,
-returning its exact historical count:
-
-| adapter | on the runner | from here |
+| task | what it does | when |
 |---|---|---|
-| `cbic_gst_notifications` | 0, after 39m | **5**, 17s |
-| `cbic_gst_circulars` | 0, after 43m | **3**, 17s |
-| `sebi_circulars` | 0, after 8m | **1371**, ~7m |
-| `sebi_master_circulars` | 0, after 8m | **133**, ~8s |
-| `sebi_regulations` | 0, after 33m | **1137**, ~5m |
+| `Regulation Tracker collection` | collect → digest → page index (400) → OCR (20 min) → storage check | 07:15, 19:15 |
+| `Regulation Tracker OCR` | scanned-PDF backlog, 45 min | hourly, mains only |
+| `Regulation Tracker warm-up` | pings `/api/health` so Netlify and Neon stay awake | every 4 min |
 
-Same commit, same code, same regulators; the only variable is where the request comes from.
+All are resumable: progress is recorded per item, so closing the laptop costs at most the file in flight.
+`StartWhenAvailable` means a missed window runs when the machine next wakes. Scripts live in `scripts/`.
 
-**Do not treat "datacentre IPs are blocked" as established — it is an inference, and evidence is against it.**
-Fetched from Anthropic's cloud infrastructure on 12 Sept, SEBI's circular listing returned HTTP 200 with 2,802
-records, so SEBI plainly does not refuse cloud ranges as such. CBIC could not be tested the same way, but only
-because that client lacks the Sectigo intermediate this repo bundles (`amendments/certs/`, committed, so the
-runner has it) — with it, CBIC returns 200 from here too. What is actually established is narrower: these five
-adapters return their full counts from a residential connection and zero from GitHub's runners after tens of
-minutes of retries. The cause could equally be a timeout profile, DNS on the runner, or the retry path itself.
+GitHub keeps only `storage.yml` (daily, the free-tier alarm) and `keepalive.yml` (monthly). `worker.yml` and
+`worker-residential.yml` are manual-only fallbacks; do not re-enable their schedules without checking minutes.
 
-**The decisive evidence is unread.** Each adapter logs the real exception per failed unit
-(`log.warning("notifications %s %s failed: %s", ...)`), so run #20's log names the cause outright — a 403 means
-blocking, a timeout means something else. Those lines could not be reached in this session: the log viewer only
-loads when its pane is rendered, and there is no `gh` CLI here. Read them before committing to any
-architecture, via "… → Download log archive" on the run page, which sidesteps the browser entirely.
+## Free tiers, and the alarm
 
-This matters because a whole architecture rests on it. If it is a block, the answers are a residential runner
-or a local scheduled task, and this machine is permanently in the loop. If it is a bug or a timeout, the fix is
-in the code, nothing needs to run here, and the seven-of-twelve compromise disappears.
-
-The CBIC category endpoint also returns HTTP 500, but that is a red herring — `_categories` retries and falls
-back to its built-in list, costing minutes rather than documents.
-
-### The self-hosted runner — installed, not yet registered
-
-`C:\actions-runner` holds actions-runner v2.337.0 for win-x64, downloaded from the official `actions/runner`
-releases and verified against its published SHA-256 (`1150692a…85cfc`). The repository is **private**, which is
-what makes this acceptable at all: on a public repo any stranger's pull request would execute on this machine.
-
-`worker-residential.yml` is committed and waits on the label `[self-hosted, windows, residential]`. It is
-**`workflow_dispatch` only** — the cron lines are commented out. Uncomment them once `config.cmd` has actually
-registered this machine, and not before.
-
-> **This already caused an outage, so do not undo it.** The workflow originally ran on a schedule *and* shared
-> `worker.yml`'s concurrency group. With no runner holding its label, it fired at 12:00, queued forever waiting
-> for a runner that did not exist, and kept holding the group — so `worker.yml` queued behind a job that could
-> never start — runs #22 and #23 of `worker.yml` were cancelled while pending behind it. A queued job still
-> owns its concurrency group. Hence two rules: never share a concurrency group with a workflow that has to keep
-> running, and never schedule work for a runner that might not exist. It now has its own group and
-> `cancel-in-progress: true`.
->
-> This was *not* why collection stopped, though it looked exactly like it. The exhausted Actions minutes above
-> were the cause, and run #21 failed on billing before this workflow existed. Worth remembering when the next
-> outage has one obvious culprit: check billing before blaming the most recent change.
-
-**The runner is no longer on the critical path.** Collection runs from a Windows scheduled task instead, so
-nothing waits on registration. What the runner would still buy is running collection *without* this machine,
-which is worth having only if the CBIC/SEBI failure really is an IP block — unresolved, see above.
-
-### What actually runs, as of 12 Sept
-
-| what | where | when | why there |
+| | used | limit | |
 |---|---|---|---|
-| Full pipeline | **this machine**, task `RegulationTracker` | daily 09:30 | no minute ceiling; reaches CBIC/SEBI |
-| `storage.yml` (60% alarm) | GitHub-hosted | daily | a failed workflow **emails**; a failed task tells nobody |
-| `digest.yml` | GitHub-hosted | daily 08:00 IST | same, and must not depend on the laptop being awake |
-| `worker.yml` | GitHub-hosted | **manual only** | fallback if the task is removed |
-| `worker-residential.yml` | self-hosted | **manual only** | waits on a runner that may never be registered |
+| Cloudflare R2 | 3.46 GB | 10 GB | 35% |
+| Neon Postgres | 212 MB | 500 MB | 42% |
 
-GitHub usage is now ~90 minutes a month against 2,000 — 4%, no monthly cliff, where the 6-hourly worker needed
-~7,200. The two alarms cannot run until the allowance resets on **1 Oct**; the local task is unaffected.
+Neon was at 68% on 11 Sept. `cli.py compact --apply --full` cleared 103 MB of text that cost nothing to lose —
+duplicated attachment copies, and `raw_html` nothing ever read. **The order is the trick**: clearing alone
+moved the reported size 341.97 → 338.33 MB, because a plain VACUUM only marks space reusable; `VACUUM FULL`
+hands it back but needs room for a second copy of the table, so `attachment` must be rewritten first to make
+room for `document`. `--full` does this in the right order. OCR then added 32 MB, hence 42%.
 
-`services/pipeline/run-local.ps1` is the task's script. `StartWhenAvailable` is set, so a laptop asleep at 09:30
-runs the job on its next wake rather than skipping the day, and `MultipleInstances IgnoreNew` stops a slow run
-colliding with the next. It exits with the pipeline's own code, so a failed adapter shows in the task history
-rather than passing quietly, and keeps a fortnight of logs in `services/pipeline/logs/` (git-ignored).
+**The 60% alarm is verified, not assumed.** `STORAGE_WARN_AT` overrides the threshold, so the whole path can be
+exercised on demand: at 0.30 the R2 reading trips to `[warning]` and `cli.py storage` exits non-zero, which is
+what fails the daily workflow and sends the mail; at the 0.60 default the same reading is `[ok]` and exits
+zero. It has not fired in anger because storage is genuinely at 35%.
 
-Remove it with `Unregister-ScheduledTask -TaskName 'RegulationTracker' -Confirm:$false`.
+`retain` (FIFO deletion of the oldest ordinary documents per instrument) is built, armed at 70%, and idle.
+It never touches base texts, anything an instrument names as its official text, anything tagged `is_amending`,
+or the 200 most recent documents of any instrument. `retain --force` shows what it would do.
 
-**What remains, all on the machine rather than in the repo:**
+## Open — the one thing that is not free
 
-1. **Stop it sleeping.** `STANDBYIDLE` is `0x12c` — five minutes on AC. A runner on a sleeping machine misses
-   essentially every six-hourly run. `powercfg /change standby-timeout-ac 0`.
-2. **Register it**, from Settings → Actions → Runners → New self-hosted runner, for the token:
-   `cd C:\actions-runner && .\config.cmd --url https://github.com/devanshparikh36-lab/amendments-tracker
-   --labels self-hosted,windows,residential --unattended --token <TOKEN>`. Add `--runasservice` from an
-   elevated terminal to survive logout; without it the runner only exists while `run.cmd` is open.
-3. **Tesseract is not installed**, and `worker.yml` only ever got it through `apt-get`. Discovery does not need
-   it; OCR fallback for scanned PDFs during `work` does, so expect `ocr_used` to stay false on this path until
-   it is installed.
+**No amendment has been applied to any provision text.** All 1,242 effects have `new_version_id = NULL`,
+because `AI_ENABLED` is false and applying an amendment needs an LLM call per document.
 
-Once it is running, confirm the five go green on `/status`, then consider whether `worker.yml`'s schedule
-should stay — today it is the safety net, but it will keep raising `EmptyDiscovery` for these five every run.
+A deterministic, AI-free merge was investigated and **rejected on evidence**. `cli.py mergepreview` reports what
+it would do, and writes nothing. The proposed safety rule was to substitute only when the quoted old wording
+appears exactly once in the target provision. Of 731 unapplied substitutions it finds 20 such cases — and three
+of the first four land inside editorial footnotes recording *previous* amendments:
 
-## Open — 16 instrument pages serve nothing, and one of them is FEMA
-
-This is the largest gap in the site and it had not been written down. Of 195 instruments:
-
-| | count | what a reader sees |
-|---|---|---|
-| parsed into provisions | 75 | full section-level text and amendment history |
-| official PDF only | 104 | the regulator's PDF — by design, `EMPTY_PROVISION_LIMIT` serves the PDF when a parse is untrustworthy |
-| **nothing at all** | **16** | an empty page |
-
-The 16 come from the same root as the 136 failed `selfcheck_instrument` jobs — which are only **10 distinct
-instruments** retried once per run over ~26 runs, not 136 separate problems. Get them with:
-
-```sql
-SELECT slug FROM instrument i WHERE pdf_storage_key IS NULL
-  AND NOT EXISTS (SELECT 1 FROM provision p WHERE p.instrument_id = i.id);
+```
+ITR-1962 31A — "seven days" occurs once, in:
+  34. Substituted for "seven days" by the IT (Thirteenth Amdt.) Rules, 2019.
 ```
 
-**`fema-1999` is the one that matters** — the flagship instrument of a FEMA-first site, with zero provisions, no
-PDF and `last_checked_at = NULL`. It has never seeded successfully. The cause is not ours: `rbi_fema_act`
-follows whatever RBI's Act page links for FEMA, and RBI still links
-`indiacode.nic.in/handle/123456789/1988`, which now returns a real 404. India Code has moved to
-`indiacode.gov.in/act/<uuid>/sections`, and **that entire new platform returned HTTP 502** at the root when
-checked on 11 Sept. So there is currently no working official URL for the FEMA text; deliberately nothing was
-hardcoded, since no candidate could be verified to return the real Act. Re-check `indiacode.gov.in`, and if it
-is back, set `text_url` in the `fema-1999` seed config (the adapter already honours it) rather than waiting for
-RBI to fix its link.
+Applying that rewrites the footnote into a false statement rendered identically to real statutory text.
+Uniqueness proves the match is unambiguous; it does not prove the match is in the law rather than in the
+apparatus describing the law. Doing this properly requires separating operative text from footnotes across
+every instrument — its own parsing project. Run `mergepreview` before revisiting; do not re-derive this.
 
-`fem-export-of-goods-and-services-regulations-2000` fails differently and the failure is *correct*: "parsed into
-only 2 provisions; refusing to overwrite". That guard is protecting good data from a bad parse — do not
-weaken it to make the error go away.
+So the honest choice is: enable AI and pay per document, or leave amendments as references, which is what the
+site does today and what "official text only, no human review" already implies.
 
-**The four SEBI master circulars cannot be fixed from our side — SEBI publishes empty pages.** Fetched
-directly, `master-circular-for-stock-exchanges-cash-market_22556.html` is 7800 bytes of HTML containing a
-title, a breadcrumb and a date: **184 characters of visible text and no PDF link at all**. Same for the 2014
-and 2015 ones. The adapter's "yielded only 1302 characters" refusal is the guard working — there is no text
-there to collect, and no amount of browser rendering or parser work will invent it. Treat as a regulator-side
-gap alongside the GST and MCA base texts.
+## Open — still queued, running unattended
 
-Some of the 16 look like double registrations of an instrument that already has content. The clearest is that
-same pair: `...stock-exchange**s**-cash-market` is an empty stub while `...stock-exchange-cash-market` serves a
-PDF — one regulation registered twice, and the site is showing the dead twin. `...educatuion-fund...` next to
-`...education-fund...` is the same story with a typo. Fuzzy title matching suggested as many as 12, but it also
-paired attestation-of-documents with delisting and igst-rules with igst-act — Rules and an Act are different
-instruments — so that number is not trustworthy. The two pairs above are the ones that survive reading, and
-each still needs a human decision before anything is merged or deleted.
+- **2,974 attachments to page-index** (1,603 done). 400 per collection run.
+- **836 attachments to re-fetch**, through the browser path. RBI's Imperva wall answered scripted PDF requests
+  with an HTML interstitial carrying HTTP 200; 545 of those were stored as documents before anything checked.
+  The indexer now refuses a one-or-two-page file whose text is a bot wall and records it unfetched.
+- **Teams and Resend unconfigured.** `DIGEST_TO` should be the owner's own address — *not* the one in
+  `git config user.email`, which is the account address and would mail the wrong person daily. Until set, the
+  digest exits non-zero every run, which is deliberate: a digest that silently mails nobody is the failure this
+  project kept having.
 
-**The `sebi_master_circulars` fetch backlog is cleared.** 73 documents were queued and could not be fetched by
-GitHub's runners (blocked adapter); running `cli.py work --adapter sebi_master_circulars` from this machine
-collected all 73, and no document from that source is now missing its text. This is the concrete argument for
-the residential runner: that backlog would otherwise have sat there indefinitely.
+## Things that cost a session to learn
 
-## Open — not started
-
-- **Teams and Resend are still unconfigured**, so the daily digest and the richer alerts go nowhere. No code
-  change needed: `worker.yml` already wires `TEAMS_WEBHOOK_URL`, `RESEND_API_KEY`, `DIGEST_FROM`, `DIGEST_TO`,
-  `SITE_URL` as secrets. **Do not infer `DIGEST_TO` from this repository.** The address in
-  `git config user.email` is the account address and is *not* the digest recipient, despite the committer name
-  reading `DEVANSH` — mail configured from that signal goes to the wrong person every day. The correct address
-  is already set in the `DIGEST_TO` secret and on the GitHub account's notification settings; read it there. Until then both kinds of breakage route through GitHub's failure email instead, which
-  costs nothing and needs no secret: storage via the Free-tier watch, and collection because `discover` and
-  `run` now exit non-zero if any adapter failed. **Expect `worker.yml` to go red every six hours** until the
-  five blocked sources move to the residential runner — they are genuinely broken there and have been since
-  10 Sept, and the silence was the actual bug.
-- **Known data gaps**, regulator-side: GST base texts dated 2020–2022, MCA 2014–2021 (neither has republished);
-  three RBI Master Directions have ~30% empty paragraphs with no PDF fallback.
-- **`AI_ENABLED` is `false`, and that is a decision — not a bug to fix.** Reconfirmed 12 Sept 2026 with the
-  trade-off put directly: applying an amendment means an LLM call per amending document, which costs money per
-  document, and references-only was chosen. So all **1,195 `amendment_effect` rows keep `new_version_id = NULL`
-  on purpose**. The site shows which provision each notification amends and links the regulator's own text; it
-  never publishes a machine-written consolidation of a legal provision that nobody has checked. If effects look
-  "not applied", that is the intended state, not a broken merge. `cli.py retag` reprocesses if it is ever
-  reversed.
+- **`\b` in a Postgres regex is a backspace, not a word boundary.** It is `\y`. Written with `\b` the
+  definitions search matched nothing at all, silently and with no error.
+- **`requestIdleCallback` does not fire in a background tab.** The contents sidebar loads on a plain timer for
+  this reason; opening a section in a new tab is ordinary, and the idle version stayed at 60 of 935 entries.
+- **A sequential batch is not a sample.** A run of 56 bot walls in 60 files looked like a trend; a random
+  sample of 40 found none. The indexer walks `ORDER BY id` and RBI's attachments sit on contiguous ids.
+- **Check billing before blaming the most recent change.** Collection "failing" for 19 hours was exhausted
+  Actions minutes; the concurrency bug found at the same time was real but not the cause.
+- **A queued job owns its concurrency group.** A workflow waiting on a label no runner claims will hold the
+  group for 24 hours and starve everything sharing it.
+- **psycopg reads a per-cent sign in a migration comment as a parameter placeholder** and fails the file.
+- **Never run `next build` while `next dev` is running** — they share `.next`, and the dev server serves 404s
+  for its chunks afterwards. Use `tsc --noEmit` to type-check.
 
 ## Environment — this machine, not the code
 
-- **The local resolver fails for `.gov.in` names and the Neon host.** Whichever resolver is in use —
-  `192.168.0.1` on the router, `172.20.10.1` tethered — it returns "DNS server failure" while public resolvers
-  answer instantly. It surfaces as `net::ERR_NAME_NOT_RESOLVED` in Playwright and as dropped Neon connections
-  mid-write. Check `Get-DnsClientServerAddress`; set the adapter to `8.8.8.8` / `1.1.1.1` before running
-  discovery locally. This is the most likely reason `5cb3b11` sat unpushed for two days.
-- The network also does **TLS interception**, so scripted HTTPS fails certificate validation against some
-  official sites. The link checker uses `verify=False`; `curl` needs `-k`. Verify by IP
-  (`curl --resolve host:443:<ip>`) before concluding a link is broken.
-- **Before concluding a deployed fix failed, check it actually shipped**: compare `git reflog show origin/main`
-  push times against the run's start time, and confirm with `git ls-remote origin main` rather than trusting the
-  local tracking ref. That mistake cost most of a session here.
-- No `gh` CLI, so Actions runs cannot be inspected or dispatched from the shell. Read worker history from
-  `source_run` (which is what `/status` renders) or the GitHub web UI.
+- The connection to Neon drops intermittently; jobs are written to survive it rather than retry forever.
+  `net::ERR_NAME_NOT_RESOLVED` and "Network is unreachable" are this, not the code.
+- TLS interception means scripted HTTPS fails certificate validation against some official sites. CBIC omits
+  its intermediate certificate; `amendments/certs/` carries it and is committed.
+- Tesseract is installed **per-user** at `%LOCALAPPDATA%\Programs\Tesseract-OCR` because winget ran unelevated,
+  so it is off PATH. `parsers/pdf.py` checks known locations and sets `TESSDATA_PREFIX` itself.
+- No `gh` CLI. Read worker history from `source_run` — which is what `/status` renders — or the GitHub web UI.
