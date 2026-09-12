@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool, types } from "pg";
@@ -31,7 +32,13 @@ export { schema };
 const CACHE_SECONDS = Number(process.env.QUERY_CACHE_SECONDS ?? 600);
 
 async function runQuery<T>(text: string, params: unknown[]): Promise<T[]> {
+  const started = Date.now();
   const res = await pool.query(text, params);
+  // LOG_DB_HITS=1 prints every query that actually reached Neon, which is the only way to tell a cache hit
+  // from a miss: the page timing alone cannot, especially in development where the data cache is disabled.
+  if (process.env.LOG_DB_HITS) {
+    console.log(`[db] ${Date.now() - started}ms  ${text.replace(/\s+/g, " ").slice(0, 70)}`);
+  }
   return res.rows as T[];
 }
 
@@ -39,17 +46,30 @@ async function runQuery<T>(text: string, params: unknown[]): Promise<T[]> {
 // Cached on the SQL and its parameters, so identical reads share one result across requests and visitors.
 // Safe because every page here shows the same public content to everyone: the passcode gate is a door, not
 // a per-visitor view, so no cache entry can carry one person's data to another.
+// Two layers, because they solve different problems.
+//
+// React's cache() deduplicates within a single render: generateMetadata and the page body both ask for the
+// same instrument, and without this that is two round trips on every instrument page. It works everywhere,
+// including development.
+//
+// unstable_cache reuses results across requests and visitors. Next disables the data cache in development, so
+// its effect only shows once deployed -- do not conclude from a dev timing that it is not working.
+const readThrough = cache(async (text: string, paramsJson: string, ttlSeconds: number): Promise<unknown[]> => {
+  const params = JSON.parse(paramsJson) as unknown[];
+  if (!ttlSeconds) return runQuery<unknown>(text, params);
+  const cached = unstable_cache(() => runQuery<unknown>(text, params), ["sql", text, paramsJson], {
+    revalidate: ttlSeconds,
+    tags: ["db"],
+  });
+  return cached();
+});
+
 export async function query<T = Record<string, unknown>>(
   text: string,
   params: unknown[] = [],
   ttlSeconds: number = CACHE_SECONDS,
 ): Promise<T[]> {
-  if (!ttlSeconds) return runQuery<T>(text, params);
-  const cached = unstable_cache(() => runQuery<T>(text, params), ["sql", text, JSON.stringify(params)], {
-    revalidate: ttlSeconds,
-    tags: ["db"],
-  });
-  return cached();
+  return (await readThrough(text, JSON.stringify(params), ttlSeconds)) as T[];
 }
 
 // For readings that are about freshness itself -- collector health, queue depth, "last checked" -- where a
