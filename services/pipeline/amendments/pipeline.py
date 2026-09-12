@@ -1094,6 +1094,81 @@ def _vacuum_full(cur) -> list[str]:
     return done
 
 
+# What a regulator's bot wall looks like once a PDF reader has been pointed at it. RBI sits behind Imperva,
+# which answers a blocked request with an HTML interstitial; saved under a .pdf name it is indistinguishable
+# from a document until you read it.
+_BOT_WALL = re.compile(r"enable JavaScript to view the page|support ID is|Incapsula|Request unsuccessful", re.I)
+
+
+def _is_bot_wall(pages: list[str]) -> bool:
+    """True when the 'document' is really an anti-bot page. Short and unmistakable, so one page is enough."""
+    if len(pages) > 2:
+        return False
+    return bool(pages) and bool(_BOT_WALL.search(" ".join(pages)[:2000]))
+
+
+def index_attachment_pages(limit: int = 500) -> dict[str, int]:
+    """Write per-page text for stored PDFs to object storage, so a reader can search inside one.
+
+    The page text goes to R2 rather than the database on purpose: 89,280 pages is roughly 270 MB, and Neon's
+    free plan stops accepting writes at 500 MB -- it is already at 36%. R2 has 10 GB and is at 34%.
+
+    Resumable and idempotent: an attachment is picked up only while `page_index_key` is null, and the key is
+    written last, so a crash mid-run costs one file rather than the batch. Safe to run repeatedly.
+    """
+    from .parsers import pdfmap
+
+    store = storage()
+    with db.transaction() as conn:
+        pending = db.fetch_all(
+            conn,
+            """SELECT id, storage_key, filename FROM attachment
+                WHERE storage_key IS NOT NULL AND page_index_key IS NULL
+                ORDER BY id LIMIT %s""",
+            (limit,),
+        )
+    done = pages_written = skipped = blocked = 0
+    for att in pending:
+        key = att["storage_key"]
+        if not key.lower().endswith(".pdf") and not (att["filename"] or "").lower().endswith(".pdf"):
+            # Not a PDF, so there are no pages to land on. Mark it rather than reconsider it every run.
+            with db.transaction() as conn:
+                db.execute(conn, "UPDATE attachment SET page_index_key = '' WHERE id = %s", (att["id"],))
+            skipped += 1
+            continue
+        try:
+            data = store.get(key)
+            index = pdfmap.build_index(data)
+        except Exception as exc:
+            log.warning("page index failed for attachment %s (%s): %s", att["id"], key, str(exc)[:120])
+            continue
+        if _is_bot_wall(index.pages):
+            # What we stored is the regulator's anti-bot interstitial, not the document: the fetch was blocked
+            # and the block page was saved under a .pdf name. Indexing it would make a page of "please enable
+            # JavaScript" searchable and look like success. Record it as unfetched so it is re-downloaded.
+            with db.transaction() as conn:
+                db.execute(
+                    conn,
+                    "UPDATE attachment SET storage_key = NULL, extracted_text = NULL, page_count = NULL WHERE id = %s",
+                    (att["id"],),
+                )
+            blocked += 1
+            continue
+        payload = json.dumps({"pages": index.pages}, ensure_ascii=False).encode("utf-8")
+        out_key = f"pageindex/{key}.json"
+        try:
+            store.put(out_key, payload, "application/json")
+        except Exception as exc:
+            log.warning("could not store page index for attachment %s: %s", att["id"], str(exc)[:120])
+            continue
+        with db.transaction() as conn:
+            db.execute(conn, "UPDATE attachment SET page_index_key = %s WHERE id = %s", (out_key, att["id"]))
+        done += 1
+        pages_written += index.page_count
+    log.info("page index: %d files, %d pages, %d skipped, %d bot-walls re-queued", done, pages_written, skipped, blocked)
+    return {"indexed": done, "pages": pages_written, "skipped": skipped, "blocked": blocked, "remaining_in_batch": len(pending)}
+
+
 # Retention only ever runs when space is genuinely short. Below the trigger it reports and stops, because
 # deleting an official record that a regulator later removes from its own site is not recoverable, and there
 # is no reason to pay that risk while there is room.

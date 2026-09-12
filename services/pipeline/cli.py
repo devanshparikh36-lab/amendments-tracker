@@ -47,6 +47,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("digest")
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
+    p_pages = sub.add_parser("pageindex", help="write per-page text for stored PDFs to object storage, for in-PDF search")
+    p_pages.add_argument("--limit", type=int, default=500, help="attachments to process this pass")
     p_retain = sub.add_parser("retain", help="drop the oldest ordinary documents per instrument, once storage is tight")
     p_retain.add_argument("--apply", action="store_true", help="actually delete; without this the command only reports")
     p_retain.add_argument("--force", action="store_true", help="evaluate the rule even below the trigger, to see what it would do")
@@ -126,6 +128,18 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "prune":
         print(pipeline.prune_before_cutoff())
+        return 0
+
+    if args.cmd == "pageindex":
+        r = pipeline.index_attachment_pages(limit=args.limit)
+        print(f"indexed {r['indexed']} PDFs ({r['pages']} pages), skipped {r['skipped']} non-PDFs, "
+              f"re-queued {r['blocked']} that held an anti-bot page instead of a document")
+        with db.transaction() as conn:
+            left = db.fetch_one(
+                conn,
+                "SELECT count(*) AS n FROM attachment WHERE storage_key IS NOT NULL AND page_index_key IS NULL",
+            )
+        print(f"{left['n']} attachments still to index")
         return 0
 
     if args.cmd == "retain":
