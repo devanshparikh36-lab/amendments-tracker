@@ -39,7 +39,10 @@ class Settings:
     # Notifications
     teams_webhook_url: str | None = field(default_factory=lambda: _env("TEAMS_WEBHOOK_URL"))
     resend_api_key: str | None = field(default_factory=lambda: _env("RESEND_API_KEY"))
-    digest_from: str = field(default_factory=lambda: _env("DIGEST_FROM") or "Regulation Tracker <tracker@example.com>")
+    # onboarding@resend.dev is Resend's own shared sender: it needs no domain verification and delivers to the
+    # Resend account's own address, which is all this digest needs. example.com is a reserved documentation
+    # domain and was silently unsendable, so DIGEST_FROM had to be set before any mail could go out at all.
+    digest_from: str = field(default_factory=lambda: _env("DIGEST_FROM") or "Regulation Tracker <onboarding@resend.dev>")
     digest_to: list[str] = field(
         default_factory=lambda: [a.strip() for a in (_env("DIGEST_TO") or "").split(",") if a.strip()]
     )

@@ -101,8 +101,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "digest":
-        print("sent" if pipeline.send_daily_digest() else "not sent (check RESEND_API_KEY / DIGEST_TO)")
-        return 0
+        sent = pipeline.send_daily_digest()
+        print("sent" if sent else "NOT SENT - set RESEND_API_KEY and DIGEST_TO")
+        # Non-zero so the daily workflow goes red instead of passing while mailing nobody. It ran green for
+        # days doing exactly that, which is the same silent failure the collectors had.
+        return 0 if sent else 1
 
     if args.cmd == "sectionmap":
         print(pipeline.load_section_map())
