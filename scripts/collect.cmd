@@ -34,6 +34,12 @@ REM mails nobody is the failure this project keeps having.
 set "RCD=%ERRORLEVEL%"
 echo ---- digest exit %RCD% ---- >> "%LOG%"
 
+REM Write per-page text for newly stored PDFs, so the in-PDF search and jump-to-page cover them. Bounded per
+REM run and resumable: an attachment is picked up only while it has no page index, and the key is written
+REM last, so a dropped connection costs the file in flight and nothing else.
+".venv\Scripts\python.exe" cli.py pageindex --limit 400 >> "%LOG%" 2>&1
+echo ---- page index pass done ---- >> "%LOG%"
+
 REM Read a slice of the scanned-PDF backlog. Time-bounded rather than count-bounded so a run stays
 REM predictable: OCR costs about five seconds a page, and the backlog is uneven enough that a count limit
 REM would make one run take a minute and the next take hours. It resumes where it stopped, so closing the

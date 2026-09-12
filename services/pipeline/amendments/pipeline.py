@@ -1212,14 +1212,21 @@ def index_attachment_pages(limit: int = 500) -> dict[str, int]:
     from .parsers import pdfmap
 
     store = storage()
-    with db.transaction() as conn:
-        pending = db.fetch_all(
-            conn,
-            """SELECT id, storage_key, filename FROM attachment
-                WHERE storage_key IS NOT NULL AND page_index_key IS NULL
-                ORDER BY id LIMIT %s""",
-            (limit,),
-        )
+    try:
+        with db.transaction() as conn:
+            pending = db.fetch_all(
+                conn,
+                """SELECT id, storage_key, filename FROM attachment
+                    WHERE storage_key IS NOT NULL AND page_index_key IS NULL
+                    ORDER BY id LIMIT %s""",
+                (limit,),
+            )
+    except Exception as exc:
+        # This machine's connection to Neon drops intermittently (see docs/HANDOFF.md). Losing the batch to a
+        # blip is fine -- every file already indexed is recorded, so the next run resumes -- but crashing the
+        # whole command is not, because it sits in a scheduled script alongside other work.
+        log.warning("page index could not reach the database: %s", str(exc).splitlines()[0][:140])
+        return {"indexed": 0, "pages": 0, "skipped": 0, "blocked": 0, "remaining_in_batch": 0}
     done = pages_written = skipped = blocked = 0
     for att in pending:
         key = att["storage_key"]
