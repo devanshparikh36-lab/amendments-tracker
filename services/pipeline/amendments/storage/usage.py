@@ -9,6 +9,7 @@ Neon is the tighter of the two because it holds the extracted text of every docu
 from __future__ import annotations
 
 import logging
+import os as _os
 from dataclasses import dataclass
 
 from .. import db
@@ -22,8 +23,8 @@ NEON_FREE_BYTES = 500 * 1024**2       # 500 MB
 # Warn at 60% rather than 75%. Getting back under a limit means reclaiming space and redeploying, which takes a
 # session; by 75% of Neon there is little room left to be calm about it, and past 100% the free plan stops
 # accepting writes and collection halts outright.
-WARN_AT = 0.60
-CRITICAL_AT = 0.90
+WARN_AT = float(_os.environ.get("STORAGE_WARN_AT") or 0.60)
+CRITICAL_AT = float(_os.environ.get("STORAGE_CRITICAL_AT") or 0.90)
 
 
 @dataclass
