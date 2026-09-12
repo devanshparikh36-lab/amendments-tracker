@@ -90,8 +90,16 @@ limit the free plan stops accepting writes and collection halts. It is now at **
 
 | | before | after | free limit |
 |---|---|---|---|
-| Cloudflare R2 | 3.34 GB | 3.34 GB (33%) | 10 GB |
+| Cloudflare R2 | 3.34 GB (as mis-measured) | **3.44 GB (34%)**, counted properly | 10 GB |
 | Neon Postgres | 342 MB (68%) | **171 MB (34%)** | 500 MB |
+
+**The R2 figure was wrong until 12 Sept.** `object_storage_usage` summed `attachment.size_bytes`, so anything
+written by a path that creates no attachment row was invisible — chiefly the official instrument PDFs, which
+`_store_official_pdf` writes under `official/` against `instrument.pdf_storage_key`. The alarm saw 7,336 files
+and 3.34 GB against a real 7,477 objects and 3.445 GB. It now lists the bucket itself, so the 60% threshold
+measures what Cloudflare actually bills for; it falls back to the recorded sum only if the bucket is
+unreachable, labelled "recorded, not counted" so a degraded reading is obvious. Worth re-checking if anyone
+adds a third writer to R2 — the lesson is that the database only knows about writes it was told about.
 
 `cli.py compact --apply --full` cleared 103 MB of text that cost nothing to lose and handed the space back:
 
