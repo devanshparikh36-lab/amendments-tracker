@@ -76,13 +76,18 @@ non-zero when a limit passes it. The **Free-tier watch** workflow runs it daily,
 and GitHub emails the repository owner — the only channel here that costs nothing and needs no secret. Both
 limits currently report `[ok]` and the watch exits 0.
 
-> **Unverified dependency.** Every free alert in this project — storage *and* collection failures — rests on
-> GitHub emailing the owner when a scheduled workflow fails. That is GitHub's default, but it is an account
-> setting, not something the repo controls, and it has never been confirmed here: the settings pages need an
-> authenticated session and cannot be read from this machine. If Actions email notifications are off, or point
-> at an address nobody reads, **the project has no working alerting at all** and every failure is silent again.
-> Confirm at `github.com/settings/notifications` (Actions → Email, "notify for failed workflows only") and
-> `github.com/settings/emails` (the address it goes to, which should be `the address in the DIGEST_TO secret`).
+> **The channel this rests on is verified** (12 Sept 2026). Every free alert here — storage *and* collection
+> failures — depends on GitHub emailing the owner when a scheduled workflow fails, which is an account setting
+> the repo cannot control. Checked at `github.com/settings/notifications` on the `devanshparikh36-lab` account:
+>
+> ```
+> Default notifications email:  the address in the DIGEST_TO secret
+> Actions:  Notify me: on GitHub, Email.  (Failed workflows only)
+> ```
+>
+> Both correct — it reaches the right address, and "failed workflows only" means the four successful runs a day
+> stay quiet. If alerting ever appears to stop working, re-check this page first: turning off Actions email, or
+> changing the default notification address, silently removes the project's only functioning alert channel.
 
 ## Open — five adapters were collecting nothing while reporting `ok`
 
