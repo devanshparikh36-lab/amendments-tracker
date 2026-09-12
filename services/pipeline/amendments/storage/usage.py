@@ -52,14 +52,43 @@ class Usage:
         return f"{self.label}: {used:.2f} {unit} of {limit:.0f} {unit} ({self.fraction * 100:.0f}%)"
 
 
-def object_storage_usage() -> Usage:
-    """Bytes held in R2, from what the pipeline recorded plus the official PDFs."""
+def _recorded_object_usage() -> Usage:
+    """Fallback: what the database says was stored. Undercounts — see object_storage_usage."""
     with db.transaction() as conn:
         row = db.fetch_one(
             conn,
             "SELECT coalesce(sum(size_bytes), 0)::bigint AS n, count(*) AS files FROM attachment WHERE storage_key IS NOT NULL",
         )
-    return Usage("Cloudflare R2", int(row["n"]), R2_FREE_BYTES, f"{row['files']} files")
+    return Usage("Cloudflare R2", int(row["n"]), R2_FREE_BYTES, f"{row['files']} files (recorded, not counted)")
+
+
+def object_storage_usage() -> Usage:
+    """Bytes actually held in R2, counted by listing the bucket.
+
+    This used to sum `attachment.size_bytes`, which silently misses anything written by a path that does not
+    create an attachment row. The official instrument PDFs are one such path: `_store_official_pdf` writes them
+    under `official/` against `instrument.pdf_storage_key`, and they were invisible here — 139 objects and
+    0.107 GB of a real 3.445 GB bucket, so the alarm read 33% where the truth was 34%. Small today, but it is
+    the share that grows every time an instrument is re-seeded, and an alarm that measures a subset of what is
+    billed will always fire late.
+
+    Listing costs one Class B operation per 1,000 objects, a handful a day against a 10-million monthly free
+    allowance. If the bucket cannot be reached the recorded sum is used instead, labelled so the difference is
+    visible rather than silently wrong.
+    """
+    store = storage()
+    if not store.remote:
+        return _recorded_object_usage()
+    try:
+        total = objects = 0
+        for page in store._s3.get_paginator("list_objects_v2").paginate(Bucket=settings.r2_bucket):
+            for obj in page.get("Contents", []):
+                total += obj["Size"]
+                objects += 1
+        return Usage("Cloudflare R2", total, R2_FREE_BYTES, f"{objects} objects")
+    except Exception as exc:
+        log.warning("could not list the R2 bucket (%s); using the recorded sizes, which undercount", str(exc)[:120])
+        return _recorded_object_usage()
 
 
 def database_usage() -> Usage:
