@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import Link from "next/link";
 import { SiteNav } from "@/components/SiteNav";
 import { fmtDateTime } from "@/lib/format";
@@ -12,9 +12,14 @@ export const metadata: Metadata = {
   },
   description:
     "Indian tax and corporate law in the regulator's own words, with the amendment trail beside it: which notification changed which provision, and when, linked to the official document.",
-  // The site is read on phones as often as desks, and the reading view is a two-column layout that has to
-  // collapse cleanly. Without this, mobile browsers assume a desktop-width page and zoom out to fit.
-  viewport: "width=device-width, initial-scale=1",
+};
+
+// Its own export, not a key inside `metadata`. Next 15 ignores it there — silently, apart from a build
+// warning — and without the tag a phone renders the page at about 980px and zooms out to fit, so every
+// responsive breakpoint below `lg` never engages and the text arrives unreadably small.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
 };
 
 export const dynamic = "force-dynamic";

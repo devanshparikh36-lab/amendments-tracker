@@ -23,7 +23,10 @@ const REGULATORS = ["CBDT", "CBIC", "RBI", "DEA", "SEBI", "MCA"];
 export default async function DocumentsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
   const page = Math.max(1, Number(sp.page ?? 1));
-  const limit = 100;
+  // 100 rows cost 677 KB, because a server component ships its rendered tree twice: once as HTML and once as
+  // the flight payload it is escaped into. 40 is still a long page to scroll on a phone, and the pager below
+  // reaches the rest.
+  const limit = 40;
   const [docs, instruments] = await Promise.all([
     listDocuments({
       regulator: sp.regulator,

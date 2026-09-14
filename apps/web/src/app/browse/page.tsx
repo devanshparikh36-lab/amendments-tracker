@@ -29,17 +29,28 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
       (sp.seeded !== "1" || i.provision_count > 0 || (i.pdf_only && i.page_count > 0)),
   );
 
-  const groups = SUBJECTS.map((s) => ({
-    subject: s,
-    items: instruments
+  // The unfiltered view shows a preview of each subject rather than all 198 instruments at once. A React
+  // server component ships its rendered tree twice -- once as HTML, once as the flight payload it is escaped
+  // into -- so the full list cost 603 KB to answer "what is here?", most of it for rows nobody scrolled to.
+  // Narrowing by subject, regulator or search shows everything that matches, so nothing becomes unreachable.
+  const PREVIEW_PER_SUBJECT = 12;
+  const narrowed = Boolean(subject || sp.regulator || q || sp.seeded === "1");
+
+  const groups = SUBJECTS.map((s) => {
+    const items = instruments
       .filter((i) => s.regulators.includes(i.regulator_code))
       .sort(
         (a, b) =>
           KIND_ORDER.indexOf(a.kind) - KIND_ORDER.indexOf(b.kind) ||
           b.provision_count - a.provision_count ||
           a.title.localeCompare(b.title),
-      ),
-  })).filter((g) => g.items.length > 0);
+      );
+    return {
+      subject: s,
+      total: items.length,
+      items: narrowed ? items : items.slice(0, PREVIEW_PER_SUBJECT),
+    };
+  }).filter((g) => g.items.length > 0);
 
   return (
     <div className="space-y-4">
@@ -101,7 +112,9 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
         <section key={g.subject.key} className={`panel sub-rule ${subjectClass(g.subject.key)}`}>
           <div className="panel-head">
             <h2 className="serif text-[16px] font-semibold">{g.subject.name}</h2>
-            <span className="meta num ml-auto">{n(g.items.length)} instruments</span>
+            <span className="meta num ml-auto">
+              {g.items.length < g.total ? `${n(g.items.length)} of ${n(g.total)}` : n(g.total)} instruments
+            </span>
           </div>
           <ul className="px-5 py-2">
             {g.items.map((i) => (
@@ -130,6 +143,13 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
                 </p>
               </li>
             ))}
+            {g.items.length < g.total && (
+              <li className="py-2.5">
+                <Link href={`/browse?subject=${g.subject.key}`} className="text-[13px] text-[var(--link)] hover:underline">
+                  Show all {n(g.total)} in {g.subject.name} &rarr;
+                </Link>
+              </li>
+            )}
           </ul>
         </section>
       ))}
