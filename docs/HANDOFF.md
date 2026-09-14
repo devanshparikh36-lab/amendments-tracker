@@ -1,6 +1,6 @@
 # Handoff — 12 Sept 2026
 
-State of Paper Trail and what the next session should pick up. Supersedes the 11 Sept note, which
+State of As Amended and what the next session should pick up. Supersedes the 11 Sept note, which
 described an architecture that no longer exists: collection has moved off GitHub Actions entirely.
 
 ## Live

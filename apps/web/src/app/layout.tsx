@@ -7,8 +7,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Paper Trail — Indian tax and corporate law, as amended",
-    template: "%s · Paper Trail",
+    default: "As Amended — Indian tax and corporate law",
+    template: "%s · As Amended",
   },
   description:
     "Indian tax and corporate law in the regulator's own words, with the amendment trail beside it: which notification changed which provision, and when, linked to the official document.",
@@ -46,10 +46,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="mx-auto flex max-w-[1360px] flex-wrap items-center gap-x-6 gap-y-2 px-5 pt-3">
             <Link href="/" className="group leading-tight">
               <span className="serif block text-[19px] font-semibold tracking-tight text-[var(--ink)] group-hover:text-[var(--accent)]">
-                Paper Trail
+                As Amended
               </span>
+              {/* The wordmark already says "as amended"; the strapline should add the subject and the
+                  promise rather than repeat it. */}
               <span className="block text-[10.5px] font-medium uppercase tracking-[0.14em] text-[var(--ink-4)]">
-                Indian tax &amp; corporate law, as amended
+                Indian tax &amp; corporate law, in the regulator&rsquo;s words
               </span>
             </Link>
 

@@ -23,7 +23,7 @@ export default async () => {
   }
   const started = Date.now();
   try {
-    const res = await fetch(`${base}/api/health`, { headers: { "user-agent": "paper-trail-keepwarm" } });
+    const res = await fetch(`${base}/api/health`, { headers: { "user-agent": "as-amended-keepwarm" } });
     const body = await res.text();
     console.log(`keepwarm: ${res.status} in ${Date.now() - started}ms ${body.slice(0, 80)}`);
   } catch (err) {

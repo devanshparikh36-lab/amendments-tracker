@@ -1,4 +1,4 @@
-# Paper Trail
+# As Amended
 
 Indian tax and corporate law in the regulator's own words, with the amendment trail beside it. Covers FEMA and RBI,
 income tax, GST, the Companies Act and SEBI: **every official document stored verbatim** (extracted text, the original
