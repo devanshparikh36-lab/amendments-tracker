@@ -1,10 +1,14 @@
-# The collector. Runs on GitHub's hosted runners, four times a day, with no machine of ours involved.
+# The collector. Runs once a day at 07:00 IST on GitHub's hosted runners, with no machine of ours involved.
 #
-# This is affordable because the repository is public: public repositories get unlimited Actions minutes, while
-# a private one gets 2,000 a month, which this workload exhausted around the 8th of September and then had every
-# job refused. Discovery is about 16 minutes a pass, so four passes a day would be roughly 1,980 minutes a month
-# -- the entire private allowance, with nothing spare. If this repository is ever made private again, drop the
-# schedule to once a day before doing so, or collection will stop mid-month exactly as it did before.
+# Once a day is both what is wanted and what is affordable. Regulators publish a handful of documents a week --
+# MCA issued four General Circulars in eight months -- so six-hourly polling was buying nothing and costing
+# four times as much. Discovery is about 16 minutes a pass, so once daily is roughly 500 minutes a month
+# against the 2,000 a private repository gets; four times a day was ~1,980, the entire allowance with nothing
+# spare, which is how collection stopped dead on 8 September.
+#
+# The uncertainty in that budget is CBIC and SEBI (below). If they burn their retry timeouts -- 131 minutes
+# across the five on 11 Sept -- a daily run costs far more than the discovery figure suggests. Watch the first
+# few runs before trusting the headroom.
 #
 # Watch CBIC and SEBI here. Those five adapters returned zero from GitHub's runners on 11 Sept while returning
 # their full counts from a residential connection, and the cause was never established -- the runner-side logs
@@ -12,7 +16,7 @@
 # this workflow will say so instead of looking healthy.
 on:
   schedule:
-    - cron: "30 */6 * * *"      # every 6 hours (UTC); 06:00 / 12:00 / 18:00 / 00:00 IST
+    - cron: "30 1 * * *"        # 01:30 UTC = 07:00 IST, once a day
   workflow_dispatch:
     inputs:
       command:
