@@ -33,6 +33,29 @@ where per-document overhead dominates. The real backlog took 65 minutes, not the
 All are resumable: progress is recorded per item, so closing the laptop costs at most the file in flight.
 `StartWhenAvailable` means a missed window runs when the machine next wakes. Scripts live in `scripts/`.
 
+**Why collection silently did nothing for two days, and what fixed it.** The log read `run started` followed by
+`^C`, three days running, with `LastTaskResult = 0xC000013A`. Nothing was wrong with the collection — it never
+got to do any. Two settings combined: the task runs in the interactive session (`LogonType Interactive`), which
+Windows kills when the machine sleeps, and this machine sleeps after five minutes idle (`STANDBYIDLE 0x12c`)
+while a full run needs about forty. So it started, nobody touched the keyboard, and five minutes later it died.
+
+Two changes, neither needing elevation. `WakeToRun` is now true, so 07:15 and 19:15 actually fire instead of
+waiting for the lid to open — which is why runs were appearing at 11:08 and 21:39. And the task now runs
+through `scripts/keepawake.ps1`, which asks Windows not to sleep for the duration via `SetThreadExecutionState`
+and hands sleep back afterwards; the screen still dims and locks, only sleep is deferred. Verified: a run
+survived eight minutes and kept working, where every previous one died at five.
+
+Note for anyone editing that script: Windows PowerShell 5.1 reads `0x80000000` as a *signed* Int32, so casting
+it to `[uint32]` throws and the flag is never set — the wrapper then looks installed and changes nothing. The
+constants are written in decimal for that reason.
+
+The cleaner fix is making the task `S4U` ("run whether the user is logged on or not"), which survives sleep
+rather than deferring it, but `Set-ScheduledTask -Principal` returns Access Denied without an elevated shell:
+
+```powershell
+Set-ScheduledTask -TaskName "Regulation Tracker collection" -Principal (New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited)
+```
+
 GitHub keeps only `storage.yml` (daily, the free-tier alarm) and `keepalive.yml` (monthly). `worker.yml` and
 `worker-residential.yml` are manual-only fallbacks; do not re-enable their schedules without checking minutes.
 
