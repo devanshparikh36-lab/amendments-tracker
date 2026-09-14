@@ -86,10 +86,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <div className="border-t border-[var(--rule)] pt-3 text-[12px] leading-relaxed text-[var(--ink-3)]">
             <p>
               Statutory text is reproduced as the regulator publishes it, in the regulator&rsquo;s own formatting, with
-              a link to the official document on every screen. Provisions marked{" "}
-              <span className="font-medium text-[var(--flag-machine)]">machine-consolidated</span> were merged
-              automatically and have not been read by a person. Instruments the regulator issues only as a PDF are
-              served as that PDF; text read out of those pages is a finding aid, never the official rendering.
+              a link to the official document on every screen. Amendments are shown as references &mdash; which
+              notification changed which provision, and when &mdash; and are never applied to the text: no wording here
+              has been rewritten by a machine, so what you read is the regulator&rsquo;s own. Follow the amendment link
+              to read the change in the regulator&rsquo;s words. Instruments issued only as a PDF are served as that
+              PDF; text read out of those pages, including by OCR, is a finding aid, never the official rendering.
             </p>
             <p className="mt-1.5">
               Internal research aid of K C Mehta &amp; Co. Not legal advice.{" "}

@@ -49,10 +49,27 @@ zero. It has not fired in anger because storage is genuinely at 35%.
 It never touches base texts, anything an instrument names as its official text, anything tagged `is_amending`,
 or the 200 most recent documents of any instrument. `retain --force` shows what it would do.
 
-## Open — the one thing that is not free
+## Settled — amendments are references, and stay that way
 
-**No amendment has been applied to any provision text.** All 1,242 effects have `new_version_id = NULL`,
-because `AI_ENABLED` is false and applying an amendment needs an LLM call per document.
+**Decided 12 Sept 2026: amendments are shown as references, not applied to the text, and no paid AI is used.**
+This is a standing decision, not a pending task. Do not turn `AI_ENABLED` on to "finish" consolidation, and do
+not treat the zero below as a gap to close.
+
+What the site therefore shows, and it is not thin: **16,370 document-to-provision links** — which notification
+changed which provision, and when — across 1,474 identified effects from 481 documents. A reader gets the
+regulator's own wording plus a link to the instrument that changed it. What it does not show is a consolidated
+rewrite, and every version in the database is the regulator's: `source_kind = 'machine_merged'` is **0 of
+6,446**, so nothing has been rewritten by a machine and nothing will be.
+
+The footer states this plainly rather than warning about machine-consolidated provisions that never existed.
+If consolidation is ever revisited, that copy has to change with it.
+
+**Why it is the right call for legal content, beyond the cost:** applying an amendment means a machine
+producing statutory wording that nobody has read, rendered indistinguishably from the regulator's own text. A
+wrong consolidation is worse than no consolidation, because it is silently authoritative. The reference model
+cannot mislead in that way — the worst case is one extra click to the official document.
+
+All 1,474 effects therefore have `new_version_id = NULL`. That is the intended state.
 
 A deterministic, AI-free merge was investigated and **rejected on evidence**. `cli.py mergepreview` reports what
 it would do, and writes nothing. The proposed safety rule was to substitute only when the quoted old wording
