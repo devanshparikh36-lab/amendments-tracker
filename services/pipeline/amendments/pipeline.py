@@ -221,8 +221,36 @@ def adapters_failed_since(when: datetime) -> list[str]:
     return [r["adapter"] for r in rows]
 
 
+def close_stale_runs(older_than_hours: int = 6) -> int:
+    """Mark long-abandoned `source_run` rows as failed.
+
+    A row is opened when an adapter starts and closed when it finishes or raises. If the process dies in
+    between — the laptop sleeping mid-run kills the scheduled task, which happened on 14 Sept — the row stays
+    `ok IS NULL` for ever. /status then reads it as still running, so a collector that was interrupted two days
+    ago is reported as working, which is worse than reporting it broken: the whole point of that page is to
+    show what is not working.
+
+    Six hours is well beyond any real adapter; the slowest observed full pass is about forty minutes.
+    """
+    with db.transaction() as conn:
+        rows = db.fetch_all(
+            conn,
+            """UPDATE source_run SET ok = false, finished_at = now(),
+                      error = 'run did not finish: the process was interrupted, and the row was closed by '
+                              'close_stale_runs. Not an adapter fault; look at whether the task was killed.'
+                WHERE ok IS NULL AND finished_at IS NULL
+                  AND started_at < now() - (%s || ' hours')::interval
+                RETURNING adapter""",
+            (older_than_hours,),
+        )
+    if rows:
+        log.warning("closed %d abandoned source_run rows: %s", len(rows), ", ".join(r["adapter"] for r in rows))
+    return len(rows)
+
+
 def run_discovery(adapter_names: list[str] | None = None, *, since_year: int | None = None) -> dict[str, int]:
     """List documents on every adapter, upsert them, and queue fetches for new ones."""
+    close_stale_runs()  # tidy rows abandoned by an interrupted run before adding today's
     names = adapter_names or list(registry.keys())
     summary: dict[str, int] = {}
     for name in names:
