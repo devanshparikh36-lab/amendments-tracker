@@ -7,8 +7,8 @@ name: Daily email digest
 #
 # Kept dispatchable for a one-off digest, and as the way back if collection ever returns to GitHub runners.
 on:
-  # schedule:
-  #   - cron: "30 2 * * *"      # 08:00 IST daily
+  schedule:
+    - cron: "30 2 * * *"        # 08:00 IST daily, after the 00:00 IST collection
   workflow_dispatch:
 
 jobs:
