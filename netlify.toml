@@ -14,7 +14,15 @@
   # Netlify runs this command and skips the build when it exits 0. `git diff --quiet` exits 0 when the paths
   # are unchanged, which is exactly the condition to skip. If CACHED_COMMIT_REF is missing -- a first build, or
   # a cleared cache -- the command fails, exits non-zero, and the site builds: the safe direction to err in.
-  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- apps/web netlify.toml package.json package-lock.json"
+  # Paths are relative to `base` (apps/web), because that is where Netlify runs this command.
+  #
+  # The first version listed `apps/web`, which from inside apps/web resolves to apps/web/apps/web -- a path
+  # that never changes, so the command always exited 0 and every build was skipped. The site sat three commits
+  # behind while each push reported success, which is the worst shape a bug can take.
+  #
+  # `.` is apps/web when run from the base, and the whole repository if Netlify ever runs it from the root --
+  # so the failure direction is "build when it did not need to", not "never build again".
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ../../netlify.toml ../../package.json ../../package-lock.json"
 
 [build.environment]
   NODE_VERSION = "22"
