@@ -1552,15 +1552,29 @@ def requeue_stale_jobs() -> int:
         )
 
 
-def process_jobs(limit: int = 200, *, adapters: list[str] | None = None, exclude_adapters: list[str] | None = None) -> int:
+def process_jobs(
+    limit: int = 200,
+    *,
+    adapters: list[str] | None = None,
+    exclude_adapters: list[str] | None = None,
+    types: list[str] | None = None,
+) -> int:
     """Run queued jobs oldest-first. Returns the number processed.
 
     `adapters` / `exclude_adapters` restrict the worker to documents from those sources, so browser-driven sites
     (which each need a Chromium) can run in one process while plain-HTTP sites run in several.
+
+    `types` restricts it to particular job types. The queue is strictly oldest-first, which is right for routine
+    work and wrong when one kind of job matters more than the rest: re-fetching 292 files that currently hold
+    an anti-bot page sat behind 304 tagging and self-check jobs, and a ten-minute run reached none of them. The
+    order is fair; it is just not always what is wanted.
     """
     processed = 0
     where = ["status = 'queued'"]
     params: list = []
+    if types:
+        where.append(f"type IN ({', '.join(['%s'] * len(types))})")
+        params.extend(types)
     if adapters or exclude_adapters:
         names = adapters or exclude_adapters
         op = "IN" if adapters else "NOT IN"

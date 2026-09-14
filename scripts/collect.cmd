@@ -22,6 +22,17 @@ echo. >> "%LOG%"
 echo ======== run started %DATE% %TIME% ======== >> "%LOG%"
 
 cd /d "%REPO%\services\pipeline" || exit /b 1
+
+REM Recover missing files first, ahead of the general queue.
+REM
+REM The queue is strictly oldest-first, which is right for routine work and wrong here: the attachments that
+REM hold an anti-bot page instead of a document sat behind 300 tagging and self-check jobs, and a ten-minute
+REM pass reached none of them. A document whose file is a block page is worse than one not yet tagged -- it
+REM looks complete and reads as nothing -- so it goes first. Each fetch is browser-driven through Akamai at
+REM roughly thirteen seconds, hence a modest count rather than a large one.
+".venv\Scripts\python.exe" cli.py work --type fetch_document --limit 120 >> "%LOG%" 2>&1
+echo ---- file recovery pass done ---- >> "%LOG%"
+
 ".venv\Scripts\python.exe" cli.py run --limit 500 >> "%LOG%" 2>&1
 set "RC=%ERRORLEVEL%"
 echo ---- collection exit %RC% ---- >> "%LOG%"

@@ -44,6 +44,8 @@ def main(argv: list[str] | None = None) -> int:
     p_work.add_argument("--limit", type=int, default=500)
     p_work.add_argument("--adapter", action="append", help="only documents from this source (repeatable)")
     p_work.add_argument("--not-adapter", action="append", help="skip documents from this source (repeatable)")
+    p_work.add_argument("--type", action="append",
+                        help="only this job type, e.g. fetch_document (repeatable); the queue is otherwise strictly oldest-first")
     sub.add_parser("digest")
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
@@ -109,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
         requeued = pipeline.requeue_stale_jobs()
         if requeued:
             print(f"requeued {requeued} stale jobs")
-        print("processed", pipeline.process_jobs(limit=args.limit, adapters=args.adapter, exclude_adapters=args.not_adapter))
+        print("processed", pipeline.process_jobs(limit=args.limit, adapters=args.adapter, exclude_adapters=args.not_adapter, types=args.type))
         return 0
 
     if args.cmd == "digest":
