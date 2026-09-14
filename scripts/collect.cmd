@@ -62,9 +62,11 @@ REM attachment attempted is marked, so stopping costs at most the file in flight
 ".venv\Scripts\python.exe" cli.py ocr --minutes 20 >> "%LOG%" 2>&1
 echo ---- ocr pass done ---- >> "%LOG%"
 
-REM The free-tier check. storage.yml does this on GitHub and emails on a breach, but it cannot run while the
-REM Actions allowance is exhausted -- which is most of the month. Running it here too means the 60%% warning
-REM still reaches somebody in the meantime, via a desktop notification rather than mail.
+REM The free-tier check, run again here for the sake of it being cheap and immediate after a collection that
+REM has just added data. It is no longer the only path, and must not be: everything above can take forty
+REM minutes, and when this task was killed mid-run on 14 Sept the check never executed -- an alarm that
+REM depends on a long job finishing is silent exactly when something has gone wrong. The dedicated
+REM "Regulation Tracker storage watch" task (scripts\storagewatch.cmd, twice daily) is the reliable one.
 ".venv\Scripts\python.exe" cli.py storage >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo ---- STORAGE PAST 60%% - see the lines above ---- >> "%LOG%"
