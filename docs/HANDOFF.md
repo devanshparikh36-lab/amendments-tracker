@@ -9,16 +9,37 @@ described an architecture that no longer exists: collection has moved off GitHub
   `SITE_PASSCODE` secrets — deliberately not written here, so this file stays safe to publish.
 - 8,001 documents · 1,242 amendment effects · **12 of 12 adapters green**
 
-## How it runs now — three Windows scheduled tasks, no GitHub minutes
+## How it runs now — GitHub Actions on a public repo, no machine of ours involved
 
-GitHub Actions could never do this for free: a worker run is about an hour, four times a day, which is roughly
-7,200 minutes a month against the 2,000 included with GitHub Free on a private repo. It exhausted the allowance
-around the 8th of September and every job was refused thereafter — that, not any bug, is why collection stopped.
+**This repository is public, and that is load-bearing.** Public repositories get unlimited Actions minutes; a
+private one gets 2,000 a month. A worker run is about an hour, so four a day was roughly 7,200 a month — the
+allowance went around 8 September and every job was refused thereafter, which is why collection stopped without
+any bug. Even at the current once-daily schedule a private repo would be at ~1,800 of 2,000, about 90%, with no
+margin for the 4h17m outlier that has already happened once. **If this is ever made private again, collection
+will stop mid-month unless the schedule drops well below daily.**
 
-| task | what it does | when |
+| workflow | what it does | when |
 |---|---|---|
-| `Regulation Tracker collection` | collect → digest → page index (400) → OCR (new scans only) → storage check | 07:15, 19:15 |
-| `Regulation Tracker warm-up` | pings `/api/health` so Netlify and Neon stay awake | every 4 min |
+| `worker.yml` | discover → fetch → tag → page index → OCR (new scans only) | **07:00 IST daily** |
+| `digest.yml` | mails what changed | 08:00 IST daily |
+| `storage.yml` | free-tier alarm, fails past 60% | daily |
+| `keepalive.yml` | keeps schedules alive | monthly |
+
+The three Windows scheduled tasks are **disabled**, not deleted, and `scripts/` still holds them. They are the
+way back if GitHub is ever unusable — but re-enabling them reintroduces the failure they were disabled for: the
+task runs in the interactive session, and this machine sleeps after five minutes idle, so a forty-minute run is
+killed unless `keepawake.ps1` wraps it.
+
+**History was rewritten on 14 Sept before publishing.** All 107 commits were reauthored to
+`devanshparikh36-lab@users.noreply.github.com`, because the committer address is published on every commit of a
+public repo and no content scrub reaches it. Verified afterwards against GitHub's own API: that address is the
+only one served. The cost is that every SHA changed, so commit hashes quoted in older notes no longer resolve —
+the messages survive, the links do not. The pre-rewrite history is at `refs/original/refs/heads/main` locally.
+
+**Watch CBIC and SEBI on the first runs.** Those five returned zero from GitHub's runners on 11 September while
+returning full counts from a residential connection, and the cause was never established — the runner-side logs
+went unread. They burned 131 minutes between them in retries that day. `EmptyDiscovery` now fails the run rather
+than recording a green zero, so if it is still happening it will say so instead of looking healthy.
 
 **OCR now runs on new arrivals only.** The 284-document backlog is finished — 440 documents, 15,285 pages,
 including all 76 SEBI master circulars — so the dedicated hourly OCR task was removed on 14 Sept: it had
