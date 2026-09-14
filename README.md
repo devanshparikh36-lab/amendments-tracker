@@ -1,9 +1,12 @@
-# Regulation Amendments Tracker
+# Paper Trail
 
-Internal K C Mehta & Co website that keeps Indian regulations (FEMA + RBI first; Income Tax, GST, Companies Act/SEBI
-later) in **consolidated, as-amended form**, with the **timeline of every amendment** per provision and **every official
-document stored verbatim** (extracted text + original PDF + attachments). It runs as a fully autonomous pipeline: no
-human review step.
+Indian tax and corporate law in the regulator's own words, with the amendment trail beside it. Covers FEMA and RBI,
+income tax, GST, the Companies Act and SEBI: **every official document stored verbatim** (extracted text, the original
+PDF, its attachments) and **every amendment linked to the provision it changes** — which notification, and when.
+
+Amendments are shown as **references, never applied to the text**. Nothing here is rewritten by a machine, so what you
+read is what the regulator published; follow the link to read the change in their words. It runs as a fully autonomous
+pipeline with no human review step.
 
 ```
 apps/web/            Next.js 15 site (Netlify)
@@ -53,7 +56,7 @@ python cli.py backfill --since-year 2000   # one-off: pull RBI archive years
 # web
 cd apps/web
 npm install
-cp ../../.env.example .env.local   # DATABASE_URL, SITE_PASSCODE, optional R2_PUBLIC_BASE_URL
+cp ../../.env.example .env.local   # DATABASE_URL, optional R2_PUBLIC_BASE_URL
 npm run dev                        # http://localhost:3000
 ```
 

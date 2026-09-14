@@ -1,12 +1,13 @@
 # Handoff — 12 Sept 2026
 
-State of the Regulation Tracker and what the next session should pick up. Supersedes the 11 Sept note, which
+State of Paper Trail and what the next session should pick up. Supersedes the 11 Sept note, which
 described an architecture that no longer exists: collection has moved off GitHub Actions entirely.
 
 ## Live
 
-- Site: the Netlify deployment, behind a passcode gate. URL and passcode are the `SITE_URL` and
-  `SITE_PASSCODE` secrets — deliberately not written here, so this file stays safe to publish.
+- Site: the Netlify deployment, open to anyone — the passcode gate was removed on 14 Sept along with the
+  firm's name. Everything it serves is already public: the regulators' own documents. The URL is the
+  `SITE_URL` secret.
 - 8,001 documents · 1,242 amendment effects · **12 of 12 adapters green**
 
 ## How it runs now — GitHub Actions on a public repo, no machine of ours involved
@@ -51,9 +52,6 @@ Worth correcting for anyone sizing future work: OCR is **~0.3 seconds a page**, 
 estimated here. That estimate came from a 90-second trial that happened to process single-page documents,
 where per-document overhead dominates. The real backlog took 65 minutes, not the twenty hours predicted.
 
-All are resumable: progress is recorded per item, so closing the laptop costs at most the file in flight.
-`StartWhenAvailable` means a missed window runs when the machine next wakes. Scripts live in `scripts/`.
-
 **Why collection silently did nothing for two days, and what fixed it.** The log read `run started` followed by
 `^C`, three days running, with `LastTaskResult = 0xC000013A`. Nothing was wrong with the collection — it never
 got to do any. Two settings combined: the task runs in the interactive session (`LogonType Interactive`), which
@@ -76,9 +74,6 @@ rather than deferring it, but `Set-ScheduledTask -Principal` returns Access Deni
 ```powershell
 Set-ScheduledTask -TaskName "Regulation Tracker collection" -Principal (New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType S4U -RunLevel Limited)
 ```
-
-GitHub keeps only `storage.yml` (daily, the free-tier alarm) and `keepalive.yml` (monthly). `worker.yml` and
-`worker-residential.yml` are manual-only fallbacks; do not re-enable their schedules without checking minutes.
 
 ## Free tiers, and the alarm
 

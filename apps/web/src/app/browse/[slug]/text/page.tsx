@@ -130,12 +130,16 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
         </div>
       </div>
 
+      {/* On a phone this collapses to one column, so the order matters: the provision you asked for comes
+          first and the contents list follows it. Sticky full-height is a desktop idea -- applied on a narrow
+          screen it puts a full viewport of table-of-contents above the text, and the reader has to scroll
+          past the whole Act to reach the section they clicked. */}
       <div className="grid gap-4 lg:grid-cols-[288px_minmax(0,1fr)]">
-        <aside className="panel no-print sticky top-3 h-[calc(100vh-5.5rem)] overflow-hidden">
+        <aside className="panel no-print order-2 max-h-[60vh] overflow-y-auto lg:order-1 lg:sticky lg:top-3 lg:max-h-none lg:h-[calc(100vh-5.5rem)] lg:overflow-hidden">
           <SectionFilter items={navItems} total={sections.length} slug={slug} selected={sp.p} suffix={suffix} unit={unit} />
         </aside>
 
-        <div className="print-full min-w-0 space-y-4">
+        <div className="print-full order-1 min-w-0 space-y-4 lg:order-2">
           {selected ? (
             <ProvisionView
               inst={inst}
@@ -350,8 +354,11 @@ function ProvisionView({
         <SectionStep slug={slug} suffix={suffix} prev={prev} next={next} unit={unit} />
       </article>
 
+      {/* An embedded PDF needs real height to be readable, but a full viewport of it on a phone buries the
+          text it sits beside. Shorter on small screens, sticky and full-height from xl up where it is a
+          genuine second column. */}
       {showEmbed && source?.embed && (
-        <aside className="panel no-print sticky top-3 h-[calc(100vh-5.5rem)] overflow-hidden">
+        <aside className="panel no-print h-[70vh] overflow-hidden xl:sticky xl:top-3 xl:h-[calc(100vh-5.5rem)]">
           <div className="flex items-center justify-between border-b border-[var(--rule)] px-3 py-1.5 text-[12px] text-[var(--ink-3)]">
             <span>Official PDF{source.page ? `, page ${source.page}` : ""}</span>
             <a href={source.href} target="_blank" rel="noreferrer" className="text-[var(--link)] hover:underline">
@@ -572,7 +579,9 @@ async function PdfReader({
         </div>
 
         {pdfUrl ? (
-          <aside className="panel no-print sticky top-3 h-[calc(100vh-5.5rem)] overflow-hidden">
+          // For a PDF-only instrument the viewer is the content, so it keeps real height on a phone too --
+          // just not a full viewport, which would hide the search results it exists to answer.
+          <aside className="panel no-print h-[75vh] overflow-hidden lg:sticky lg:top-3 lg:h-[calc(100vh-5.5rem)]">
             <div className="flex items-center justify-between border-b border-[var(--rule)] px-3 py-1.5 text-[12px] text-[var(--ink-3)]">
               <span>
                 Official PDF as published by {inst.regulator_code}

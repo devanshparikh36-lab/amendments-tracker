@@ -7,11 +7,14 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Regulation Tracker — K C Mehta & Co",
-    template: "%s · Regulation Tracker",
+    default: "Paper Trail — Indian tax and corporate law, as amended",
+    template: "%s · Paper Trail",
   },
   description:
-    "Consolidated Indian tax and corporate law with every amendment and the regulator's own text alongside. Internal research aid of K C Mehta & Co.",
+    "Indian tax and corporate law in the regulator's own words, with the amendment trail beside it: which notification changed which provision, and when, linked to the official document.",
+  // The site is read on phones as often as desks, and the reading view is a two-column layout that has to
+  // collapse cleanly. Without this, mobile browsers assume a desktop-width page and zoom out to fit.
+  viewport: "width=device-width, initial-scale=1",
 };
 
 export const dynamic = "force-dynamic";
@@ -37,11 +40,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <header className="no-print border-b border-[var(--rule)] bg-[var(--paper)]">
           <div className="mx-auto flex max-w-[1360px] flex-wrap items-center gap-x-6 gap-y-2 px-5 pt-3">
             <Link href="/" className="group leading-tight">
-              <span className="block text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[var(--ink-4)]">
-                K C Mehta &amp; Co
-              </span>
               <span className="serif block text-[19px] font-semibold tracking-tight text-[var(--ink)] group-hover:text-[var(--accent)]">
-                Regulation Tracker
+                Paper Trail
+              </span>
+              <span className="block text-[10.5px] font-medium uppercase tracking-[0.14em] text-[var(--ink-4)]">
+                Indian tax &amp; corporate law, as amended
               </span>
             </Link>
 
@@ -93,7 +96,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               PDF; text read out of those pages, including by OCR, is a finding aid, never the official rendering.
             </p>
             <p className="mt-1.5">
-              Internal research aid of K C Mehta &amp; Co. Not legal advice.{" "}
+              A research aid, not legal advice. Always read the official document before relying on anything here.{" "}
               <Link href="/status" className="text-[var(--link)] hover:underline">
                 Collection status
               </Link>

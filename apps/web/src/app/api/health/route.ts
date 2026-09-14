@@ -9,10 +9,9 @@ export const dynamic = "force-dynamic";
 // plan suspends its compute after about five minutes idle. A first click that pays both, plus an empty cache,
 // measured 5.4 seconds in production against 0.4-1.0 for every click after it.
 //
-// This has to sit outside the passcode gate, and it has to touch the database. A ping to any normal page is
-// redirected to /login by the middleware before the page ever runs, so it would warm nothing -- which is the
-// trap in "just curl the homepage". The query is deliberately the cheapest thing that still requires the
-// database to be awake, and the response carries no data about what is in it.
+// It has to touch the database, not merely return 200: the point is to force a real connection so the next
+// visitor does not pay for waking it. The query is the cheapest thing that still requires the database to be
+// awake, and the response carries no data about what is in it.
 export async function GET() {
   const started = Date.now();
   let db_ok = false;
