@@ -2,10 +2,18 @@
   command = "npm run build"
   publish = ".next"
 
+  # Build only when the website changed. This lives here, not in the root netlify.toml, because Netlify reads
+  # the base-directory file second and its [build] table wins -- an `ignore` set at the root is discarded.
+  #
+  # Paths are relative to this directory, so `.` is apps/web. Naming `apps/web` here would resolve to
+  # apps/web/apps/web, a path that never changes, and every build would be skipped while every push still
+  # reported success.
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- . ../../netlify.toml ../../package.json ../../package-lock.json"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
 # Set in the Netlify UI (Project configuration > Environment variables):
 #   DATABASE_URL        Neon pooled connection string
-#   SITE_PASSCODE       shared team passcode (leave unset to disable the gate)
 #   R2_PUBLIC_BASE_URL  public base URL of the R2 bucket, so file links go straight to R2
+# SITE_PASSCODE is no longer read: the passcode gate was removed on 14 Sept. It can be deleted there.
