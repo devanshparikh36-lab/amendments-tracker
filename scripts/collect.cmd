@@ -40,10 +40,14 @@ REM last, so a dropped connection costs the file in flight and nothing else.
 ".venv\Scripts\python.exe" cli.py pageindex --limit 400 >> "%LOG%" 2>&1
 echo ---- page index pass done ---- >> "%LOG%"
 
-REM Read a slice of the scanned-PDF backlog. Time-bounded rather than count-bounded so a run stays
-REM predictable: OCR costs about five seconds a page, and the backlog is uneven enough that a count limit
-REM would make one run take a minute and the next take hours. It resumes where it stopped, so closing the
-REM laptop costs at most the file in flight.
+REM Read any newly arrived scanned PDF -- one with no text layer. The original 284-document backlog is done
+REM (440 read, 15,285 pages), so in the normal case this finds nothing and exits in about six seconds: the
+REM budget below is a ceiling for a day that brings a pile of scans, not a cost paid every run. The dedicated
+REM hourly OCR task that cleared the backlog has been removed; it had nothing left to do.
+REM
+REM Time-bounded rather than count-bounded because page counts are wildly uneven -- some SEBI master circulars
+REM run past 800 pages -- so a count limit would make one run instant and the next very long. Resumable: every
+REM attachment attempted is marked, so stopping costs at most the file in flight.
 ".venv\Scripts\python.exe" cli.py ocr --minutes 20 >> "%LOG%" 2>&1
 echo ---- ocr pass done ---- >> "%LOG%"
 

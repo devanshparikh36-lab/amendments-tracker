@@ -17,9 +17,18 @@ around the 8th of September and every job was refused thereafter — that, not a
 
 | task | what it does | when |
 |---|---|---|
-| `Regulation Tracker collection` | collect → digest → page index (400) → OCR (20 min) → storage check | 07:15, 19:15 |
-| `Regulation Tracker OCR` | scanned-PDF backlog, 45 min | hourly, mains only |
+| `Regulation Tracker collection` | collect → digest → page index (400) → OCR (new scans only) → storage check | 07:15, 19:15 |
 | `Regulation Tracker warm-up` | pings `/api/health` so Netlify and Neon stay awake | every 4 min |
+
+**OCR now runs on new arrivals only.** The 284-document backlog is finished — 440 documents, 15,285 pages,
+including all 76 SEBI master circulars — so the dedicated hourly OCR task was removed on 14 Sept: it had
+nothing left to do and was waking every hour to discover that. The step inside the collection run stays, and
+finds nothing in about six seconds on a normal day; its 20-minute budget is a ceiling for a day that brings a
+pile of scans, not a cost paid every run.
+
+Worth correcting for anyone sizing future work: OCR is **~0.3 seconds a page**, not the five seconds first
+estimated here. That estimate came from a 90-second trial that happened to process single-page documents,
+where per-document overhead dominates. The real backlog took 65 minutes, not the twenty hours predicted.
 
 All are resumable: progress is recorded per item, so closing the laptop costs at most the file in flight.
 `StartWhenAvailable` means a missed window runs when the machine next wakes. Scripts live in `scripts/`.
