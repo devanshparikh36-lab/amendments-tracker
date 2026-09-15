@@ -1,0 +1,88 @@
+name: Build and deploy the site
+
+# Builds the site on GitHub's runners and uploads the finished output to Netlify, instead of letting Netlify
+# build it.
+#
+# Why: Netlify's free plan allows 300 build minutes a month and this repository exhausted them on 15 Sept,
+# after which pushes kept succeeding and the site quietly stayed five commits behind. Build minutes measure
+# time spent on Netlify's own build infrastructure, so a deploy of already-built files should not consume any.
+# GitHub Actions minutes are unlimited here because the repository is public, so the build moves to the side
+# that has capacity.
+#
+# That "should not consume any" is the thing this workflow is testing. Check Netlify's build-minute usage after
+# the first successful run: if it climbed, this approach does not work and the answer is Cloudflare Pages
+# instead, which allows 500 builds a month rather than 300 minutes.
+#
+# IMPORTANT: turn off Netlify's own Git integration for this site once this works, or every push builds twice
+# -- once here and once on Netlify, which is the opposite of the point. In Netlify: Site configuration >
+# Build & deploy > Continuous deployment > stop builds.
+
+on:
+  push:
+    branches: [main]
+    # Only when the site itself changes. The pipeline, handoff notes and task scripts share this repository and
+    # cannot affect what is served, so rebuilding for them is waste -- 27 of 35 builds on 12 Sept were exactly
+    # that.
+    paths:
+      - "apps/web/**"
+      - "netlify.toml"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+concurrency:
+  # A newer commit makes an in-flight deploy pointless, so cancel it rather than racing to publish an older one.
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      # `netlify build` runs the same build Netlify would, including @netlify/plugin-nextjs, and writes the
+      # deployable output to .netlify/. It runs here, on this runner, which is the whole point.
+      - name: Build
+        working-directory: apps/web
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: npx --yes netlify-cli@latest build
+
+      - name: Deploy the built output
+        working-directory: apps/web
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+        run: npx --yes netlify-cli@latest deploy --prebuilt --prod --message "${GITHUB_SHA::7} via GitHub Actions"
+
+      # Proves the deploy actually carried this commit, rather than reporting success while the site stays
+      # where it was -- which is precisely the failure this replaces.
+      - name: Verify the live site moved
+        env:
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          if [ -z "$SITE_URL" ]; then
+            echo "SITE_URL secret not set; skipping verification"
+            exit 0
+          fi
+          sleep 15
+          title=$(curl -sk --max-time 30 "$SITE_URL/" | grep -oE "<title>[^<]*</title>" || true)
+          echo "live title: $title"
+          case "$title" in
+            *"As Amended"*) echo "the rename is live, so this deploy carried current code" ;;
+            *) echo "::warning::live title is not the expected one yet: $title" ;;
+          esac
