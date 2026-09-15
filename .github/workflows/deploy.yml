@@ -36,6 +36,12 @@ concurrency:
   group: deploy
   cancel-in-progress: true
 
+env:
+  # Pinned deliberately. `netlify-cli@latest` would mean the tool that builds the site could change without
+  # anything in this repository changing -- a deploy that differs for reasons nobody can see in the diff.
+  # Raise this on purpose, and watch the first run after you do.
+  NETLIFY_CLI_VERSION: "27.6.0"
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -53,6 +59,38 @@ jobs:
         working-directory: apps/web
         run: npm ci
 
+      # Confirm the token and site id point at the site we mean, before building anything for it.
+      #
+      # `netlify build` pulls the site's environment variables using these credentials. If the site id were
+      # wrong, the build would succeed and deploy a correctly-built site to the wrong place -- or configured
+      # from another site's variables. Both fail quietly, so the check is cheap insurance.
+      - name: Confirm which site we are deploying to
+        working-directory: apps/web
+        env:
+          NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+          CLI: netlify-cli@${{ env.NETLIFY_CLI_VERSION }}
+        run: |
+          npx --yes "$CLI" status --json > status.json
+          # Written to a file rather than inlined: a regex with $ inside a shell run block is escaping waiting
+          # to go wrong, and this check exists precisely to catch quiet mistakes.
+          cat > check-site.cjs <<'CHECK'
+          const s = require("./status.json");
+          const site = s.siteData || {};
+          const strip = (v) => (v && v.endsWith("/") ? v.slice(0, -1) : v || "");
+          const live = strip(site.ssl_url || site.url);
+          const want = strip(process.env.SITE_URL);
+          console.log("site id resolves to:", site.name || "(unnamed)", live || "(no url)");
+          if (want && live && live !== want) {
+            console.error("::error::site id points at " + live + " but SITE_URL says " + want);
+            process.exit(1);
+          }
+          if (!want) console.log("SITE_URL not set, so the destination could not be cross-checked");
+          CHECK
+          node check-site.cjs
+          rm -f status.json check-site.cjs
+
       # `netlify build` runs the same build Netlify would, including @netlify/plugin-nextjs, and writes the
       # deployable output to .netlify/. It runs here, on this runner, which is the whole point.
       - name: Build
@@ -60,14 +98,14 @@ jobs:
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        run: npx --yes netlify-cli@latest build
+        run: npx --yes "netlify-cli@${NETLIFY_CLI_VERSION}" build
 
       - name: Deploy the built output
         working-directory: apps/web
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        run: npx --yes netlify-cli@latest deploy --prebuilt --prod --message "${GITHUB_SHA::7} via GitHub Actions"
+        run: npx --yes "netlify-cli@${NETLIFY_CLI_VERSION}" deploy --prebuilt --prod --message "${GITHUB_SHA::7} via GitHub Actions"
 
       # Proves the deploy actually carried this commit, rather than reporting success while the site stays
       # where it was -- which is precisely the failure this replaces.
