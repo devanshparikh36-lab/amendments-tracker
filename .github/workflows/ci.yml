@@ -1,0 +1,60 @@
+name: Check the site builds
+
+# Type-checks, lints and builds the website on every push -- deliberately with no environment variables at all.
+#
+# Why no environment: a brand new Netlify site failed its first build with exit code 2 because importing the
+# database module demanded DATABASE_URL, and `next build` imports every route module while collecting them.
+# The site does not need a database to build -- every page is rendered per request -- so a build that cannot
+# survive an empty environment is a bug in the code, not a missing variable. Running with nothing set is
+# therefore the regression test for exactly that failure, and it fails loudly here rather than quietly on a
+# host nobody is watching.
+#
+# It also stands in for the local checks. The development machine has ~0.5 GB of memory free and `tsc` stalls
+# there, so this is where type errors actually get caught.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "netlify.toml"
+      - ".github/workflows/ci.yml"
+  pull_request:
+    paths:
+      - "apps/web/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Type-check
+        working-directory: apps/web
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Lint
+        working-directory: apps/web
+        run: npm run lint --if-present
+
+      # No `env:` block here, and that is the point of this job. If this step ever needs a variable added to
+      # make it pass, the right fix is almost always to stop reading that variable at import time.
+      - name: Build with an empty environment
+        working-directory: apps/web
+        run: npm run build

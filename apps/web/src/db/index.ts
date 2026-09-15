@@ -1,6 +1,5 @@
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
-import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool, types } from "pg";
 import * as schema from "./schema";
 
@@ -21,8 +20,21 @@ function makePool() {
   });
 }
 
-export const pool = globalForDb.__pgPool ?? (globalForDb.__pgPool = makePool());
-export const db = drizzle(pool, { schema });
+/** The connection pool, built on first use rather than on import.
+ *
+ * This used to run at module scope, which meant importing this file demanded DATABASE_URL — and `next build`
+ * imports every route module while collecting them. On a site whose environment has not been filled in yet the
+ * build therefore died with "DATABASE_URL is not set", exit code 2, before rendering anything. A brand new
+ * Netlify site failed its first build for exactly that reason, which reads as a broken repository rather than
+ * an unset variable.
+ *
+ * Nothing about the build needs a database: every page here is rendered per request. So the requirement should
+ * arrive with the first query, not with the import.
+ */
+export function getPool(): Pool {
+  return (globalForDb.__pgPool ??= makePool());
+}
+
 export { schema };
 
 // How long a query result may be reused. Collection runs every six hours, so minutes of staleness cost
@@ -33,7 +45,7 @@ const CACHE_SECONDS = Number(process.env.QUERY_CACHE_SECONDS ?? 600);
 
 async function runQuery<T>(text: string, params: unknown[]): Promise<T[]> {
   const started = Date.now();
-  const res = await pool.query(text, params);
+  const res = await getPool().query(text, params);
   // LOG_DB_HITS=1 prints every query that actually reached Neon, which is the only way to tell a cache hit
   // from a miss: the page timing alone cannot, especially in development where the data cache is disabled.
   if (process.env.LOG_DB_HITS) {
