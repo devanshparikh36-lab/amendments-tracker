@@ -1,9 +1,21 @@
+# Netlify no longer builds this site: builds were stopped in the UI on 16 Sept and GitHub Actions now builds
+# and uploads the finished output (.github/workflows/deploy.yml). Netlify's free plan allows 300 build minutes
+# a month and this repository exhausted them; GitHub's are unlimited on a public repository.
+#
+# Do not delete this file on the strength of that. `netlify build` runs on the GitHub runner and reads this
+# exact config -- the publish directory and the Next.js plugin below are what make the output deployable. The
+# file stopped being read *by Netlify* and did not stop being read.
+
 [build]
   command = "npm run build"
   publish = ".next"
 
-  # Build only when the website changed. This lives here, not in the root netlify.toml, because Netlify reads
-  # the base-directory file second and its [build] table wins -- an `ignore` set at the root is discarded.
+  # Build only when the website changed. Belt and braces now that Netlify builds are stopped, and worth keeping
+  # for exactly that reason: if builds are ever switched back on, this is what stops a pipeline commit from
+  # rebuilding a site it cannot affect.
+  #
+  # This lives here, not in the root netlify.toml, because Netlify reads the base-directory file second and its
+  # [build] table wins -- an `ignore` set at the root is discarded.
   #
   # Paths are relative to this directory, so `.` is apps/web. Naming `apps/web` here would resolve to
   # apps/web/apps/web, a path that never changes, and every build would be skipped while every push still
