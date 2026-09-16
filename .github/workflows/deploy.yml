@@ -103,16 +103,41 @@ jobs:
       # `--no-build` is what stops the CLI building again here; the previous step already did that. The flag
       # used to be called `--prebuilt` and that name is gone in v27 -- the CLI answers an unknown flag by
       # printing its help text and exiting 2, which reads like a broken build rather than a renamed option.
+      #
+      # `--dir` is not optional, and leaving it off is a quiet failure rather than a loud one. Without it the
+      # CLI falls back to `publish` in netlify.toml, which is `.next` -- the raw Next.js build directory. That
+      # uploads successfully and serves a site, so everything reports green, but every asset lands one level
+      # too high: the stylesheet the HTML asks for at /_next/static/css/x.css sits at /static/css/x.css, so
+      # every page renders as unstyled markup. It also publishes .next/server/** and required-server-files.json
+      # to anyone who asks.
+      #
+      # @netlify/plugin-nextjs assembles the real deployable tree in .netlify/static (v5.15.13; the sibling
+      # .netlify/functions-internal and .netlify/edge-functions are picked up automatically). `netlify build`
+      # knows that, but it is a separate CLI invocation from `netlify deploy`, and the publish directory the
+      # plugin sets during the build does not survive into the deploy.
       - name: Deploy the built output
         working-directory: apps/web
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        run: npx --yes "netlify-cli@${NETLIFY_CLI_VERSION}" deploy --no-build --prod --message "${GITHUB_SHA::7} via GitHub Actions"
+        run: |
+          if [ ! -d .netlify/static ]; then
+            echo "::error::.netlify/static does not exist -- the Next.js plugin did not produce its usual output."
+            ls -la .netlify/ || true
+            exit 1
+          fi
+          npx --yes "netlify-cli@${NETLIFY_CLI_VERSION}" deploy --no-build --prod \
+            --dir=.netlify/static \
+            --message "${GITHUB_SHA::7} via GitHub Actions"
 
       # Proves the deploy actually carried this commit, rather than reporting success while the site stays
       # where it was -- which is precisely the failure this replaces.
-      - name: Verify the live site moved
+      #
+      # The stylesheet check is the important one. A deploy from the wrong directory serves every page with a
+      # 200 and the right words in it, so title checks, health checks and byte counts all pass while the site
+      # renders as naked markup. Asking the page which stylesheet it wants and then fetching that exact URL is
+      # the only check that catches it, and it is how this failure was eventually found -- by eye, days late.
+      - name: Verify the live site moved, and is styled
         env:
           SITE_URL: ${{ secrets.SITE_URL }}
         run: |
@@ -121,9 +146,32 @@ jobs:
             exit 0
           fi
           sleep 15
-          title=$(curl -sk --max-time 30 "$SITE_URL/" | grep -oE "<title>[^<]*</title>" || true)
+          html=$(curl -sk --max-time 30 "$SITE_URL/")
+
+          title=$(printf '%s' "$html" | grep -oE "<title>[^<]*</title>" || true)
           echo "live title: $title"
           case "$title" in
-            *"As Amended"*) echo "the rename is live, so this deploy carried current code" ;;
+            *"As Amended"*) echo "  the rename is live, so this deploy carried current code" ;;
             *) echo "::warning::live title is not the expected one yet: $title" ;;
           esac
+
+          css=$(printf '%s' "$html" | grep -oE '/_next/static/css/[^"]+\.css' | head -1)
+          if [ -z "$css" ]; then
+            echo "::error::the page references no stylesheet at all"
+            exit 1
+          fi
+          code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 30 "$SITE_URL$css")
+          echo "stylesheet $css -> HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::the stylesheet the page asks for is not being served (HTTP $code). The site is live but unstyled -- almost always the wrong --dir on the deploy step."
+            exit 1
+          fi
+
+          # The raw Next.js build directory must NOT be what got published. If it is, this file exists at the
+          # site root, and .next/server/** is public along with it.
+          leak=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 30 "$SITE_URL/required-server-files.json")
+          if [ "$leak" = "200" ]; then
+            echo "::error::/required-server-files.json is public, so the raw .next directory was deployed instead of .netlify/static"
+            exit 1
+          fi
+          echo "  stylesheet serves, and the build directory is not exposed"
