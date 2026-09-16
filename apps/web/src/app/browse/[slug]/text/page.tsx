@@ -346,11 +346,11 @@ function ProvisionView({
         {docs.length > 0 && (
           <section className="border-t border-[var(--rule)] px-5 py-3">
             <h3 className="eyebrow mb-1.5">Documents affecting this {unit}</h3>
+            {/* Title, then citation, then status -- each on its own line. Titles here run long enough to
+                wrap, and with the number inline behind a dot separator it landed wherever the wrap left it,
+                reading as part of the date rather than as the citation. */}
             <ul className="feed text-[13.5px]">
               {docs.map((d) => (
-                {/* Title, then citation, then status -- each on its own line. Titles here run long enough to
-                    wrap, and with the number inline behind a dot separator it landed wherever the wrap left
-                    it, reading as part of the date rather than as the citation. */}
                 <li key={d.id} className="py-2.5">
                   <Link href={`/documents/${d.id}`} className="font-medium hover:underline">
                     {d.title}
