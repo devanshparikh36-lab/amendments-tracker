@@ -63,18 +63,22 @@ export default async function HistoryPage({ params }: { params: Promise<{ slug: 
                 <span className="num ml-auto text-[var(--ink-4)]">recorded {fmtDateTime(v.created_at)}</span>
               </div>
               {v.document_id && (
-                <p className="mb-2 text-[13px]">
-                  Source:{" "}
+                <div className="mb-2 text-[13px]">
+                  <span className="eyebrow">Source</span>
+                  <p className="mt-0.5">
+                    <Link
+                      href={`/documents/${v.document_id}`}
+                      className="font-medium text-[var(--link)] hover:underline"
+                    >
+                      {v.document_title}
+                    </Link>
+                  </p>
                   {v.document_number && (
-                    <>
+                    <p className="mt-1">
                       <OfficialNumber doc={v} number={v.document_number} />
-                      {" — "}
-                    </>
+                    </p>
                   )}
-                  <Link href={`/documents/${v.document_id}`} className="text-[var(--link)] hover:underline">
-                    {v.document_title}
-                  </Link>
-                </p>
+                </div>
               )}
               {prev ? <Diff before={prev.text} after={v.text} /> : <div className="legal-pre">{v.text}</div>}
               {v.footnote && (

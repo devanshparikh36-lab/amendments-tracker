@@ -130,8 +130,10 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
               <th>Date</th>
               <th>Regulator</th>
               <th>Type</th>
-              <th>Number</th>
+              {/* Title before number: the title says what the notification is, and is what a reader scans
+                  for. The number is the citation you carry away afterwards. */}
               <th>Title</th>
+              <th>Number &amp; official file</th>
               <th>Affects</th>
               <th>Status</th>
             </tr>
@@ -142,13 +144,15 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
                 <td className="num whitespace-nowrap text-[var(--ink-2)]">{fmtDate(d.date_issued)}</td>
                 <td className="text-[var(--ink-2)]">{d.regulator_code}</td>
                 <td className="whitespace-nowrap text-[var(--ink-2)]">{DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type}</td>
-                <td className="whitespace-nowrap text-[var(--ink-2)]">
-                  <OfficialNumber doc={d} number={d.number} />
-                </td>
                 <td>
                   <Link href={`/documents/${d.id}`} className="hover:underline">
                     {d.title}
                   </Link>
+                </td>
+                {/* No whitespace-nowrap: SEBI numbers are long enough to push the table sideways, and the
+                    chip wraps its own text instead. */}
+                <td className="align-top text-[var(--ink-2)]">
+                  <OfficialNumber doc={d} number={d.number} />
                 </td>
                 <td className="text-[var(--ink-2)]">
                   {d.affects ?? (d.is_amending === false ? <span className="text-[var(--ink-4)]">not amending</span> : "")}

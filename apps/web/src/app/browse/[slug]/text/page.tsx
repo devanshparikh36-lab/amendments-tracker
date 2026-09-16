@@ -297,27 +297,34 @@ function ProvisionView({
         <SectionStep slug={slug} suffix={suffix} prev={prev} next={next} unit={unit} />
         {last && (
           <div className="border-b border-[var(--rule)] bg-[var(--amend-bg)] px-5 py-2.5 text-[13px]">
-            <span className="font-medium text-[var(--ink-1)]">Last amended by</span>{" "}
-            {/* The number opens the notification as the regulator issued it; the title opens our page about
-                it. Practitioners cite the number, so the number is what reaches the source document. */}
-            {last.number && (
-              <>
-                <OfficialNumber doc={last} number={last.number} />
-                {" — "}
-              </>
-            )}
-            <Link href={`/documents/${last.id}`} className="text-[var(--link)] hover:underline">
-              {last.title}
-            </Link>
-            {last.date_issued && <span className="num text-[var(--ink-2)]">, dated {fmtDate(last.date_issued)}</span>}
-            {last.source_url && (
-              <>
-                {" · "}
-                <a href={last.source_url} target="_blank" rel="noreferrer" className="text-[var(--link)] hover:underline">
+            {/* Three lines rather than one sentence: label, then what the notification is, then how to cite
+                and open it. Run together they read as a single run of blue text and neither the title nor
+                the number can be picked out at a glance. */}
+            <p className="eyebrow">Last amended by</p>
+            <p className="mt-1">
+              <Link
+                href={`/documents/${last.id}`}
+                className="font-medium text-[var(--link)] hover:underline"
+              >
+                {last.title}
+              </Link>
+            </p>
+            <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
+              {/* The number opens the notification as the regulator issued it; the title above opens our
+                  page about it. Practitioners cite the number, so the number reaches the source document. */}
+              <OfficialNumber doc={last} number={last.number} />
+              {last.date_issued && <span className="num text-[var(--ink-3)]">dated {fmtDate(last.date_issued)}</span>}
+              {last.source_url && (
+                <a
+                  href={last.source_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[var(--link)] hover:underline"
+                >
                   regulator&rsquo;s page
                 </a>
-              </>
-            )}
+              )}
+            </p>
             <p className="mt-0.5 text-[12px] text-[var(--ink-3)]">
               The text above is the regulator&rsquo;s consolidation
               {inst.official_updated_as_on ? ` as on ${fmtDate(inst.official_updated_as_on)}` : ""}. Read it with the
@@ -341,18 +348,20 @@ function ProvisionView({
             <h3 className="eyebrow mb-1.5">Documents affecting this {unit}</h3>
             <ul className="feed text-[13.5px]">
               {docs.map((d) => (
-                <li key={d.id} className="py-1.5">
-                  <Link href={`/documents/${d.id}`} className="hover:underline">
+                {/* Title, then citation, then status -- each on its own line. Titles here run long enough to
+                    wrap, and with the number inline behind a dot separator it landed wherever the wrap left
+                    it, reading as part of the date rather than as the citation. */}
+                <li key={d.id} className="py-2.5">
+                  <Link href={`/documents/${d.id}`} className="font-medium hover:underline">
                     {d.title}
                   </Link>
-                  <div className="meta mt-0.5 flex flex-wrap items-center gap-1.5">
+                  {d.number && (
+                    <div className="mt-1">
+                      <OfficialNumber doc={d} number={d.number} />
+                    </div>
+                  )}
+                  <div className="meta mt-1 flex flex-wrap items-center gap-1.5">
                     <span className="num">{fmtDate(d.date_issued)}</span>
-                    {d.number && (
-                      <>
-                        <span aria-hidden>·</span>
-                        <OfficialNumber doc={d} number={d.number} />
-                      </>
-                    )}
                     {d.change_type && <Badge kind={d.change_type} />}
                     {d.verification_status && d.verification_status !== "unchecked" && (
                       <Badge kind={d.verification_status} />

@@ -28,24 +28,33 @@ export function OfficialNumber({
   if (!number) return null;
 
   const href = fileHref(doc.pdf_storage_key, doc.pdf_source_url);
-  if (!href) return <span className={`num ${className}`}>{number}</span>;
+  if (!href) {
+    // Still legible, still obviously the citation -- just not a link, because there is nothing to open.
+    return <span className={`num text-[12.5px] text-[var(--ink-3)] ${className}`}>{number}</span>;
+  }
 
   // The stored file is usually a PDF but not always -- some regulators issue a Word document or a
   // spreadsheet annexure, and #page= on one of those is meaningless.
   const isPdf = doc.pdf_mime === "application/pdf" || /\.pdf($|[?#])/i.test(href);
 
+  // A bordered chip rather than coloured text. Sitting beside a title that is itself a link, plain blue text
+  // reads as a continuation of that title; the border makes it a separate thing you can press. It also gives
+  // a real touch target on a phone, where these numbers are otherwise a few millimetres of text.
+  //
+  // Numbers wrap rather than truncate: SEBI issues citations like HO/47/16/13(5)2026-MRD-POD1/I/20735/2026
+  // and half of one is no use to anybody.
   return (
     <a
       href={isPdf ? pdfHref(href, page) : href}
       target="_blank"
       rel="noreferrer"
       title={`Open the official ${isPdf ? "PDF" : "file"} for ${number}${page ? `, at page ${page}` : ""}`}
-      className={`num inline-flex items-baseline gap-1 text-[var(--link)] hover:underline ${className}`}
+      className={`group inline-flex max-w-full items-center gap-1.5 rounded border border-[var(--rule)] bg-[var(--paper)] px-2 py-[3px] align-middle transition-colors hover:border-[var(--link)] hover:bg-white ${className}`}
     >
-      {number}
+      <span className="num break-words text-[12.5px] font-medium leading-snug text-[var(--link)]">{number}</span>
       <span
         aria-hidden
-        className="translate-y-px rounded-sm bg-stone-100 px-1 text-[9.5px] font-semibold uppercase tracking-wide text-stone-600 ring-1 ring-inset ring-stone-200"
+        className="shrink-0 rounded-sm bg-stone-200/70 px-1 text-[10px] font-semibold uppercase leading-[1.5] tracking-wide text-stone-700 group-hover:bg-stone-300/70"
       >
         {isPdf ? "pdf" : "file"}
       </span>
