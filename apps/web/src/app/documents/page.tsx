@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Badge } from "@/components/Badge";
+import { OfficialNumber } from "@/components/OfficialNumber";
 import { REGULATOR_LABEL, SUBJECTS } from "@/lib/catalogue";
 import { DOC_TYPE_LABEL, fmtDate } from "@/lib/format";
 import { instrumentIndex, listDocuments } from "@/lib/queries";
@@ -141,7 +142,9 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
                 <td className="num whitespace-nowrap text-[var(--ink-2)]">{fmtDate(d.date_issued)}</td>
                 <td className="text-[var(--ink-2)]">{d.regulator_code}</td>
                 <td className="whitespace-nowrap text-[var(--ink-2)]">{DOC_TYPE_LABEL[d.doc_type] ?? d.doc_type}</td>
-                <td className="whitespace-nowrap text-[var(--ink-2)]">{d.number}</td>
+                <td className="whitespace-nowrap text-[var(--ink-2)]">
+                  <OfficialNumber doc={d} number={d.number} />
+                </td>
                 <td>
                   <Link href={`/documents/${d.id}`} className="hover:underline">
                     {d.title}

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { Diff } from "@/components/Diff";
+import { OfficialNumber } from "@/components/OfficialNumber";
 import { unitFor } from "@/lib/catalogue";
 import { fmtDate, fmtDateTime, slugifyNumber } from "@/lib/format";
 import { provisionHref } from "@/lib/lookup";
@@ -64,8 +65,13 @@ export default async function HistoryPage({ params }: { params: Promise<{ slug: 
               {v.document_id && (
                 <p className="mb-2 text-[13px]">
                   Source:{" "}
+                  {v.document_number && (
+                    <>
+                      <OfficialNumber doc={v} number={v.document_number} />
+                      {" — "}
+                    </>
+                  )}
                   <Link href={`/documents/${v.document_id}`} className="text-[var(--link)] hover:underline">
-                    {v.document_number ? `${v.document_number} — ` : ""}
                     {v.document_title}
                   </Link>
                 </p>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { ProvisionBody, Provenance } from "@/components/LegalText";
+import { OfficialNumber } from "@/components/OfficialNumber";
 import { SectionFilter } from "@/components/SectionFilter";
 import { KIND_LABEL, unitFor } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
@@ -297,8 +298,15 @@ function ProvisionView({
         {last && (
           <div className="border-b border-[var(--rule)] bg-[var(--amend-bg)] px-5 py-2.5 text-[13px]">
             <span className="font-medium text-[var(--ink-1)]">Last amended by</span>{" "}
+            {/* The number opens the notification as the regulator issued it; the title opens our page about
+                it. Practitioners cite the number, so the number is what reaches the source document. */}
+            {last.number && (
+              <>
+                <OfficialNumber doc={last} number={last.number} />
+                {" — "}
+              </>
+            )}
             <Link href={`/documents/${last.id}`} className="text-[var(--link)] hover:underline">
-              {last.number ? `${last.number} — ` : ""}
               {last.title}
             </Link>
             {last.date_issued && <span className="num text-[var(--ink-2)]">, dated {fmtDate(last.date_issued)}</span>}
@@ -306,7 +314,7 @@ function ProvisionView({
               <>
                 {" · "}
                 <a href={last.source_url} target="_blank" rel="noreferrer" className="text-[var(--link)] hover:underline">
-                  official notification
+                  regulator&rsquo;s page
                 </a>
               </>
             )}
@@ -339,7 +347,12 @@ function ProvisionView({
                   </Link>
                   <div className="meta mt-0.5 flex flex-wrap items-center gap-1.5">
                     <span className="num">{fmtDate(d.date_issued)}</span>
-                    {d.number && <span>· {d.number}</span>}
+                    {d.number && (
+                      <>
+                        <span aria-hidden>·</span>
+                        <OfficialNumber doc={d} number={d.number} />
+                      </>
+                    )}
                     {d.change_type && <Badge kind={d.change_type} />}
                     {d.verification_status && d.verification_status !== "unchecked" && (
                       <Badge kind={d.verification_status} />

@@ -15,7 +15,7 @@ export type DocumentRow = {
   first_seen_at: string;
   extracted_text?: string | null;
   affects?: string | null;
-};
+} & OfficialFile;
 
 export type InstrumentRow = {
   id: number;
@@ -470,15 +470,43 @@ export async function instrumentIndex(): Promise<InstrumentRow[]> {
 export type ProvisionDocument = {
   id: number; title: string; number: string | null; date_issued: string | null; change_type: string | null;
   verification_status: string | null; relation: string | null; source_url: string; doc_type: string;
+} & OfficialFile;
+
+/** The stored official file for a document, so a notification number can link straight to the PDF it was
+ * issued as rather than only to our page about it. */
+export type OfficialFile = {
+  pdf_storage_key?: string | null;
+  pdf_source_url?: string | null;
+  pdf_mime?: string | null;
 };
+
+/** Joins the one file worth linking to, for a query that already has `document d` in scope.
+ *
+ * Preference order matters. A notification often carries several attachments -- the PDF, a corrigendum, an
+ * annexure spreadsheet -- and `is_primary` alone picks the wrong one often enough to notice, because the
+ * collectors set it from the order the regulator listed files in. So prefer an actual PDF first and fall back
+ * to primary, rather than trusting either on its own.
+ *
+ * Rows with no stored file yield nulls and the number renders as plain text: a link that 404s would be worse
+ * than no link, and "not downloaded yet" is a real state here. */
+const OFFICIAL_FILE_JOIN = `
+     LEFT JOIN LATERAL (
+       SELECT a.storage_key, a.source_url, a.mime
+       FROM attachment a
+       WHERE a.document_id = d.id AND a.storage_key IS NOT NULL
+       ORDER BY (a.mime = 'application/pdf' OR a.filename ILIKE '%.pdf') DESC, a.is_primary DESC, a.id
+       LIMIT 1
+     ) af ON true`;
+
+const OFFICIAL_FILE_COLS = `af.storage_key AS pdf_storage_key, af.source_url AS pdf_source_url, af.mime AS pdf_mime`;
 
 export async function provisionDocuments(provisionId: number): Promise<ProvisionDocument[]> {
   return query<ProvisionDocument>(
     `SELECT DISTINCT d.id, d.title, d.number, d.date_issued, d.source_url, d.doc_type,
-            e.change_type, e.verification_status, t.relation
+            e.change_type, e.verification_status, t.relation, ${OFFICIAL_FILE_COLS}
      FROM document d
      LEFT JOIN amendment_effect e ON e.document_id = d.id AND e.provision_id = $1
-     LEFT JOIN document_tag t ON t.document_id = d.id AND t.provision_id = $1
+     LEFT JOIN document_tag t ON t.document_id = d.id AND t.provision_id = $1${OFFICIAL_FILE_JOIN}
      WHERE e.id IS NOT NULL OR t.id IS NOT NULL
      ORDER BY d.date_issued DESC NULLS LAST`,
     [provisionId],
@@ -497,10 +525,12 @@ export function lastAmendment(docs: ProvisionDocument[]): ProvisionDocument | nu
 export async function instrumentDocuments(instrumentId: number) {
   return query<DocumentRow & { relation: string }>(
     `SELECT d.id, d.title, d.number, d.doc_type, d.date_issued, d.date_effective, d.source_url, d.source_adapter,
-            r.code AS regulator_code, d.is_amending, d.tag_status, d.first_seen_at, min(t.relation) AS relation
-     FROM document_tag t JOIN document d ON d.id = t.document_id JOIN regulator r ON r.id = d.regulator_id
+            r.code AS regulator_code, d.is_amending, d.tag_status, d.first_seen_at, min(t.relation) AS relation,
+            ${OFFICIAL_FILE_COLS}
+     FROM document_tag t JOIN document d ON d.id = t.document_id JOIN regulator r ON r.id = d.regulator_id${OFFICIAL_FILE_JOIN}
      WHERE t.instrument_id = $1
-     GROUP BY d.id, r.code ORDER BY d.date_issued DESC NULLS LAST LIMIT 500`,
+     GROUP BY d.id, r.code, af.storage_key, af.source_url, af.mime
+     ORDER BY d.date_issued DESC NULLS LAST LIMIT 500`,
     [instrumentId],
   );
 }
@@ -515,11 +545,12 @@ export async function provisionHistory(instrumentId: number, provisionNumber: st
     id: number; text: string; effective_from: string | null; effective_to: string | null; source_kind: string;
     footnote: string | null; merge_confidence: number | null; created_at: string; document_id: number | null;
     document_title: string | null; document_number: string | null; verification_status: string | null;
-  }>(
+  } & OfficialFile>(
     `SELECT v.id, v.text, v.effective_from, v.effective_to, v.source_kind, v.footnote, v.merge_confidence, v.created_at,
             d.id AS document_id, d.title AS document_title, d.number AS document_number,
-            (SELECT e.verification_status FROM amendment_effect e WHERE e.new_version_id = v.id LIMIT 1) AS verification_status
-     FROM provision_version v LEFT JOIN document d ON d.id = v.created_by_document_id
+            (SELECT e.verification_status FROM amendment_effect e WHERE e.new_version_id = v.id LIMIT 1) AS verification_status,
+            ${OFFICIAL_FILE_COLS}
+     FROM provision_version v LEFT JOIN document d ON d.id = v.created_by_document_id${OFFICIAL_FILE_JOIN}
      WHERE v.provision_id = $1 ORDER BY v.id`,
     [prov[0].id],
   );
@@ -544,8 +575,9 @@ export async function listDocuments(opts: {
     `SELECT d.id, d.title, d.number, d.doc_type, d.date_issued, d.date_effective, d.source_url, d.source_adapter,
             r.code AS regulator_code, d.is_amending, d.tag_status, d.first_seen_at,
             (SELECT string_agg(DISTINCT i.short_code, ', ') FROM document_tag t JOIN instrument i ON i.id = t.instrument_id
-               WHERE t.document_id = d.id AND t.relation IN ('amends','supersedes')) AS affects
-     FROM document d JOIN regulator r ON r.id = d.regulator_id
+               WHERE t.document_id = d.id AND t.relation IN ('amends','supersedes')) AS affects,
+            ${OFFICIAL_FILE_COLS}
+     FROM document d JOIN regulator r ON r.id = d.regulator_id${OFFICIAL_FILE_JOIN}
      ${where.length ? "WHERE " + where.join(" AND ") : ""}
      ORDER BY d.date_issued DESC NULLS LAST, d.id DESC LIMIT ${limit} OFFSET ${offset}`,
     params,
