@@ -100,12 +100,15 @@ jobs:
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
         run: npx --yes "netlify-cli@${NETLIFY_CLI_VERSION}" build
 
+      # `--no-build` is what stops the CLI building again here; the previous step already did that. The flag
+      # used to be called `--prebuilt` and that name is gone in v27 -- the CLI answers an unknown flag by
+      # printing its help text and exiting 2, which reads like a broken build rather than a renamed option.
       - name: Deploy the built output
         working-directory: apps/web
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
           NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
-        run: npx --yes "netlify-cli@${NETLIFY_CLI_VERSION}" deploy --prebuilt --prod --message "${GITHUB_SHA::7} via GitHub Actions"
+        run: npx --yes "netlify-cli@${NETLIFY_CLI_VERSION}" deploy --no-build --prod --message "${GITHUB_SHA::7} via GitHub Actions"
 
       # Proves the deploy actually carried this commit, rather than reporting success while the site stays
       # where it was -- which is precisely the failure this replaces.
