@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { SearchBox } from "@/components/SearchBox";
 import {
   COMPARE_HREF,
   KIND_LABEL,
@@ -88,11 +89,10 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
           <label htmlFor="home-q" className="sr-only">
             Search sections, regulations and notifications
           </label>
-          <input
+          <SearchBox
             id="home-q"
-            name="q"
             autoFocus
-            className="field field-lg min-w-0 flex-1"
+            className="field field-lg w-full"
             placeholder="A section number, a regulation name, or any phrase"
           />
           <button className="btn btn-primary px-7 text-[15px]">Search</button>
@@ -141,12 +141,7 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
                 <label htmlFor={`q-${b.subject.key}`} className="sr-only">
                   Search {b.subject.name}
                 </label>
-                <input
-                  id={`q-${b.subject.key}`}
-                  name="q"
-                  className="field min-w-0 flex-1"
-                  placeholder={b.subject.search}
-                />
+                <SearchBox id={`q-${b.subject.key}`} placeholder={b.subject.search} />
                 <button className="btn">Search</button>
               </form>
             )}

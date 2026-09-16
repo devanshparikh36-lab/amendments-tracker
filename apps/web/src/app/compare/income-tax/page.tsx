@@ -59,7 +59,13 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
       <form className="no-print panel flex flex-wrap items-end gap-3 p-3">
         <label className="flex flex-col text-[11.5px] text-[var(--ink-3)]">
           Find a section, rule or subject
-          <input name="q" defaultValue={sp.q ?? ""} placeholder="80C, depreciation, Form 3CD" className="field mt-0.5 w-72" />
+          <input
+            name="q"
+            defaultValue={sp.q ?? ""}
+            placeholder="80C, depreciation, Form 3CD"
+            className="field mt-0.5 w-72"
+            autoComplete="off"
+          />
         </label>
         <label className="flex flex-col text-[11.5px] text-[var(--ink-3)]">
           Type

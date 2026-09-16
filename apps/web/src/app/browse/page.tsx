@@ -92,6 +92,9 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
             defaultValue={sp.q ?? ""}
             placeholder="LODR, ECB, incorporation"
             className="field w-56"
+            // Filters this page rather than searching the site, so no suggestion list -- but the browser's
+            // own history of every "q" field ever typed is not wanted here either.
+            autoComplete="off"
           />
           <label className="flex items-center gap-1.5 text-[12.5px] text-[var(--ink-2)]">
             <input type="checkbox" name="seeded" value="1" defaultChecked={sp.seeded === "1"} /> only with text

@@ -646,7 +646,33 @@ export async function search(q: string, limit = 50) {
      ORDER BY ts_rank(to_tsvector('english', a.extracted_text), ${ts}) DESC LIMIT $2`,
     [q, limit],
   );
-  return { provisions, documents, attachments };
+
+  // Finding a notification by its own number, as its own query.
+  //
+  // The text index covers the title and the extracted text, and a citation like 256/02/2026-GST or
+  // G.S.R. 357(E) is in neither, so full-text search could not find a notification by the very thing it is
+  // cited as. Substring rather than prefix: people quote the distinctive middle of a citation ("357(E)")
+  // far more often than they type the boilerplate it opens with, and a third of the corpus begins with the
+  // words "Notification No.".
+  //
+  // Separate, and not OR'd into the query above, because that is the difference between 120ms and 23
+  // seconds. `document_fts_idx` is a GIN index on the tsvector expression; OR-ing an ILIKE beside it makes
+  // the whole condition unindexable and Postgres falls back to scanning 182 MB of OCR text. Alone, the
+  // number match is trivial.
+  const byNumber = await query<{ id: number; title: string; number: string | null; date_issued: string | null; snippet: string; rank: number }>(
+    `SELECT d.id, d.title, d.number, d.date_issued, coalesce(d.title, '') AS snippet,
+            -- above any ts_rank, which is well below 1: an exact citation is the least ambiguous thing
+            -- anyone can type, so it belongs at the top.
+            CASE WHEN lower(d.number) = lower($1) THEN 100 ELSE 50 END AS rank
+       FROM document d
+      WHERE d.number ILIKE '%' || $1 || '%'
+      ORDER BY rank DESC, d.date_issued DESC NULLS LAST
+      LIMIT $2`,
+    [q, Math.min(limit, 20)],
+  );
+
+  const seen = new Set(byNumber.map((d) => d.id));
+  return { provisions, documents: [...byNumber, ...documents.filter((d) => !seen.has(d.id))], attachments };
 }
 
 export type MapRow = {
@@ -821,5 +847,78 @@ export async function searchDefinitions(term: string, limit = 80): Promise<Defin
       LIMIT $3`,
     // The cheap ILIKE runs first and throws out almost everything before the regex is considered.
     [pattern, cleaned, limit],
+  );
+}
+
+export type Suggestion = {
+  kind: "section" | "instrument" | "notification";
+  /** The thing being suggested: a section number, an instrument title, a notification number. */
+  label: string;
+  /** The line under it, giving the label meaning: a section heading, a notification title. */
+  sub: string | null;
+  /** A short tag saying where it lives: ITA-1961, CBDT. */
+  context: string | null;
+  slug: string | null;
+  doc_id: number | null;
+};
+
+/** What to offer while somebody is still typing.
+ *
+ * Deliberately not the full-text search. That one computes to_tsvector over every provision and every
+ * attachment on each call, which is right for a considered search and hopeless on a keystroke -- it would
+ * scan the whole corpus several times a second and still be waiting when the next letter arrived.
+ *
+ * These are prefix and substring matches over three small tables (195 instruments, 5,882 provisions, 8,003
+ * documents), so a plain ILIKE scan finishes in single-digit milliseconds warm, and the result is cached by
+ * query text like every other read here: the same prefixes get typed constantly.
+ *
+ * Numbers are matched as prefixes and titles as substrings, because that is how each is recalled -- nobody
+ * half-remembers a section number from its middle, and nobody remembers an Act's title from its first word.
+ */
+export async function suggest(raw: string, limit = 12): Promise<Suggestion[]> {
+  const q = raw.trim();
+  if (q.length < 2) return [];
+  const prefix = `${q}%`;
+  const anywhere = `%${q}%`;
+
+  return query<Suggestion>(
+    `(SELECT 'section' AS kind, p.number AS label, p.heading AS sub,
+             i.short_code AS context, i.slug AS slug, NULL::int AS doc_id,
+             -- an exact number first, then the shortest: typing "80" should offer 80 before 80-IBA
+             (lower(p.number) = lower($1)) AS exact, length(p.number) AS len, 1 AS grp
+        FROM provision p JOIN instrument i ON i.id = p.instrument_id
+       WHERE NOT i.pdf_only AND p.number ILIKE $2
+       ORDER BY exact DESC, len, i.short_code
+       LIMIT 8)
+     UNION ALL
+     (SELECT 'section', p.number, p.heading, i.short_code, i.slug, NULL::int,
+             false, length(coalesce(p.heading, '')), 2
+        FROM provision p JOIN instrument i ON i.id = p.instrument_id
+       WHERE NOT i.pdf_only AND p.heading ILIKE $3
+       ORDER BY length(coalesce(p.heading, '')), i.short_code
+       LIMIT 5)
+     UNION ALL
+     -- short_code is matched anywhere, not as a prefix. Every code carries its regulator in front of it
+     -- (SEBI-LODR, FEM-EXPORT-AND-IMPORT-OF, CO-INC-2014), so prefix matching answers "LODR" with nothing
+     -- while the site's own placeholder invites exactly that.
+     (SELECT 'instrument', i.title, i.short_code, upper(i.kind), i.slug, NULL::int,
+             (lower(coalesce(i.short_code, '')) = lower($1)), length(i.title), 3
+        FROM instrument i
+       WHERE i.title ILIKE $3 OR i.short_code ILIKE $3
+       ORDER BY 7 DESC, length(i.title)
+       LIMIT 5)
+     UNION ALL
+     -- Numbers matched anywhere, not just from the start. A citation is usually recalled by its distinctive
+     -- middle -- "357(E)", "256/02" -- rather than by the boilerplate it opens with, and half the corpus
+     -- begins with the words "Notification No.".
+     (SELECT 'notification', d.number, d.title, r.code, NULL, d.id,
+             (lower(d.number) = lower($1)), 0, 4
+        FROM document d JOIN regulator r ON r.id = d.regulator_id
+       WHERE d.number ILIKE $3
+       ORDER BY 7 DESC, d.date_issued DESC NULLS LAST
+       LIMIT 5)
+     ORDER BY grp, exact DESC, len
+     LIMIT $4`,
+    [q, prefix, anywhere, limit],
   );
 }

@@ -115,7 +115,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
         </label>
         <label className="flex flex-col text-[11.5px] text-[var(--ink-3)]">
           Title or number
-          <input name="q" defaultValue={sp.q ?? ""} className="field mt-0.5" />
+          <input name="q" defaultValue={sp.q ?? ""} className="field mt-0.5" autoComplete="off" />
         </label>
         <button className="btn btn-primary">Filter</button>
         <a href={`/api/export/documents?${qs.toString()}`} className="ml-auto text-[13px] text-[var(--link)] hover:underline">

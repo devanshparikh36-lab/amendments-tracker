@@ -86,7 +86,16 @@ export default async function DefinitionsPage({ searchParams }: { searchParams: 
         <label htmlFor="q" className="sr-only">
           Word to find the definition of
         </label>
-        <input id="q" name="q" defaultValue={term} className="field min-w-0 flex-1" placeholder="capital asset" />
+        {/* No suggestion list: this box takes a word to be defined, and offering section numbers and
+            notifications for it would answer a question nobody asked here. */}
+        <input
+          id="q"
+          name="q"
+          defaultValue={term}
+          className="field min-w-0 flex-1"
+          placeholder="capital asset"
+          autoComplete="off"
+        />
         <button className="btn btn-primary">Find</button>
       </form>
 

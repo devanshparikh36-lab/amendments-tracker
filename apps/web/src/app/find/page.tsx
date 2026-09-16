@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { SearchBox } from "@/components/SearchBox";
 import { KIND_LABEL, unitPlural } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
 import { fmtDate } from "@/lib/format";
@@ -36,7 +37,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
           <label htmlFor="find-q" className="sr-only">
             Search
           </label>
-          <input id="find-q" name="q" defaultValue={q} autoFocus className="field field-lg min-w-0 flex-1" />
+          <SearchBox id="find-q" defaultValue={q} autoFocus className="field field-lg w-full" />
           <button className="btn btn-primary px-5">Search</button>
         </form>
         {sp.all === "1" && lookup.jumpTo && (

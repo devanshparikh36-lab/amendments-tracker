@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Link from "next/link";
+import { SearchBox } from "@/components/SearchBox";
 import { SiteNav } from "@/components/SiteNav";
 import { fmtDateTime } from "@/lib/format";
 import { lastRevised } from "@/lib/queries";
@@ -73,12 +74,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <label htmlFor="header-q" className="sr-only">
                   Search sections, regulations and notifications
                 </label>
-                <input
-                  id="header-q"
-                  name="q"
-                  className="field min-w-0 flex-1"
-                  placeholder="80C · LODR 17 · section 16 CGST · ECB"
-                />
+                <SearchBox id="header-q" placeholder="80C · LODR 17 · section 16 CGST · ECB" />
                 <button className="btn">Look up</button>
               </form>
             </div>
