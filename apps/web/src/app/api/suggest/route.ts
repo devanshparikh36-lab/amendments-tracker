@@ -35,9 +35,19 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(
     { items },
     {
-      // Let the browser reuse a prefix the reader has already typed -- backspacing through a word otherwise
-      // re-requests everything it just asked for.
-      headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=600" },
+      headers: {
+        // Let the browser reuse a prefix the reader has already typed -- backspacing through a word
+        // otherwise re-requests everything it just asked for.
+        "Cache-Control": "public, max-age=60, stale-while-revalidate=600",
+        // Netlify-Vary is not optional here, and getting it wrong is silent.
+        //
+        // Netlify's CDN does not key its cache on the whole URL. The Next.js runtime sets
+        // `netlify-vary: query=__nextDataReq|_rsc`, so only those two parameters form part of the key --
+        // ?q=80C and ?q=LODR are the same entry. With a public Cache-Control and without this line, the
+        // first search of the minute was cached and then returned to everyone: every query answered with
+        // somebody else's suggestions, at a convincing 140ms.
+        "Netlify-Vary": "query=q",
+      },
     },
   );
 }

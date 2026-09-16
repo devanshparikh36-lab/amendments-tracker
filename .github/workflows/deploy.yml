@@ -175,3 +175,17 @@ jobs:
             exit 1
           fi
           echo "  stylesheet serves, and the build directory is not exposed"
+
+          # Two different searches must not return the same answers.
+          #
+          # Netlify's CDN keys its cache on selected query parameters rather than the whole URL, so a
+          # cacheable JSON endpoint without a matching Netlify-Vary serves the first caller's results to
+          # everybody. It fails fast, with plausible content, and looks perfect in every timing -- the
+          # suggestions endpoint shipped exactly that way once.
+          a=$(curl -sk --max-time 30 "$SITE_URL/api/suggest?q=80C")
+          b=$(curl -sk --max-time 30 "$SITE_URL/api/suggest?q=LODR")
+          if [ "$a" = "$b" ]; then
+            echo "::error::/api/suggest returned identical results for 80C and LODR -- the CDN is serving one cached answer for every query. Check Netlify-Vary on that route."
+            exit 1
+          fi
+          echo "  suggestions differ per query, so the cache is keyed correctly"
