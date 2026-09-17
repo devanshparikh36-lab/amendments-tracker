@@ -31,12 +31,15 @@ REGULATOR_NAMES = {
 #
 # A typical day is two. The day the corpus was first backfilled was 7,979, and at roughly a kilobyte of
 # markup per row that is an eight-megabyte message: Resend rejects it, and Gmail clips anything past 102 KB
-# mid-sentence with a "view entire message" link that loses the formatting. A re-seed would do it again, so
-# this is a real bound rather than a defensive one. Sixty rows is about 66 KB, comfortably inside the limit.
+# mid-sentence with a "view entire message" link that loses the formatting. A re-seed, or adding a new body
+# of regulation, would do it again -- so this is a real bound rather than a defensive one.
 #
-# What is left out is always stated and always linked. A digest that quietly shows sixty of eight hundred
-# reads exactly like a digest that found sixty.
-MAX_LISTED = 60
+# Fifty rows is around 45 KB, less than half of what Gmail will take. The headroom is deliberate: the cap
+# counts documents, not bytes, and a day of unusually long titles costs more per row than an average one.
+#
+# What is left out is always stated and always linked. A digest that quietly shows fifty of eight hundred
+# reads exactly like a digest that found fifty.
+MAX_LISTED = 50
 
 INK = "#1c1917"
 INK_2 = "#44403c"
