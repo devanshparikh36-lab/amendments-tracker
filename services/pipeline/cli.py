@@ -46,7 +46,12 @@ def main(argv: list[str] | None = None) -> int:
     p_work.add_argument("--not-adapter", action="append", help="skip documents from this source (repeatable)")
     p_work.add_argument("--type", action="append",
                         help="only this job type, e.g. fetch_document (repeatable); the queue is otherwise strictly oldest-first")
-    sub.add_parser("digest")
+    p_dig = sub.add_parser("digest", help="mail the day's findings, or stay quiet if there were none")
+    p_dig.add_argument(
+        "--force",
+        action="store_true",
+        help="send even when nothing was found, to prove the mail path works",
+    )
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
     p_mp = sub.add_parser("mergepreview", help="report what an AI-free deterministic merge would change (writes nothing)")
@@ -115,11 +120,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "digest":
-        sent = pipeline.send_daily_digest()
-        print("sent" if sent else "NOT SENT - set RESEND_API_KEY and DIGEST_TO")
-        # Non-zero so the daily workflow goes red instead of passing while mailing nobody. It ran green for
-        # days doing exactly that, which is the same silent failure the collectors had.
-        return 0 if sent else 1
+        result = pipeline.send_daily_digest(force=args.force)
+        if result == "sent":
+            print("sent")
+        elif result == "quiet":
+            print("nothing found today - no mail sent (use --force to send anyway)")
+        else:
+            print("NOT SENT - set RESEND_API_KEY and DIGEST_TO")
+        # A quiet day is a success: nothing happened and nothing needed saying. Only a digest that had
+        # something to report and could not deliver it goes red -- the workflow ran green for days while
+        # mailing nobody, which is the same silent failure the collectors had.
+        return 1 if result == "not-sent" else 0
 
     if args.cmd == "sectionmap":
         print(pipeline.load_section_map())

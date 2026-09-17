@@ -5,16 +5,25 @@ name: Daily email digest
 # machine being awake, and the Actions allowance is unlimited on a public repository.
 #
 # It reports what collection found, so it has to run after collection, not before.
+#
+# It runs daily but only mails when there is something to say: new notifications, applied amendments, or a
+# collector that failed. A quiet day sends nothing and still passes. A digest arriving every morning to say
+# nothing happened is one you stop opening, and then the morning it matters looks like all the others.
 on:
   schedule:
     - cron: "30 2 * * *"        # 08:00 IST daily, an hour after collection starts at 07:00 IST
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Send even if nothing was found (to test the mail path)"
+        type: boolean
+        default: false
 
 jobs:
   digest:
-    # GitHub-hosted: a minute a day, ~30 a month against 2,000 included. Kept off the laptop so that the one
-    # thing whose job is to tell you what changed does not depend on the laptop being awake, and so its own
-    # failure raises a GitHub failure email. Cannot run until the allowance resets on 1 Oct.
+    # Kept off the laptop so that the one thing whose job is to tell you what changed does not depend on that
+    # machine being awake, and so its own failure raises a GitHub failure email. Minutes are unlimited here
+    # because the repository is public.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:
@@ -34,4 +43,4 @@ jobs:
           cache: pip
           cache-dependency-path: services/pipeline/requirements.txt
       - run: pip install -q -r requirements.txt
-      - run: python cli.py digest
+      - run: python cli.py digest ${{ inputs.force && '--force' || '' }}

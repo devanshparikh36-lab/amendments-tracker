@@ -1514,7 +1514,22 @@ def prune_before_cutoff() -> dict[str, int]:
 
 # ----------------------------------------------------------------------------- digest
 
-def send_daily_digest(day: date | None = None) -> bool:
+def send_daily_digest(day: date | None = None, force: bool = False) -> str:
+    """Mail the day's findings, or stay quiet if there were none.
+
+    Returns "sent", "quiet" when there was nothing worth reporting, or "not-sent" when there was and it
+    could not be delivered.
+
+    A digest that arrives every morning saying nothing happened teaches you to stop opening it, and the one
+    morning it matters it looks like all the others. So silence is the normal state and mail means news.
+
+    Failures count as news. "Nothing found" and "the collectors fell over" look identical from the outside
+    and must not be reported identically, or a broken adapter becomes indistinguishable from a quiet day in
+    the regulators.
+
+    Discrepancies deliberately do not count. They are gathered over thirty days for context, so triggering
+    on them would mail every morning for a month after a single one.
+    """
     day = day or datetime.now(timezone.utc).date()
     since = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc) - timedelta(days=1)
     with db.transaction() as conn:
@@ -1546,11 +1561,34 @@ def send_daily_digest(day: date | None = None) -> bool:
             (since - timedelta(days=30),),
         )
         failures = db.fetch_all(conn, "SELECT adapter, error FROM source_run WHERE ok = false AND started_at >= %s", (since,))
+    if not (new_docs or merges or cannot or failures) and not force:
+        with db.transaction() as conn:
+            db.execute(
+                conn,
+                "INSERT INTO notification_log (channel, ok, detail) VALUES ('email', true, %s)",
+                ("quiet - nothing found, no mail sent",),
+            )
+        log.info("nothing found for %s; no digest sent", day.isoformat())
+        return "quiet"
+
+    # Say in the subject line what happened, so the inbox is readable without opening anything. Failures
+    # lead, because a morning where the collectors broke is not a morning about new notifications.
+    if failures:
+        subject = f"As Amended - {len(failures)} collector failure{'s' if len(failures) != 1 else ''}, {day.isoformat()}"
+    elif new_docs:
+        subject = f"As Amended - {len(new_docs)} new, {day.isoformat()}"
+    else:
+        subject = f"As Amended - {day.isoformat()}"
+
     html_body = email_notify.build_digest_html(new_docs, merges, cannot, diffs, failures, settings.site_url, day)
-    ok = email_notify.send_digest(f"Regulation Tracker digest - {day.isoformat()} ({len(new_docs)} new)", html_body)
+    ok = email_notify.send_digest(subject, html_body)
     with db.transaction() as conn:
-        db.execute(conn, "INSERT INTO notification_log (channel, ok, detail) VALUES ('email', %s, %s)", (ok, f"{len(new_docs)} new docs"))
-    return ok
+        db.execute(
+            conn,
+            "INSERT INTO notification_log (channel, ok, detail) VALUES ('email', %s, %s)",
+            (ok, f"{len(new_docs)} new docs, {len(failures)} failures"),
+        )
+    return "sent" if ok else "not-sent"
 
 
 # ----------------------------------------------------------------------------- job runner
