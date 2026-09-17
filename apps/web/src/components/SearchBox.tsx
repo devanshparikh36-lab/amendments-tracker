@@ -17,10 +17,16 @@ const KIND_LABEL: Record<Item["kind"], string> = {
   notification: "notification",
 };
 
-/** Must match the limit in suggest(). A cached answer shorter than this is the complete set for that query,
- * which is what makes it safe to narrow locally instead of asking again; one that reaches the limit was cut
- * off, and filtering it would quietly drop results the server would have sent. */
-const LIMIT = 12;
+/** Must match the limit the route asks suggest() for. A cached answer shorter than this is the complete set
+ * for that query, which is what makes it safe to narrow locally instead of asking again; one that reaches
+ * the limit was cut off, and filtering it would quietly drop results the server would have sent. */
+const FETCH_LIMIT = 20;
+
+/** How many of them to put on screen. Fetching more than is shown is the point: the extra rows are never
+ * rendered, they exist so that more answers come back complete rather than truncated, and a complete answer
+ * is one the box can narrow by itself on the next keystroke instead of waiting on the network. "80" returned
+ * exactly the old limit and so could never be narrowed into "80C"; with room to spare it can. */
+const SHOW = 12;
 
 /** A search input that suggests from what the site actually holds.
  *
@@ -89,7 +95,7 @@ export function SearchBox({
 
     for (let i = q.length - 1; i >= 2; i--) {
       const shorter = cache.current.get(q.slice(0, i));
-      if (shorter && shorter.length < LIMIT) {
+      if (shorter && shorter.length < FETCH_LIMIT) {
         const needle = q.toLowerCase();
         setItems(
           shorter.filter(
@@ -138,29 +144,33 @@ export function SearchBox({
     router.push(item.href);
   };
 
+  // `items` holds everything fetched, because narrowing needs the whole answer to filter from; only this
+  // many are ever shown or reachable by the arrow keys.
+  const visible = items.slice(0, SHOW);
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Escape") {
       setOpen(false);
       return;
     }
-    if (!items.length) return;
+    if (!visible.length) return;
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setOpen(true);
-      setActive((a) => (a + 1) % items.length);
+      setActive((a) => (a + 1) % visible.length);
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setOpen(true);
-      setActive((a) => (a <= 0 ? items.length - 1 : a - 1));
+      setActive((a) => (a <= 0 ? visible.length - 1 : a - 1));
     } else if (e.key === "Enter" && open && active >= 0) {
       // Only swallow Enter when something is actually highlighted. Otherwise the form submits to /find,
       // which is what someone pressing Enter on their own words expects.
       e.preventDefault();
-      go(items[active]);
+      go(visible[active]);
     }
   };
 
-  const showList = open && items.length > 0;
+  const showList = open && visible.length > 0;
 
   return (
     <div ref={boxRef} className={wrapperClassName}>
@@ -194,7 +204,7 @@ export function SearchBox({
           role="listbox"
           className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 max-h-[min(70vh,26rem)] overflow-y-auto rounded border border-[var(--rule)] bg-white py-1 shadow-lg"
         >
-          {items.map((it, i) => (
+          {visible.map((it, i) => (
             <li
               key={`${it.kind}-${it.href}-${i}`}
               id={`${listId}-${i}`}

@@ -18,7 +18,11 @@ export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim();
   if (q.length < 2) return NextResponse.json({ items: [] });
 
-  const rows = await suggest(q);
+  // More than the box shows. The extra rows are never rendered: they exist so that more answers arrive
+  // complete rather than cut off at the limit, and a complete answer is one the box can narrow by itself on
+  // the next keystroke instead of waiting on another round trip. The query is prefix matching over three
+  // small tables, so the wider limit costs nothing worth measuring.
+  const rows = await suggest(q, 20);
   const items = rows.map((r) => ({
     kind: r.kind,
     label: r.label,
