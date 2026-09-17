@@ -48,7 +48,6 @@ RULE = "#e7e5e4"
 PAPER = "#faf9f7"
 CARD = "#ffffff"
 LINK = "#14532d"
-ALERT = "#991b1b"
 
 
 def _esc(v: object) -> str:
@@ -101,36 +100,41 @@ def _arrival_name(a: dict) -> str:
     return str(a.get("name") or a.get("code") or "").strip() or str(a.get("code") or "")
 
 
-def digest_subject(new_docs: list[dict], failures: list[dict], day: date, arrivals: list[dict] | None = None) -> str:
+def _join_names(names: list[str], limit: int = 4) -> str:
+    """An English list -- "CBDT, SEBI and RBI" -- rather than a run of delimiters."""
+    if not names:
+        return ""
+    if len(names) > limit:
+        return ", ".join(names[: limit - 1]) + f" and {len(names) - (limit - 1)} others"
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " and " + names[-1]
+
+
+def digest_subject(new_docs: list[dict], day: date, arrivals: list[dict] | None = None) -> str:
     """What the inbox shows before anything is opened.
 
-    The counts per regulator go in the subject on purpose: most mornings that is the whole message, and
-    whether it is worth opening now depends on which regulator moved. No date -- the mail carries its own,
-    and the room is better spent on the breakdown.
+    A sentence, not a summary line. The regulators are named because whether this is worth opening now
+    usually depends on which of them moved; the per-regulator counts live in the body, where there is room
+    for them and where they do not turn the subject into a log entry. No date either -- the mail carries its
+    own, and the room is better spent on the names.
 
-    A newly tracked regulator takes the front of the line, because it is the rarest thing this mail ever
-    carries and the only one that changes what the tracker covers rather than what it found.
+    A newly tracked regulator takes the front of the line: it is the rarest thing this mail carries, and the
+    only one that changes what the tracker covers rather than what it found.
     """
-    parts = []
+    clauses = []
     if arrivals:
-        names = ", ".join(_arrival_name(a) for a in arrivals[:2])
-        if len(arrivals) > 2:
-            names += f" and {len(arrivals) - 2} more"
-        parts.append(f"now tracking {names}")
+        clauses.append("now tracking " + _join_names([_arrival_name(a) for a in arrivals], limit=3))
     if new_docs:
-        counts = [f"{code} {len(items)}" for code, items in _by_regulator(new_docs).items()]
-        seg = f"{len(new_docs)} new · " + ", ".join(counts[:4])
-        if len(counts) > 4:
-            seg += f" +{len(counts) - 4} more"
-        parts.append(seg)
-    if not parts:
-        parts.append("nothing new")
-    if failures:
-        parts.append(f"{len(failures)} collector failure{'s' if len(failures) != 1 else ''}")
-    return "As Amended · " + " · ".join(parts)
+        n = len(new_docs)
+        codes = list(_by_regulator(new_docs).keys())
+        clauses.append(f"{n} new notification{'s' if n != 1 else ''} from {_join_names(codes)}")
+    if not clauses:
+        clauses.append("no new notifications")
+    return "As Amended — " + "; ".join(clauses)
 
 
-def _preheader(new_docs: list[dict], failures: list[dict], arrivals: list[dict] | None = None) -> str:
+def _preheader(new_docs: list[dict], arrivals: list[dict] | None = None) -> str:
     """The grey line the inbox prints beside the subject.
 
     Left alone, clients scrape it from the top of the body, which here is the masthead -- so the one piece of
@@ -152,8 +156,6 @@ def _preheader(new_docs: list[dict], failures: list[dict], arrivals: list[dict] 
             text += f" · {tagged} tagged to an Act or Rule"
     else:
         text = "Nothing published since the last check."
-    if failures:
-        text += f" · {len(failures)} collector failure{'s' if len(failures) != 1 else ''}"
     return (
         f"<div style='display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;"
         f"color:{CARD};opacity:0'>{_esc(text)}"
@@ -191,7 +193,6 @@ def build_digest_html(
     merges: list[dict],
     cannot_apply: list[dict],
     discrepancies: list[dict],
-    failures: list[dict],
     site_url: str,
     day: date,
     since: datetime | None = None,
@@ -334,14 +335,10 @@ def build_digest_html(
         )
         rows.append(_section(f"Official text differs, last 30 days ({len(discrepancies)})", body))
 
-    if failures:
-        body = "".join(
-            f"<div style='padding:6px 0;border-top:1px solid {RULE};font:400 13px/1.5 {sans};color:{ALERT}'>"
-            f"<b>{_esc(f['adapter'])}</b> {_esc((f.get('error') or '')[:240])}</div>"
-            for f in failures
-        )
-        rows.append(_section(f"Collectors that failed ({len(failures)})", body))
-
+    # No section for collector failures, deliberately. A broken adapter already makes the collection run
+    # exit non-zero, which reddens that workflow and has GitHub mail about it, and /status carries the same
+    # picture on the site. This mail reports what the regulators published; whether the machinery reading
+    # them is healthy is a different question with two channels of its own already.
     rows.append(
         f"<tr><td style='padding:22px 24px 24px;background:{CARD}'>"
         f"<a href='{site}' style='display:inline-block;border:1px solid {RULE};border-radius:3px;"
@@ -363,7 +360,7 @@ def build_digest_html(
         "<meta name='color-scheme' content='light'>"
         "<meta name='supported-color-schemes' content='light'>"
         f"</head><body style='margin:0;padding:0;background:{PAPER}'>"
-        + _preheader(new_docs, failures, arrivals)
+        + _preheader(new_docs, arrivals)
         + f"<div style='background:{PAPER};padding:24px 12px'>"
         f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' width='600' "
         f"style='width:600px;max-width:100%;margin:0 auto;background:{CARD};border:1px solid {RULE};"
@@ -375,7 +372,6 @@ def build_digest_html(
 
 def build_digest_text(
     new_docs: list[dict],
-    failures: list[dict],
     site_url: str,
     day: date,
     arrivals: list[dict] | None = None,
@@ -418,9 +414,6 @@ def build_digest_text(
                 pdf = _pdf_url(d)
                 if pdf:
                     lines.append(f"    Official PDF: {pdf}")
-    if failures:
-        lines += ["", f"Collectors that failed ({len(failures)}):"]
-        lines += [f"  * {f['adapter']}: {(f.get('error') or '')[:200]}" for f in failures]
     lines += ["", site, "", "Amendments are shown as references and are never applied to the statutory text.",
               "A research aid, not legal advice."]
     return "\n".join(lines)

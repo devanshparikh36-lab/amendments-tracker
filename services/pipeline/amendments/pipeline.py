@@ -1,4 +1,4 @@
-"""Orchestration: discover -> fetch (verbatim + attachments) -> tag -> merge -> self-check -> notify.
+﻿"""Orchestration: discover -> fetch (verbatim + attachments) -> tag -> merge -> self-check -> notify.
 
 Every step is a job row in Postgres so a crashed run resumes where it stopped. No human step anywhere.
 """
@@ -181,7 +181,7 @@ class EmptyDiscovery(RuntimeError):
     """An adapter listed nothing although it has listed documents recently.
 
     Adapters tolerate failures unit by unit on purpose: one dead category or listing page must not cost us the rest.
-    The price is that a site-wide outage looks exactly like a source that is genuinely empty — every unit fails, the
+    The price is that a site-wide outage looks exactly like a source that is genuinely empty â€” every unit fails, the
     warnings go to the log, and `discover` returns an empty list. Recorded as a successful run, that leaves the
     collector green on /status while it quietly collects nothing, which is how five adapters went a full day
     without anyone noticing. So an empty result from an adapter that was productive days ago is raised as a failure.
@@ -207,7 +207,7 @@ def adapters_failed_since(when: datetime) -> list[str]:
     """Adapters whose run since `when` ended in failure.
 
     `run_discovery` swallows one adapter's failure on purpose so the rest still collect, which means the process
-    exits 0 no matter how many broke. With no Teams webhook configured that is completely silent — five adapters
+    exits 0 no matter how many broke. With no Teams webhook configured that is completely silent â€” five adapters
     collected nothing for a full day and `/status` was the only place that said so. The CLI turns this into a
     non-zero exit so the workflow goes red and GitHub emails the repository owner, the same free channel the
     free-tier watch uses.
@@ -225,7 +225,7 @@ def close_stale_runs(older_than_hours: int = 6) -> int:
     """Mark long-abandoned `source_run` rows as failed.
 
     A row is opened when an adapter starts and closed when it finishes or raises. If the process dies in
-    between — the laptop sleeping mid-run kills the scheduled task, which happened on 14 Sept — the row stays
+    between â€” the laptop sleeping mid-run kills the scheduled task, which happened on 14 Sept â€” the row stays
     `ok IS NULL` for ever. /status then reads it as still running, so a collector that was interrupted two days
     ago is reported as working, which is worse than reporting it broken: the whole point of that page is to
     show what is not working.
@@ -332,8 +332,8 @@ def _ensure_md_instrument(conn: psycopg.Connection, reg_id: int, d: DiscoveredDo
         return
     base = re.sub(r"\(\s*[Uu]pdated[^)]*\)", " ", d.title)
     base = re.sub(r",?\s*dated\s+[A-Z][a-z]+ \d{1,2},? \d{4}", "", base)
-    base = re.sub(r"^Master Directions?\s*[-–—:]?\s*", "", base)
-    base = re.sub(r"\s+", " ", base).strip(" -–—,")
+    base = re.sub(r"^Master Directions?\s*[-â€“â€”:]?\s*", "", base)
+    base = re.sub(r"\s+", " ", base).strip(" -â€“â€”,")
     slug = "md-" + re.sub(r"[^a-z0-9]+", "-", base.lower()).strip("-")[:70]
     if db.fetch_one(conn, "SELECT id FROM instrument WHERE slug = %s", (slug,)):
         slug = f"{slug}-{d.source_url.rsplit('=', 1)[-1]}"
@@ -758,7 +758,7 @@ def merge_document(doc_id: int) -> None:
 
 def _norm(text: str) -> str:
     text = re.sub(r"\s+", " ", text).strip().lower()
-    return re.sub(r"[‘’“”\"']", "", text)
+    return re.sub(r"[â€˜â€™â€œâ€\"']", "", text)
 
 
 def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -> dict[str, int]:
@@ -977,7 +977,7 @@ def _slugify(number: str) -> str:
 def _split_map_title(value: str | None) -> tuple[str, str]:
     """CBDT writes '80C - Deduction ...' for Act rows and '3AC : Audit report ...' for rules and forms."""
     text = (value or "").strip()
-    m = re.match(r"^(?P<num>[^:\-]{1,40}?)\s*[:–—-]\s+(?P<title>.*)$", text, re.S)
+    m = re.match(r"^(?P<num>[^:\-]{1,40}?)\s*[:â€“â€”-]\s+(?P<title>.*)$", text, re.S)
     if not m:
         return text, ""
     return m.group("num").strip(), m.group("title").strip()
@@ -1031,7 +1031,7 @@ def compact_duplicated_text(*, apply: bool = False, full: bool = False) -> dict[
     Two candidates, neither of which costs the site anything it serves:
 
       * `attachment.extracted_text` that is byte-identical to its document's own `extracted_text`. The document
-        copy is the one that matters — `document_fts_idx` indexes it, and `_document_text` already skips an
+        copy is the one that matters â€” `document_fts_idx` indexes it, and `_document_text` already skips an
         attachment whose text it has already seen. Both read paths that fall back to the attachment
         (`adapters/__init__.py`, the backfill below) only fire when the document has *no* text, which by
         definition is not the case here. The PDF stays in R2, so the column can be rebuilt by re-extracting.
@@ -1039,7 +1039,7 @@ def compact_duplicated_text(*, apply: bool = False, full: bool = False) -> dict[
 
     Dry by default; pass apply=True to clear them. Postgres marks the old rows dead rather than handing the
     space back, so a plain VACUUM follows: that makes the space reusable and stops the database growing into
-    new storage, but the size the free-tier check reads barely moves — clearing 103 MB this way took the
+    new storage, but the size the free-tier check reads barely moves â€” clearing 103 MB this way took the
     database from 341.97 MB only to 338.33 MB, because `document` grew by the new row versions as fast as
     `attachment` shrank. Pass full=True to rewrite the tables as well and hand the space back; that took the
     same database to 170.76 MB. See `_vacuum_full` for why it locks and why the order matters.
@@ -1103,7 +1103,7 @@ def _vacuum_full(cur) -> list[str]:
     """Rewrite each table so freed space goes back to the file, skipping any that will not fit.
 
     Plain VACUUM only marks space reusable, so the size the free-tier check reads does not move until this runs.
-    The lock is ACCESS EXCLUSIVE — reads and writes on that table stall for the rewrite — so this is opt-in, and
+    The lock is ACCESS EXCLUSIVE â€” reads and writes on that table stall for the rewrite â€” so this is opt-in, and
     must not run while discovery is writing.
     """
     from .storage.usage import NEON_FREE_BYTES
@@ -1139,9 +1139,9 @@ def _is_bot_wall(pages: list[str]) -> bool:
 # words 'Y' shall be substituted". Anything else -- an insertion described by position, an omission, a new
 # clause spanning paragraphs -- requires reading comprehension and is not attempted here.
 _MECHANICAL = re.compile(
-    r"for\s+the\s+(?:words|figures|letters|brackets|expression)[^“\"‘']{0,40}"
-    r"[“\"‘'](?P<old>[^”\"’']{2,200})[”\"’'].{0,80}?"
-    r"[“\"‘'](?P<new>[^”\"’']{2,200})[”\"’'].{0,60}?substitut",
+    r"for\s+the\s+(?:words|figures|letters|brackets|expression)[^â€œ\"â€˜']{0,40}"
+    r"[â€œ\"â€˜'](?P<old>[^â€\"â€™']{2,200})[â€\"â€™'].{0,80}?"
+    r"[â€œ\"â€˜'](?P<new>[^â€\"â€™']{2,200})[â€\"â€™'].{0,60}?substitut",
     re.I | re.S,
 )
 
@@ -1524,10 +1524,10 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
     morning it matters it looks like all the others. So silence is the normal state and mail means the
     regulators published something.
 
-    Only findings decide that. Collector failures are still described in the body when mail goes out for
-    another reason, but they do not summon one on their own -- `discover` already exits non-zero when an
-    adapter fails, which reddens the collection workflow and has GitHub mail about it. Sending a second
-    message about the same event would train the same inattention this is meant to avoid.
+    Collector failures play no part in it and appear nowhere in the mail. `run` already exits non-zero when
+    an adapter fails, which reddens the collection workflow and has GitHub mail about it, and /status shows
+    the same on the site. This reports what the regulators published; whether the machinery reading them is
+    healthy is a separate question that already has two channels.
 
     Discrepancies do not count either. They are gathered over thirty days for context, so triggering on them
     would mail every morning for a month after a single one.
@@ -1615,11 +1615,11 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
                WHERE e.verification_status = 'differs_from_official' AND e.created_at >= %s""",
             (since - timedelta(days=30),),
         )
-        failures = db.fetch_all(
-            conn,
-            "SELECT adapter, error FROM source_run WHERE ok = false AND started_at >= %s AND started_at < %s",
-            (since, cutoff),
-        )
+        # Collector failures are not read here at all. `run` exits non-zero when an adapter fails, which
+        # reddens the collection workflow and has GitHub mail about it, and /status shows the same picture on
+        # the site. This digest reports what the regulators published; the health of the machinery reading
+        # them already has two channels and does not need a third inside the one mail that should stay clean.
+        #
         # Regulators appearing for the first time: a body of law the tracker did not cover until now.
         #
         # Worth separating for two reasons. It is the good news in the mail -- a whole new subject is being
@@ -1658,22 +1658,22 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
             db.execute(
                 conn,
                 "INSERT INTO notification_log (channel, ok, sent_at, detail) VALUES ('email', true, %s, %s)",
-                (cutoff, f"quiet - nothing found, no mail sent ({len(failures)} adapter failures)"),
+                (cutoff, "quiet - nothing found, no mail sent"),
             )
-        log.info("nothing found for %s; no digest sent (%d adapter failures)", day.isoformat(), len(failures))
+        log.info("nothing found for %s; no digest sent", day.isoformat())
         return "quiet"
 
-    subject = email_notify.digest_subject(news_docs, failures, day, arrivals=arrivals)
+    subject = email_notify.digest_subject(news_docs, day, arrivals=arrivals)
     html_body = email_notify.build_digest_html(
-        news_docs, merges, cannot, diffs, failures, settings.site_url, day, since=since, arrivals=arrivals
+        news_docs, merges, cannot, diffs, settings.site_url, day, since=since, arrivals=arrivals
     )
-    text_body = email_notify.build_digest_text(news_docs, failures, settings.site_url, day, arrivals=arrivals)
+    text_body = email_notify.build_digest_text(news_docs, settings.site_url, day, arrivals=arrivals)
     ok = email_notify.send_digest(subject, html_body, text_body)
     with db.transaction() as conn:
         db.execute(
             conn,
             "INSERT INTO notification_log (channel, ok, sent_at, detail) VALUES ('email', %s, %s, %s)",
-            (ok, cutoff, f"{len(new_docs)} new docs, {len(failures)} failures"),
+            (ok, cutoff, f"{len(new_docs)} new docs"),
         )
     return "sent" if ok else "not-sent"
 
