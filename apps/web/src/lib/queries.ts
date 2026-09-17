@@ -933,14 +933,14 @@ export async function suggest(raw: string, limit = 12): Promise<{ items: Suggest
         FROM provision p JOIN instrument i ON i.id = p.instrument_id
        WHERE NOT i.pdf_only AND p.number ILIKE $2
        ORDER BY exact DESC, len, i.short_code
-       LIMIT 8)
+       LIMIT ${BRANCH_BY_NUMBER})
      UNION ALL
      (SELECT 'section', p.number, p.heading, i.short_code, i.slug, NULL::int,
              false, length(coalesce(p.heading, '')), 2
         FROM provision p JOIN instrument i ON i.id = p.instrument_id
        WHERE NOT i.pdf_only AND p.heading ILIKE $3
        ORDER BY length(coalesce(p.heading, '')), i.short_code
-       LIMIT 5)
+       LIMIT ${BRANCH_BY_HEADING})
      UNION ALL
      -- short_code is matched anywhere, not as a prefix. Every code carries its regulator in front of it
      -- (SEBI-LODR, FEM-EXPORT-AND-IMPORT-OF, CO-INC-2014), so prefix matching answers "LODR" with nothing
@@ -950,7 +950,7 @@ export async function suggest(raw: string, limit = 12): Promise<{ items: Suggest
         FROM instrument i
        WHERE i.title ILIKE $3 OR i.short_code ILIKE $3
        ORDER BY 7 DESC, length(i.title)
-       LIMIT 5)
+       LIMIT ${BRANCH_INSTRUMENT})
      UNION ALL
      -- Numbers matched anywhere, not just from the start. A citation is usually recalled by its distinctive
      -- middle -- "357(E)", "256/02" -- rather than by the boilerplate it opens with, and half the corpus
@@ -960,7 +960,7 @@ export async function suggest(raw: string, limit = 12): Promise<{ items: Suggest
         FROM document d JOIN regulator r ON r.id = d.regulator_id
        WHERE d.number ILIKE $3
        ORDER BY 7 DESC, d.date_issued DESC NULLS LAST
-       LIMIT 5)
+       LIMIT ${BRANCH_NOTIFICATION})
      ORDER BY grp, exact DESC, len
      LIMIT $4`,
     [q, prefix, anywhere, limit],
@@ -985,12 +985,27 @@ export async function suggest(raw: string, limit = 12): Promise<{ items: Suggest
   return { items: rows, complete };
 }
 
-/** The per-branch LIMITs written into the query above, keyed by its `grp` column. Kept beside it because the
- * completeness check is only as truthful as this list is current: raise a LIMIT in the SQL without raising
- * it here and the box will start filtering truncated answers again, silently. */
+/** How many rows each branch of the suggest query may return, interpolated into the SQL itself so the
+ * completeness check below cannot drift out of step with it.
+ *
+ * Set well above what a specific query returns, and for a reason beyond variety. A branch that comes back
+ * full might have had more to give, and there is no way to tell from the outside, so the answer has to be
+ * called truncated -- which stops the search box narrowing it for the next keystroke and costs a round trip.
+ * At five apiece almost every answer looked truncated, including "depre" with five rows in total, and the
+ * shortcut never fired. Higher caps mean a full branch is genuinely unusual.
+ *
+ * The overall LIMIT still decides how many survive, so raising these widens what is considered, not what
+ * comes back.
+ */
+const BRANCH_BY_NUMBER = 14;
+const BRANCH_BY_HEADING = 12;
+const BRANCH_INSTRUMENT = 10;
+const BRANCH_NOTIFICATION = 12;
+
+/** Keyed by the query's `grp` column. */
 const SUGGEST_BRANCH_LIMITS: ReadonlyArray<readonly [number, number]> = [
-  [1, 8], // sections matched by number
-  [2, 5], // sections matched by heading
-  [3, 5], // instruments
-  [4, 5], // notifications
+  [1, BRANCH_BY_NUMBER],
+  [2, BRANCH_BY_HEADING],
+  [3, BRANCH_INSTRUMENT],
+  [4, BRANCH_NOTIFICATION],
 ];

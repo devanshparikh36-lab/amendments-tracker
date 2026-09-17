@@ -69,13 +69,18 @@ export function SearchBox({
   // function invocation and the hop to it -- so waiting for the network on every keystroke means the list is
   // always a word behind the typing.
   //
-  // Narrowing is sound because the server matches substrings: anything containing "deprec" also contains
-  // "depre", so the answers for a longer query are a subset of the answers for a shorter one. It is only
-  // applied to an answer the server called complete -- a truncated one cannot be filtered into a correct
-  // longer one. Completeness has to come from the server rather than be inferred from the row count here:
-  // the query has a limit per branch as well as overall, so its section list can be cut off at eight while
-  // the total sits well under twenty, and filtering that loses rows. The fetch still goes out and its result
-  // still replaces this, so the shown list is never more than a moment away from being the server's.
+  // Narrowing works because the server matches substrings: anything containing "deprec" also contains
+  // "depre", so the answers to a longer query are a subset of the answers to a shorter one.
+  //
+  // It is applied whether or not that shorter answer was the complete one, which took some thinking about.
+  // Filtering a truncated list can leave out a row the server would have sent -- but it cannot conjure one
+  // that does not match, so everything on screen is genuine, and the response replaces it a moment later
+  // anyway. Against that, refusing to narrow means every keystroke on a broad word waits on the network,
+  // which is the complaint this whole mechanism exists to answer. An incomplete list for 700ms beats the
+  // previous query's list for 700ms, and both beat an empty box.
+  //
+  // `complete` is still reported by the route and kept here, because the distinction is real and the next
+  // person to touch this should be able to see it rather than rediscover it.
   useEffect(() => {
     const q = value.trim();
     if (q.length < 2) {
@@ -92,7 +97,7 @@ export function SearchBox({
 
     for (let i = q.length - 1; i >= 2; i--) {
       const shorter = cache.current.get(q.slice(0, i));
-      if (shorter?.complete) {
+      if (shorter) {
         const needle = q.toLowerCase();
         setItems(
           shorter.items.filter(
