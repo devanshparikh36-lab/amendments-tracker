@@ -96,26 +96,41 @@ def _by_regulator(new_docs: list[dict]) -> dict[str, list[dict]]:
     return dict(sorted(grouped.items(), key=lambda kv: (-len(kv[1]), kv[0])))
 
 
-def digest_subject(new_docs: list[dict], failures: list[dict], day: date) -> str:
+def _arrival_name(a: dict) -> str:
+    """What to call a newly tracked body of law. The regulator's own name, or its code if it has none."""
+    return str(a.get("name") or a.get("code") or "").strip() or str(a.get("code") or "")
+
+
+def digest_subject(new_docs: list[dict], failures: list[dict], day: date, arrivals: list[dict] | None = None) -> str:
     """What the inbox shows before anything is opened.
 
     The counts per regulator go in the subject on purpose: most mornings that is the whole message, and
     whether it is worth opening now depends on which regulator moved. No date -- the mail carries its own,
     and the room is better spent on the breakdown.
+
+    A newly tracked regulator takes the front of the line, because it is the rarest thing this mail ever
+    carries and the only one that changes what the tracker covers rather than what it found.
     """
-    if not new_docs:
-        head = "As Amended · nothing new"
-    else:
+    parts = []
+    if arrivals:
+        names = ", ".join(_arrival_name(a) for a in arrivals[:2])
+        if len(arrivals) > 2:
+            names += f" and {len(arrivals) - 2} more"
+        parts.append(f"now tracking {names}")
+    if new_docs:
         counts = [f"{code} {len(items)}" for code, items in _by_regulator(new_docs).items()]
-        head = f"As Amended · {len(new_docs)} new · " + ", ".join(counts[:4])
+        seg = f"{len(new_docs)} new · " + ", ".join(counts[:4])
         if len(counts) > 4:
-            head += f" +{len(counts) - 4} more"
+            seg += f" +{len(counts) - 4} more"
+        parts.append(seg)
+    if not parts:
+        parts.append("nothing new")
     if failures:
-        head += f" · {len(failures)} collector failure{'s' if len(failures) != 1 else ''}"
-    return head
+        parts.append(f"{len(failures)} collector failure{'s' if len(failures) != 1 else ''}")
+    return "As Amended · " + " · ".join(parts)
 
 
-def _preheader(new_docs: list[dict], failures: list[dict]) -> str:
+def _preheader(new_docs: list[dict], failures: list[dict], arrivals: list[dict] | None = None) -> str:
     """The grey line the inbox prints beside the subject.
 
     Left alone, clients scrape it from the top of the body, which here is the masthead -- so the one piece of
@@ -125,7 +140,11 @@ def _preheader(new_docs: list[dict], failures: list[dict]) -> str:
     The trailing run of zero-width spaces stops the client continuing the preview into the body text after
     this div ends, which is the standard trick and looks like nonsense without knowing why.
     """
-    if new_docs:
+    if arrivals:
+        text = "Now tracking " + ", ".join(_arrival_name(a) for a in arrivals)
+        if new_docs:
+            text += " · " + " · ".join(f"{code} {len(items)}" for code, items in _by_regulator(new_docs).items())
+    elif new_docs:
         bits = [f"{code} {len(items)}" for code, items in _by_regulator(new_docs).items()]
         tagged = sum(1 for d in new_docs if d.get("affects"))
         text = " · ".join(bits)
@@ -176,6 +195,7 @@ def build_digest_html(
     site_url: str,
     day: date,
     since: datetime | None = None,
+    arrivals: list[dict] | None = None,
 ) -> str:
     site = site_url.rstrip("/")
     sans = "-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif"
@@ -193,6 +213,41 @@ def build_digest_html(
         f"{_esc(_window_line(since, day))}</div>"
         f"</td></tr>"
     )
+
+    # A newly tracked regulator, announced rather than listed.
+    #
+    # This is the one genuinely good thing the digest ever carries: not "here is what changed today" but
+    # "there is a whole area of law here now that was not before". It sits above the day's findings, in the
+    # one coloured panel in the mail, and says how far back the archive reaches -- because the depth is the
+    # point. Its documents are summarised rather than enumerated: the first haul is the entire back
+    # catalogue, and a few thousand rows would bury everything else.
+    if arrivals:
+        cards = []
+        for a in arrivals:
+            n = int(a.get("n") or 0)
+            span = ""
+            oldest, newest = _human_date(a.get("oldest")), _human_date(a.get("newest"))
+            if oldest and newest and oldest != newest:
+                span = f", published between {oldest} and {newest}"
+            elif oldest:
+                span = f", from {oldest}"
+            cards.append(
+                f"<div style='padding:14px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;"
+                f"margin-bottom:10px'>"
+                f"<div style='font:600 11px/1.4 {sans};letter-spacing:.08em;text-transform:uppercase;"
+                f"color:{LINK}'>Now tracking</div>"
+                f"<div style='font:600 15px/1.4 Georgia,\"Times New Roman\",serif;color:{INK};padding-top:4px'>"
+                f"{_esc(_arrival_name(a))}</div>"
+                f"<div style='font:400 13px/1.55 {sans};color:{INK_2};padding-top:6px'>"
+                f"<b>{n:,}</b> document{'s' if n != 1 else ''} added to the archive{_esc(span)}. "
+                f"Everything this regulator publishes from now on arrives in this digest.</div>"
+                f"<div style='padding-top:10px'>"
+                f"<a href='{site}/documents?regulator={_esc(a.get('code'))}' "
+                f"style='font:500 13px/1 {sans};color:{LINK};text-decoration:none;border-bottom:1px solid #bbf7d0'>"
+                f"Browse {_esc(a.get('code'))} &rarr;</a></div>"
+                f"</div>"
+            )
+        rows.append(f"<tr><td style='padding:18px 24px 0;background:{CARD}'>{''.join(cards)}</td></tr>")
 
     # New documents, grouped by regulator: the same fifty rows read very differently sorted by who issued
     # them, because a reader is almost always here for one regulator and skimming past the rest.
@@ -308,7 +363,7 @@ def build_digest_html(
         "<meta name='color-scheme' content='light'>"
         "<meta name='supported-color-schemes' content='light'>"
         f"</head><body style='margin:0;padding:0;background:{PAPER}'>"
-        + _preheader(new_docs, failures)
+        + _preheader(new_docs, failures, arrivals)
         + f"<div style='background:{PAPER};padding:24px 12px'>"
         f"<table role='presentation' cellpadding='0' cellspacing='0' border='0' width='600' "
         f"style='width:600px;max-width:100%;margin:0 auto;background:{CARD};border:1px solid {RULE};"
@@ -318,7 +373,13 @@ def build_digest_html(
     )
 
 
-def build_digest_text(new_docs: list[dict], failures: list[dict], site_url: str, day: date) -> str:
+def build_digest_text(
+    new_docs: list[dict],
+    failures: list[dict],
+    site_url: str,
+    day: date,
+    arrivals: list[dict] | None = None,
+) -> str:
     """The same thing as plain text.
 
     Sent alongside the HTML, not instead of it. Some clients prefer it, some people choose it, and a mail
@@ -326,6 +387,17 @@ def build_digest_text(new_docs: list[dict], failures: list[dict], site_url: str,
     """
     site = site_url.rstrip("/")
     lines = [f"As Amended - {day.strftime('%d %b %Y')}", ""]
+    for a in arrivals or []:
+        n = int(a.get("n") or 0)
+        lines += [
+            f"NOW TRACKING: {_arrival_name(a)}",
+            f"  {n:,} documents added to the archive."
+            + (f" Published between {_human_date(a.get('oldest'))} and {_human_date(a.get('newest'))}."
+               if a.get("oldest") and a.get("newest") else ""),
+            "  Everything this regulator publishes from now on arrives in this digest.",
+            f"  {site}/documents?regulator={a.get('code')}",
+            "",
+        ]
     lines.append(f"{_found_phrase(len(new_docs))}.")
     if new_docs:
         budget = MAX_LISTED

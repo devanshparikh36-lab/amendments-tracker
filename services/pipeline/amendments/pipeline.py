@@ -1620,6 +1620,36 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
             "SELECT adapter, error FROM source_run WHERE ok = false AND started_at >= %s AND started_at < %s",
             (since, cutoff),
         )
+        # Regulators appearing for the first time: a body of law the tracker did not cover until now.
+        #
+        # Worth separating for two reasons. It is the good news in the mail -- a whole new subject is being
+        # followed, which is not the same event as a Tuesday with three circulars. And its first haul is the
+        # entire back catalogue: 7,979 documents when this tracker was seeded, reaching back to 1992. Listed
+        # item by item that would take every slot in the digest and bury the day's actual findings under
+        # thirty years of archive.
+        #
+        # "Never seen before this window" needs no threshold and cannot misfire on a regulator already
+        # running. Checked against every collection day on record: it fires on the seeding day and on no
+        # other.
+        arrivals = db.fetch_all(
+            conn,
+            """SELECT r.code, r.name, r.website, count(*) AS n,
+                      min(d.date_issued) AS oldest, max(d.date_issued) AS newest
+                 FROM document d JOIN regulator r ON r.id = d.regulator_id
+                WHERE d.first_seen_at >= %s AND d.first_seen_at < %s
+                  AND NOT EXISTS (
+                        SELECT 1 FROM document prior
+                         WHERE prior.regulator_id = d.regulator_id AND prior.first_seen_at < %s)
+                GROUP BY r.code, r.name, r.website
+                ORDER BY count(*) DESC""",
+            (since, cutoff, since),
+        )
+
+    # The arrivals' documents are announced as a body of work, not enumerated, so they are taken out of the
+    # day-to-day list. Otherwise a regulator arriving with thousands of documents sorts to the top of every
+    # group and takes all fifty slots, which is exactly the morning you would least want the real news hidden.
+    arrival_codes = {a["code"] for a in arrivals}
+    news_docs = [d for d in new_docs if d.get("regulator_code") not in arrival_codes]
     # sent_at is the cutoff, not the moment this row is written. It is the watermark the next digest reads,
     # so it has to mark where this window ended rather than when the insert happened -- otherwise anything
     # collected between the queries and the write belongs to no digest at all.
@@ -1633,11 +1663,11 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
         log.info("nothing found for %s; no digest sent (%d adapter failures)", day.isoformat(), len(failures))
         return "quiet"
 
-    subject = email_notify.digest_subject(new_docs, failures, day)
+    subject = email_notify.digest_subject(news_docs, failures, day, arrivals=arrivals)
     html_body = email_notify.build_digest_html(
-        new_docs, merges, cannot, diffs, failures, settings.site_url, day, since=since
+        news_docs, merges, cannot, diffs, failures, settings.site_url, day, since=since, arrivals=arrivals
     )
-    text_body = email_notify.build_digest_text(new_docs, failures, settings.site_url, day)
+    text_body = email_notify.build_digest_text(news_docs, failures, settings.site_url, day, arrivals=arrivals)
     ok = email_notify.send_digest(subject, html_body, text_body)
     with db.transaction() as conn:
         db.execute(
