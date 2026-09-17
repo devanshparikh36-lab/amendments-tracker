@@ -30,7 +30,7 @@ export function OfficialNumber({
   const href = fileHref(doc.pdf_storage_key, doc.pdf_source_url);
   if (!href) {
     // Still legible, still obviously the citation -- just not a link, because there is nothing to open.
-    return <span className={`num text-[12.5px] text-[var(--ink-3)] ${className}`}>{number}</span>;
+    return <span className={`numchip-plain ${className}`}>{number}</span>;
   }
 
   // The stored file is usually a PDF but not always -- some regulators issue a Word document or a
@@ -43,22 +43,22 @@ export function OfficialNumber({
   //
   // Numbers wrap rather than truncate: SEBI issues citations like HO/47/16/13(5)2026-MRD-POD1/I/20735/2026
   // and half of one is no use to anybody.
+  //
+  // Styled by class, not by utilities. This renders once per row, and the utility strings alone were 31 KB of
+  // the documents listing. The title attribute carries the description instead of a visually-hidden span,
+  // which is the same information without repeating a sentence a hundred times down the page.
   return (
     <a
       href={isPdf ? pdfHref(href, page) : href}
       target="_blank"
       rel="noreferrer"
-      title={`Open the official ${isPdf ? "PDF" : "file"} for ${number}${page ? `, at page ${page}` : ""}`}
-      className={`group inline-flex max-w-full items-center gap-1.5 rounded border border-[var(--rule)] bg-[var(--paper)] px-2 py-[3px] align-middle transition-colors hover:border-[var(--link)] hover:bg-white ${className}`}
+      title={`Opens the official ${isPdf ? "PDF" : "file"} for ${number}${page ? `, at page ${page}` : ""}, in a new tab`}
+      className={className ? `numchip ${className}` : "numchip"}
     >
-      <span className="num break-words text-[12.5px] font-medium leading-snug text-[var(--link)]">{number}</span>
-      <span
-        aria-hidden
-        className="shrink-0 rounded-sm bg-stone-200/70 px-1 text-[10px] font-semibold uppercase leading-[1.5] tracking-wide text-stone-700 group-hover:bg-stone-300/70"
-      >
+      <span className="numchip-n">{number}</span>
+      <span aria-hidden className="numchip-tag">
         {isPdf ? "pdf" : "file"}
       </span>
-      <span className="sr-only"> (opens the official {isPdf ? "PDF" : "file"} in a new tab)</span>
     </a>
   );
 }
