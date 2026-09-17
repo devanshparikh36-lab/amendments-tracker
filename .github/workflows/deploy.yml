@@ -9,9 +9,17 @@ name: Build and deploy the site
 # GitHub Actions minutes are unlimited here because the repository is public, so the build moves to the side
 # that has capacity.
 #
-# That "should not consume any" is the thing this workflow is testing. Check Netlify's build-minute usage after
-# the first successful run: if it climbed, this approach does not work and the answer is Cloudflare Pages
-# instead, which allows 500 builds a month rather than 300 minutes.
+# Confirmed on 17 Sept, and it holds. Netlify support put it plainly -- "CLI BUILDS use 0 build minutes, we
+# aren't building for you" -- and the Deploys page agrees: every entry reads "<sha> via GitHub Actions" and
+# finishes in 8 to 11 seconds, against the five to ten minutes a Next.js build takes on their infrastructure.
+#
+# The account had already spent half its monthly allowance by then, all of it before builds were stopped,
+# including the builds that failed on a missing DATABASE_URL -- minutes are counted from dependency install
+# until the container finishes, whether or not the build succeeds. That figure stopped moving the moment
+# builds were switched off.
+#
+# So if the usage ever climbs again, the cause is Netlify building, not this workflow deploying. Check the
+# Deploys page for an entry that does not say "via GitHub Actions" before blaming anything here.
 #
 # IMPORTANT: turn off Netlify's own Git integration for this site once this works, or every push builds twice
 # -- once here and once on Netlify, which is the opposite of the point. In Netlify: Site configuration >
