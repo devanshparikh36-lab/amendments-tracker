@@ -39,16 +39,20 @@ class Settings:
     # Notifications
     teams_webhook_url: str | None = field(default_factory=lambda: _env("TEAMS_WEBHOOK_URL"))
     resend_api_key: str | None = field(default_factory=lambda: _env("RESEND_API_KEY"))
-    # onboarding@resend.dev is Resend's own shared sender: it needs no domain verification and delivers to the
-    # Resend account's own address, which is all this digest needs. example.com is a reserved documentation
-    # domain and was silently unsendable, so DIGEST_FROM had to be set before any mail could go out at all.
     # onboarding@resend.dev is Resend's shared sender, which needs no domain to be verified -- but it will
-    # only deliver to the address that owns the Resend account. Set DIGEST_FROM to an address on a verified
-    # domain to mail anyone else.
+    # only deliver to the address that owns the Resend account, and mail carries a visible "via resend.dev".
+    # Set DIGEST_FROM to an address on a verified domain to reach anyone else, and to lose the "via".
+    # example.com is a reserved documentation domain and was silently unsendable, so this default matters.
     digest_from: str = field(default_factory=lambda: _env("DIGEST_FROM") or "As Amended <onboarding@resend.dev>")
     digest_to: list[str] = field(
         default_factory=lambda: [a.strip() for a in (_env("DIGEST_TO") or "").split(",") if a.strip()]
     )
+    # Both optional, and both left off the message entirely when unset rather than pointed somewhere
+    # plausible: a Reply-To nobody reads and an unsubscribe link that does nothing are worse than their
+    # absence. They become worth setting once the digest sends from a domain of its own.
+    digest_reply_to: str | None = field(default_factory=lambda: _env("DIGEST_REPLY_TO"))
+    # A mailto: or https: target, per RFC 8058. Matters when the digest goes to anyone but its owner.
+    digest_unsubscribe: str | None = field(default_factory=lambda: _env("DIGEST_UNSUBSCRIBE"))
 
     # Public site URL used in alerts
     site_url: str = field(default_factory=lambda: (_env("SITE_URL") or "http://localhost:3000").rstrip("/"))

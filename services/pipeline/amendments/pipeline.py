@@ -1514,7 +1514,7 @@ def prune_before_cutoff() -> dict[str, int]:
 
 # ----------------------------------------------------------------------------- digest
 
-def send_daily_digest(day: date | None = None, force: bool = False) -> str:
+def send_daily_digest(day: date | None = None, force: bool = False, since: datetime | None = None) -> str:
     """Mail the day's findings, or stay quiet if there were none.
 
     Returns "sent", "quiet" when there was nothing worth reporting, or "not-sent" when there was and it
@@ -1533,28 +1533,81 @@ def send_daily_digest(day: date | None = None, force: bool = False) -> str:
     would mail every morning for a month after a single one.
     """
     day = day or datetime.now(timezone.utc).date()
-    since = datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc) - timedelta(days=1)
+
+    # Start where the last digest finished, not at a fixed offset from today.
+    #
+    # The fixed window was 26.5 hours wide and the job runs every 24, so consecutive runs overlapped by two
+    # and a half hours -- and collection fires at 01:30 UTC, squarely inside that overlap. Every document
+    # collected would therefore have been reported twice: once on the day it was found and again the next
+    # morning. Not an edge case, the normal path.
+    #
+    # The watermark only advances when mail actually went out, or when there was nothing to send. A failed
+    # delivery leaves it where it was, so those findings appear in the next digest rather than being lost to
+    # a window that moved on without them -- and if the digest is down for a week, the next one covers the
+    # week, capped and counted by the mail builder rather than truncated silently.
+    if since is None:
+        with db.transaction() as conn:
+            rows = db.fetch_all(
+                conn, "SELECT max(sent_at) AS t FROM notification_log WHERE channel = 'email' AND ok", ()
+            )
+        watermark = rows[0]["t"] if rows and rows[0].get("t") else None
+        since = watermark or (datetime.combine(day, datetime.min.time(), tzinfo=timezone.utc) - timedelta(days=1))
+
+    # One instant, decided here, used as the end of this window and as the watermark recorded at the end.
+    #
+    # Without it the window has no upper bound: the queries read "everything since the watermark" and the
+    # log row is stamped when it is written, a moment later. Anything collected in between belongs to
+    # neither digest -- absent from the one that was running, and before the start of the next. Duplicates
+    # were the obvious failure here and misses are the quiet one, which for a compliance record is worse.
+    #
+    # Collection runs at 01:30 UTC and this at 02:30, so the gap is normally empty. "Normally" is doing too
+    # much work in that sentence: a long collection run, a manual trigger, or a retry all put writes exactly
+    # there.
+    cutoff = datetime.now(timezone.utc)
     with db.transaction() as conn:
         new_docs = db.fetch_all(
             conn,
-            """SELECT d.id, d.title, d.number, d.date_issued, r.code AS regulator_code FROM document d
-               JOIN regulator r ON r.id = d.regulator_id WHERE d.first_seen_at >= %s ORDER BY d.date_issued DESC NULLS LAST""",
-            (since,),
+            # The official file and what the notification touches, fetched with the row rather than looked
+            # up per item while rendering: the digest is built once a day and read on a phone, so it should
+            # arrive with the links already in it.
+            #
+            # The attachment preference matches the website's: an actual PDF first, then is_primary. The
+            # collectors set is_primary from the order the regulator listed files in, which lands on a
+            # corrigendum often enough to matter.
+            """SELECT d.id, d.title, d.number, d.date_issued, r.code AS regulator_code,
+                      af.storage_key AS pdf_key,
+                      (SELECT string_agg(DISTINCT i.short_code, ', ' ORDER BY i.short_code)
+                         FROM document_tag t JOIN instrument i ON i.id = t.instrument_id
+                        WHERE t.document_id = d.id) AS affects
+                 FROM document d
+                 JOIN regulator r ON r.id = d.regulator_id
+                 LEFT JOIN LATERAL (
+                   SELECT a.storage_key FROM attachment a
+                    WHERE a.document_id = d.id AND a.storage_key IS NOT NULL
+                    ORDER BY (a.mime = 'application/pdf' OR a.filename ILIKE '%%.pdf') DESC, a.is_primary DESC, a.id
+                    LIMIT 1
+                 ) af ON true
+                WHERE d.first_seen_at >= %s AND d.first_seen_at < %s
+                ORDER BY d.date_issued DESC NULLS LAST""",
+            (since, cutoff),
         )
         merges = db.fetch_all(
             conn,
             """SELECT e.change_type, e.document_id, d.title AS document_title, p.number AS provision_number, i.title AS instrument_title
                FROM amendment_effect e JOIN provision p ON p.id = e.provision_id JOIN instrument i ON i.id = p.instrument_id
-               JOIN document d ON d.id = e.document_id WHERE e.created_at >= %s AND e.new_version_id IS NOT NULL""",
-            (since,),
+               JOIN document d ON d.id = e.document_id
+               WHERE e.created_at >= %s AND e.created_at < %s AND e.new_version_id IS NOT NULL""",
+            (since, cutoff),
         )
         cannot = db.fetch_all(
             conn,
             """SELECT e.document_id, e.ai_note, p.number AS provision_number, i.title AS instrument_title
                FROM amendment_effect e JOIN provision p ON p.id = e.provision_id JOIN instrument i ON i.id = p.instrument_id
-               WHERE e.created_at >= %s AND e.change_type = 'cannot_apply'""",
-            (since,),
+               WHERE e.created_at >= %s AND e.created_at < %s AND e.change_type = 'cannot_apply'""",
+            (since, cutoff),
         )
+        # Not bounded by the window, and not meant to be: this is thirty days of standing context shown
+        # beside the day's findings, not a list of what happened since the last mail.
         diffs = db.fetch_all(
             conn,
             """SELECT p.number AS provision_number, i.title AS instrument_title
@@ -1562,26 +1615,35 @@ def send_daily_digest(day: date | None = None, force: bool = False) -> str:
                WHERE e.verification_status = 'differs_from_official' AND e.created_at >= %s""",
             (since - timedelta(days=30),),
         )
-        failures = db.fetch_all(conn, "SELECT adapter, error FROM source_run WHERE ok = false AND started_at >= %s", (since,))
+        failures = db.fetch_all(
+            conn,
+            "SELECT adapter, error FROM source_run WHERE ok = false AND started_at >= %s AND started_at < %s",
+            (since, cutoff),
+        )
+    # sent_at is the cutoff, not the moment this row is written. It is the watermark the next digest reads,
+    # so it has to mark where this window ended rather than when the insert happened -- otherwise anything
+    # collected between the queries and the write belongs to no digest at all.
     if not (new_docs or merges or cannot) and not force:
         with db.transaction() as conn:
             db.execute(
                 conn,
-                "INSERT INTO notification_log (channel, ok, detail) VALUES ('email', true, %s)",
-                (f"quiet - nothing found, no mail sent ({len(failures)} adapter failures)",),
+                "INSERT INTO notification_log (channel, ok, sent_at, detail) VALUES ('email', true, %s, %s)",
+                (cutoff, f"quiet - nothing found, no mail sent ({len(failures)} adapter failures)"),
             )
         log.info("nothing found for %s; no digest sent (%d adapter failures)", day.isoformat(), len(failures))
         return "quiet"
 
     subject = email_notify.digest_subject(new_docs, failures, day)
-    html_body = email_notify.build_digest_html(new_docs, merges, cannot, diffs, failures, settings.site_url, day)
+    html_body = email_notify.build_digest_html(
+        new_docs, merges, cannot, diffs, failures, settings.site_url, day, since=since
+    )
     text_body = email_notify.build_digest_text(new_docs, failures, settings.site_url, day)
     ok = email_notify.send_digest(subject, html_body, text_body)
     with db.transaction() as conn:
         db.execute(
             conn,
-            "INSERT INTO notification_log (channel, ok, detail) VALUES ('email', %s, %s)",
-            (ok, f"{len(new_docs)} new docs, {len(failures)} failures"),
+            "INSERT INTO notification_log (channel, ok, sent_at, detail) VALUES ('email', %s, %s, %s)",
+            (ok, cutoff, f"{len(new_docs)} new docs, {len(failures)} failures"),
         )
     return "sent" if ok else "not-sent"
 
