@@ -17,6 +17,11 @@ const KIND_LABEL: Record<Item["kind"], string> = {
   notification: "notification",
 };
 
+/** Must match the limit in suggest(). A cached answer shorter than this is the complete set for that query,
+ * which is what makes it safe to narrow locally instead of asking again; one that reaches the limit was cut
+ * off, and filtering it would quietly drop results the server would have sent. */
+const LIMIT = 12;
+
 /** A search input that suggests from what the site actually holds.
  *
  * autoComplete="off" is the point of half of this. Without it the browser offers its own history of
@@ -52,26 +57,64 @@ export function SearchBox({
   const [active, setActive] = useState(-1);
   const boxRef = useRef<HTMLDivElement>(null);
 
+  // Answers already received, by query. Survives for the life of the box, which is the life of the page.
+  const cache = useRef(new Map<string, Item[]>());
+
   // Debounced, and every in-flight request is abandoned when the next keystroke arrives. Without the abort a
   // slow response for "80" can land after the one for "80C" and repopulate the list with the wrong answers.
+  //
+  // The local narrowing above the fetch is what makes typing feel immediate. A round trip costs about 700ms
+  // for a prefix nobody has asked for yet -- and only ~200ms of that is the database, the rest being the
+  // function invocation and the hop to it -- so waiting for the network on every keystroke means the list is
+  // always a word behind the typing.
+  //
+  // Narrowing is sound because the server matches substrings: anything containing "deprec" also contains
+  // "depre", so the answers for a longer query are a subset of the answers for a shorter one. It is only
+  // applied when the shorter answer was complete rather than cut off at the limit, since a truncated list
+  // cannot be filtered into a correct longer one. The fetch still goes out and its result still replaces
+  // this, so the shown list is never more than a moment away from being the server's.
   useEffect(() => {
     const q = value.trim();
     if (q.length < 2) {
       setItems([]);
       return;
     }
+
+    const hit = cache.current.get(q);
+    if (hit) {
+      setItems(hit);
+      setActive(-1);
+      return;
+    }
+
+    for (let i = q.length - 1; i >= 2; i--) {
+      const shorter = cache.current.get(q.slice(0, i));
+      if (shorter && shorter.length < LIMIT) {
+        const needle = q.toLowerCase();
+        setItems(
+          shorter.filter(
+            (it) => it.label.toLowerCase().includes(needle) || (it.sub ?? "").toLowerCase().includes(needle),
+          ),
+        );
+        setActive(-1);
+        break;
+      }
+    }
+
     const ac = new AbortController();
     const t = setTimeout(() => {
       fetch(`/api/suggest?q=${encodeURIComponent(q)}`, { signal: ac.signal })
         .then((r) => (r.ok ? r.json() : { items: [] }))
         .then((d: { items: Item[] }) => {
-          setItems(d.items ?? []);
+          const got = d.items ?? [];
+          cache.current.set(q, got);
+          setItems(got);
           setActive(-1);
         })
         .catch(() => {
           /* aborted, or offline: leave whatever is on screen rather than blanking it */
         });
-    }, 140);
+    }, 180);
     return () => {
       clearTimeout(t);
       ac.abort();

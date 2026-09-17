@@ -36,9 +36,16 @@ export async function GET(req: NextRequest) {
     { items },
     {
       headers: {
-        // Let the browser reuse a prefix the reader has already typed -- backspacing through a word
-        // otherwise re-requests everything it just asked for.
-        "Cache-Control": "public, max-age=60, stale-while-revalidate=600",
+        // Held for an hour at the edge and a day beyond that while it refreshes.
+        //
+        // A prefix nobody has asked for yet costs about 700ms -- roughly 200ms of database and 500ms of
+        // function invocation and the hop to it -- while one already at the edge comes back in under 200ms.
+        // Since everyone types the same first few letters, the edge answers most keystrokes for everyone
+        // after the first person pays for them.
+        //
+        // An hour of staleness costs nothing here: collection runs once, at 7am, so the set of things worth
+        // suggesting changes on a daily rhythm rather than a minute-by-minute one.
+        "Cache-Control": "public, max-age=600, s-maxage=3600, stale-while-revalidate=86400",
         // Netlify-Vary is not optional here, and getting it wrong is silent.
         //
         // Netlify's CDN does not key its cache on the whole URL. The Next.js runtime sets
