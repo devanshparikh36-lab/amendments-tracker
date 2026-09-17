@@ -42,7 +42,10 @@ class Settings:
     # onboarding@resend.dev is Resend's own shared sender: it needs no domain verification and delivers to the
     # Resend account's own address, which is all this digest needs. example.com is a reserved documentation
     # domain and was silently unsendable, so DIGEST_FROM had to be set before any mail could go out at all.
-    digest_from: str = field(default_factory=lambda: _env("DIGEST_FROM") or "Regulation Tracker <onboarding@resend.dev>")
+    # onboarding@resend.dev is Resend's shared sender, which needs no domain to be verified -- but it will
+    # only deliver to the address that owns the Resend account. Set DIGEST_FROM to an address on a verified
+    # domain to mail anyone else.
+    digest_from: str = field(default_factory=lambda: _env("DIGEST_FROM") or "As Amended <onboarding@resend.dev>")
     digest_to: list[str] = field(
         default_factory=lambda: [a.strip() for a in (_env("DIGEST_TO") or "").split(",") if a.strip()]
     )
