@@ -22,7 +22,7 @@ export async function GET(req: NextRequest) {
   // complete rather than cut off at the limit, and a complete answer is one the box can narrow by itself on
   // the next keystroke instead of waiting on another round trip. The query is prefix matching over three
   // small tables, so the wider limit costs nothing worth measuring.
-  const rows = await suggest(q, 20);
+  const { items: rows, complete } = await suggest(q, 20);
   const items = rows.map((r) => ({
     kind: r.kind,
     label: r.label,
@@ -36,8 +36,10 @@ export async function GET(req: NextRequest) {
           : provisionHref(r.slug ?? "", r.label),
   }));
 
+  // `complete` tells the box whether it may filter these rows itself for a longer query rather than asking
+  // again. Only the server can answer that, because only it knows which branch limits were reached.
   return NextResponse.json(
-    { items },
+    { items, complete },
     {
       headers: {
         // Held for an hour at the edge and a day beyond that while it refreshes.

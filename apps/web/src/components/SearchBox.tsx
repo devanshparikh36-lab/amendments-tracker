@@ -17,15 +17,9 @@ const KIND_LABEL: Record<Item["kind"], string> = {
   notification: "notification",
 };
 
-/** Must match the limit the route asks suggest() for. A cached answer shorter than this is the complete set
- * for that query, which is what makes it safe to narrow locally instead of asking again; one that reaches
- * the limit was cut off, and filtering it would quietly drop results the server would have sent. */
-const FETCH_LIMIT = 20;
-
-/** How many of them to put on screen. Fetching more than is shown is the point: the extra rows are never
- * rendered, they exist so that more answers come back complete rather than truncated, and a complete answer
- * is one the box can narrow by itself on the next keystroke instead of waiting on the network. "80" returned
- * exactly the old limit and so could never be narrowed into "80C"; with room to spare it can. */
+/** How many suggestions to put on screen. The route fetches more than this on purpose: the extra rows are
+ * never rendered, they exist so that more answers come back complete rather than truncated, and a complete
+ * answer is one this box can narrow by itself on the next keystroke instead of waiting on the network. */
 const SHOW = 12;
 
 /** A search input that suggests from what the site actually holds.
@@ -63,8 +57,9 @@ export function SearchBox({
   const [active, setActive] = useState(-1);
   const boxRef = useRef<HTMLDivElement>(null);
 
-  // Answers already received, by query. Survives for the life of the box, which is the life of the page.
-  const cache = useRef(new Map<string, Item[]>());
+  // Answers already received, by query, each with the server's word on whether it was the whole answer.
+  // Survives for the life of the box, which is the life of the page.
+  const cache = useRef(new Map<string, { items: Item[]; complete: boolean }>());
 
   // Debounced, and every in-flight request is abandoned when the next keystroke arrives. Without the abort a
   // slow response for "80" can land after the one for "80C" and repopulate the list with the wrong answers.
@@ -76,9 +71,11 @@ export function SearchBox({
   //
   // Narrowing is sound because the server matches substrings: anything containing "deprec" also contains
   // "depre", so the answers for a longer query are a subset of the answers for a shorter one. It is only
-  // applied when the shorter answer was complete rather than cut off at the limit, since a truncated list
-  // cannot be filtered into a correct longer one. The fetch still goes out and its result still replaces
-  // this, so the shown list is never more than a moment away from being the server's.
+  // applied to an answer the server called complete -- a truncated one cannot be filtered into a correct
+  // longer one. Completeness has to come from the server rather than be inferred from the row count here:
+  // the query has a limit per branch as well as overall, so its section list can be cut off at eight while
+  // the total sits well under twenty, and filtering that loses rows. The fetch still goes out and its result
+  // still replaces this, so the shown list is never more than a moment away from being the server's.
   useEffect(() => {
     const q = value.trim();
     if (q.length < 2) {
@@ -88,17 +85,17 @@ export function SearchBox({
 
     const hit = cache.current.get(q);
     if (hit) {
-      setItems(hit);
+      setItems(hit.items);
       setActive(-1);
       return;
     }
 
     for (let i = q.length - 1; i >= 2; i--) {
       const shorter = cache.current.get(q.slice(0, i));
-      if (shorter && shorter.length < FETCH_LIMIT) {
+      if (shorter?.complete) {
         const needle = q.toLowerCase();
         setItems(
-          shorter.filter(
+          shorter.items.filter(
             (it) => it.label.toLowerCase().includes(needle) || (it.sub ?? "").toLowerCase().includes(needle),
           ),
         );
@@ -110,10 +107,10 @@ export function SearchBox({
     const ac = new AbortController();
     const t = setTimeout(() => {
       fetch(`/api/suggest?q=${encodeURIComponent(q)}`, { signal: ac.signal })
-        .then((r) => (r.ok ? r.json() : { items: [] }))
-        .then((d: { items: Item[] }) => {
+        .then((r) => (r.ok ? r.json() : { items: [], complete: false }))
+        .then((d: { items: Item[]; complete?: boolean }) => {
           const got = d.items ?? [];
-          cache.current.set(q, got);
+          cache.current.set(q, { items: got, complete: d.complete === true });
           setItems(got);
           setActive(-1);
         })

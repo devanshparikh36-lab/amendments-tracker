@@ -919,13 +919,13 @@ export type Suggestion = {
  * Numbers are matched as prefixes and titles as substrings, because that is how each is recalled -- nobody
  * half-remembers a section number from its middle, and nobody remembers an Act's title from its first word.
  */
-export async function suggest(raw: string, limit = 12): Promise<Suggestion[]> {
+export async function suggest(raw: string, limit = 12): Promise<{ items: Suggestion[]; complete: boolean }> {
   const q = raw.trim();
-  if (q.length < 2) return [];
+  if (q.length < 2) return { items: [], complete: true };
   const prefix = `${q}%`;
   const anywhere = `%${q}%`;
 
-  return query<Suggestion>(
+  const rows = await query<Suggestion & { grp: number }>(
     `(SELECT 'section' AS kind, p.number AS label, p.heading AS sub,
              i.short_code AS context, i.slug AS slug, NULL::int AS doc_id,
              -- an exact number first, then the shortest: typing "80" should offer 80 before 80-IBA
@@ -965,4 +965,32 @@ export async function suggest(raw: string, limit = 12): Promise<Suggestion[]> {
      LIMIT $4`,
     [q, prefix, anywhere, limit],
   );
+
+  // Whether this is the whole answer, or only as much of it as the limits allowed.
+  //
+  // The caller uses this to decide if it may filter these rows itself for a longer query instead of asking
+  // again. That shortcut is only sound on a complete answer, and completeness is not just a matter of the
+  // overall limit: each branch has its own, so the section list can be cut off at eight while the total sits
+  // well under twenty. Typing "80C" then "80CC" hit exactly that -- twelve rows back, comfortably under the
+  // limit, yet the sections among them were already truncated, so filtering them lost a result that the
+  // server would have returned.
+  //
+  // A branch that returns exactly its own limit is treated as truncated. It might have found precisely that
+  // many, but there is no way to tell from here, and the safe reading is the one that asks again.
+  const perBranch = new Map<number, number>();
+  for (const r of rows) perBranch.set(r.grp, (perBranch.get(r.grp) ?? 0) + 1);
+  const complete =
+    rows.length < limit && [...SUGGEST_BRANCH_LIMITS].every(([grp, cap]) => (perBranch.get(grp) ?? 0) < cap);
+
+  return { items: rows, complete };
 }
+
+/** The per-branch LIMITs written into the query above, keyed by its `grp` column. Kept beside it because the
+ * completeness check is only as truthful as this list is current: raise a LIMIT in the SQL without raising
+ * it here and the box will start filtering truncated answers again, silently. */
+const SUGGEST_BRANCH_LIMITS: ReadonlyArray<readonly [number, number]> = [
+  [1, 8], // sections matched by number
+  [2, 5], // sections matched by heading
+  [3, 5], // instruments
+  [4, 5], // notifications
+];
