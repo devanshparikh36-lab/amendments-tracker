@@ -18,6 +18,10 @@ on:
         description: "Send even if nothing was found (to test the mail path)"
         type: boolean
         default: false
+      since_days:
+        description: "Look back this many days instead of resuming from the last digest (0 = normal)"
+        type: string
+        default: "0"
 
 jobs:
   digest:
@@ -43,4 +47,10 @@ jobs:
           cache: pip
           cache-dependency-path: services/pipeline/requirements.txt
       - run: pip install -q -r requirements.txt
-      - run: python cli.py digest ${{ inputs.force && '--force' || '' }}
+      # Both options are guarded on `inputs` existing at all, not just on their values. A scheduled run has
+      # no inputs context, and `inputs.since_days != '0'` on its own is true when the value is absent -- which
+      # would hand the daily job a --since-days flag with nothing after it.
+      - run: >-
+          python cli.py digest
+          ${{ inputs.force && '--force' || '' }}
+          ${{ inputs.since_days && inputs.since_days != '0' && format('--since-days {0}', inputs.since_days) || '' }}

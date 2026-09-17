@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from amendments import db, pipeline
 from amendments.instruments import PHASE1_INSTRUMENTS
@@ -51,6 +51,18 @@ def main(argv: list[str] | None = None) -> int:
         "--force",
         action="store_true",
         help="send even when nothing was found, to prove the mail path works",
+    )
+    p_dig.add_argument(
+        "--since-days",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "look back N days instead of resuming from the last digest. For seeing a full digest on demand, "
+            "and for catching up after an outage. Note that it will re-report anything already mailed inside "
+            "that span -- the ordinary resume-from-last-send behaviour is what guarantees each finding is "
+            "reported once, and this deliberately steps around it."
+        ),
     )
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
@@ -120,7 +132,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.cmd == "digest":
-        result = pipeline.send_daily_digest(force=args.force)
+        since = (
+            datetime.now(timezone.utc) - timedelta(days=args.since_days) if args.since_days > 0 else None
+        )
+        if since:
+            print(f"looking back {args.since_days} days, to {since:%Y-%m-%d %H:%M} UTC")
+        result = pipeline.send_daily_digest(force=args.force, since=since)
         if result == "sent":
             print("sent")
         elif result == "quiet":
