@@ -5,7 +5,7 @@ import { KIND_LABEL, unitPlural } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
 import { fmtDate } from "@/lib/format";
 import { pdfPageHref, provisionHref, resolveLookup } from "@/lib/lookup";
-import { search } from "@/lib/queries";
+import { search, searchAllPages } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -21,14 +21,21 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
   const lookup = await resolveLookup(q);
   if (lookup.jumpTo && sp.all !== "1") redirect(lookup.jumpTo);
 
-  const text = await search(q, 25);
+  const [text, wordPages] = await Promise.all([search(q, 25), searchAllPages(q, 12)]);
+
+  // resolveLookup only searches the pages of instruments the query *named*, so a phrase on its own reached
+  // none of the 107 PDF-only instruments. These are the pages matched by words alone, merged in behind
+  // them: a page found both ways is the same page, and the lookup's ordering is the better one because it
+  // knows about heading hits.
+  const seenPages = new Set(lookup.pages.map((p) => `${p.instrument_slug}#${p.page_no}`));
+  const pages = [...lookup.pages, ...wordPages.filter((p) => !seenPages.has(`${p.instrument_slug}#${p.page_no}`))];
+
   const nothing =
     !lookup.provisions.length &&
-    !lookup.pages.length &&
+    !pages.length &&
     !lookup.instruments.length &&
     !text.provisions.length &&
-    !text.documents.length &&
-    !text.attachments.length;
+    !text.documents.length;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -50,14 +57,14 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         )}
       </div>
 
-      {lookup.pages.length > 0 && (
+      {pages.length > 0 && (
         <section className="panel">
           <div className="panel-head">
             <h2 className="eyebrow">In the regulator&rsquo;s own PDF</h2>
             <span className="meta ml-auto">each result opens that file at the page the match is on</span>
           </div>
           <ol className="feed px-4 py-1">
-            {lookup.pages.map((p) => {
+            {pages.map((p) => {
               const url = fileHref(p.pdf_storage_key, p.pdf_source_url);
               return (
                 <li key={`${p.instrument_slug}-${p.page_no}`} className="py-2">
@@ -164,8 +171,14 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         </section>
       )}
 
-      {(text.documents.length > 0 || text.attachments.length > 0) && (
-        <section className="grid gap-4 md:grid-cols-2">
+      {/* One panel, full width. There used to be a second beside it searching attachment.extracted_text --
+          dropped, because it searched a copy. Compaction moved that text onto the document row, so no
+          attachment holds text its document lacks, and a query returned at most two documents the panel
+          beside it had not already found while costing five to ten seconds of the wait. Searching inside
+          the stored PDFs still works and is still how it is worded: the text below is what was read out of
+          the PDF, and "open the PDF here" lands on the page that matched. */}
+      {text.documents.length > 0 && (
+        <section>
           <div className="panel">
             <div className="panel-head">
               <h2 className="eyebrow">Notifications and circulars</h2>
@@ -195,37 +208,6 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
                 </li>
               ))}
               {text.documents.length === 0 && <li className="py-3 text-[13px] text-[var(--ink-3)]">Nothing.</li>}
-            </ul>
-          </div>
-          <div className="panel">
-            <div className="panel-head">
-              <h2 className="eyebrow">Inside stored PDFs</h2>
-            </div>
-            <ul className="feed px-4 py-1">
-              {text.attachments.map((r) => (
-                <li key={r.id} className="py-2">
-                  {/* The hit is inside this file, so the file opened at the matching page is the useful
-                      destination -- the document page is one more click away from what was searched for. */}
-                  <a
-                    href={`/api/jump?att=${r.id}&q=${encodeURIComponent(q)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-medium hover:underline"
-                  >
-                    {r.filename}
-                  </a>
-                  <div className="meta">
-                    <Link href={`/documents/${r.document_id}`} className="hover:underline">
-                      {r.document_title}
-                    </Link>
-                  </div>
-                  <p
-                    className="snippet mt-0.5 text-[13px] text-[var(--ink-2)]"
-                    dangerouslySetInnerHTML={{ __html: r.snippet }}
-                  />
-                </li>
-              ))}
-              {text.attachments.length === 0 && <li className="py-3 text-[13px] text-[var(--ink-3)]">Nothing.</li>}
             </ul>
           </div>
         </section>

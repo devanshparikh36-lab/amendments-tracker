@@ -270,6 +270,44 @@ export async function searchInstrumentPages(
   );
 }
 
+export type PageSearchHit = PageHit & {
+  instrument_slug: string;
+  instrument_title: string;
+  short_code: string;
+  pdf_storage_key: string | null;
+  pdf_source_url: string | null;
+};
+
+/** Phrase search across the pages of every instrument the regulator publishes only as a PDF.
+ *
+ * These are 107 of the 195 Acts, Rules and Regulations here -- more than half -- and until now their text
+ * was only reachable if the query also named the instrument, because pages were searched for matched
+ * instruments rather than for matched words. Someone searching a phrase got nothing from any of them, with
+ * no indication that half the library had not been looked at.
+ *
+ * No bounding needed and none wanted: a page averages 2,023 characters and tops out at about 7,000, so
+ * ranking the whole of one costs nothing, which is exactly what makes a page the right unit to search. It
+ * is also the right unit to return, because the answer is "that document, at that page".
+ */
+export async function searchAllPages(q: string, limit = 12): Promise<PageSearchHit[]> {
+  const text = q.trim();
+  if (!text) return [];
+  const tsq = `websearch_to_tsquery('english', $1)`;
+  return query<PageSearchHit>(
+    `SELECT ip.page_no, i.slug AS instrument_slug, i.title AS instrument_title, i.short_code,
+            i.pdf_storage_key, i.pdf_source_url,
+            ts_headline('english', ip.text, ${tsq},
+                        'MaxFragments=1, MaxWords=26, MinWords=12, StartSel=<b>, StopSel=</b>') AS snippet,
+            ts_rank(to_tsvector('english', ip.text), ${tsq})::float8 AS rank,
+            false AS heading_hit
+       FROM instrument_page ip JOIN instrument i ON i.id = ip.instrument_id
+      WHERE to_tsvector('english', ip.text) @@ ${tsq}
+      ORDER BY rank DESC, i.title, ip.page_no
+      LIMIT $2`,
+    [text, limit],
+  );
+}
+
 export type LookupInstrument = InstrumentRow & { rank: number };
 
 export async function findInstruments(words: string[]): Promise<LookupInstrument[]> {
@@ -629,21 +667,27 @@ export async function search(q: string, limit = 50) {
      ORDER BY rank DESC LIMIT $2`,
     [q, limit],
   );
+  // Ranked and excerpted on the first 20,000 characters, not on the whole document.
+  //
+  // The index finds the matches in under a millisecond; the time went entirely into ts_rank re-reading and
+  // re-tokenising each matched document in full. That is affordable for the median document, which is 3,260
+  // characters, and ruinous for the ones common words actually match: the 373 documents containing "input
+  // tax credit" average 173,018 characters and run to 6.4 million, so ranking them meant detoasting and
+  // tokenising 62 MB on every search. Measured at 9.6 seconds, against 3.2 bounded.
+  //
+  // This changes the order of results, never the set: the WHERE still matches on the complete text through
+  // the index, so nothing becomes unfindable. A document whose only mention of the term is beyond 20,000
+  // characters is still returned, it simply ranks on what came before. The alternative -- a stored tsvector
+  // column -- would be faster still and cost about 32 MB plus its index, taking the database from 49% to
+  // roughly 61% of the free tier, which is the wrong trade here.
   const documents = await query<{ id: number; title: string; number: string | null; date_issued: string | null; snippet: string; rank: number }>(
     `SELECT d.id, d.title, d.number, d.date_issued,
-            ts_headline('english', coalesce(d.extracted_text, d.title), ${ts}, 'MaxFragments=2, MaxWords=25, MinWords=10') AS snippet,
-            ts_rank(to_tsvector('english', coalesce(d.title,'') || ' ' || coalesce(d.extracted_text,'')), ${ts}) AS rank
+            ts_headline('english', left(coalesce(d.extracted_text, d.title), 20000), ${ts},
+                        'MaxFragments=2, MaxWords=25, MinWords=10') AS snippet,
+            ts_rank(to_tsvector('english', coalesce(d.title,'') || ' ' || left(coalesce(d.extracted_text,''), 20000)), ${ts}) AS rank
      FROM document d
      WHERE to_tsvector('english', coalesce(d.title,'') || ' ' || coalesce(d.extracted_text,'')) @@ ${ts}
-     ORDER BY rank DESC LIMIT $2`,
-    [q, limit],
-  );
-  const attachments = await query<{ id: number; document_id: number; filename: string; document_title: string; snippet: string }>(
-    `SELECT a.id, a.document_id, a.filename, d.title AS document_title,
-            ts_headline('english', a.extracted_text, ${ts}, 'MaxFragments=2, MaxWords=25, MinWords=10') AS snippet
-     FROM attachment a JOIN document d ON d.id = a.document_id
-     WHERE a.extracted_text IS NOT NULL AND to_tsvector('english', a.extracted_text) @@ ${ts}
-     ORDER BY ts_rank(to_tsvector('english', a.extracted_text), ${ts}) DESC LIMIT $2`,
+     ORDER BY rank DESC, d.date_issued DESC NULLS LAST LIMIT $2`,
     [q, limit],
   );
 
@@ -672,7 +716,7 @@ export async function search(q: string, limit = 50) {
   );
 
   const seen = new Set(byNumber.map((d) => d.id));
-  return { provisions, documents: [...byNumber, ...documents.filter((d) => !seen.has(d.id))], attachments };
+  return { provisions, documents: [...byNumber, ...documents.filter((d) => !seen.has(d.id))] };
 }
 
 export type MapRow = {
