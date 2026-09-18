@@ -48,15 +48,6 @@ RULE = "#e7e5e4"
 PAPER = "#faf9f7"
 CARD = "#ffffff"
 LINK = "#14532d"
-LINKEDIN_BLUE = "#0a66c2"
-
-# Who made this, in the footer of the mail and of the site.
-#
-# The word rather than the mark, deliberately: clients block remote images by default, so a logo shows as an
-# empty box in the one place a credit is supposed to look considered. The website uses the real glyph, where
-# an inline SVG always renders.
-CURATOR_NAME = "Devansh Parikh"
-CURATOR_LINKEDIN = "https://www.linkedin.com/in/devanshparikhh"
 
 
 def _esc(v: object) -> str:
@@ -356,11 +347,6 @@ def build_digest_html(
         f"<div style='font:400 11.5px/1.6 {sans};color:{INK_3};padding-top:16px;border-top:1px solid {RULE};"
         f"margin-top:20px'>Amendments are shown as references and are never applied to the statutory text, so "
         f"what you read is the regulator&rsquo;s own wording. A research aid, not legal advice.</div>"
-        # Below the caveat rather than above it, and a step smaller: a signature, not a claim competing with
-        # the thing that tells a reader what they can rely on.
-        f"<div style='font:400 11.5px/1.6 {sans};color:{INK_3};padding-top:8px'>"
-        f"Built with Claude; Curated by {_esc(CURATOR_NAME)} &middot; "
-        f"<a href='{CURATOR_LINKEDIN}' style='color:{LINKEDIN_BLUE};text-decoration:none'>LinkedIn</a></div>"
         f"</td></tr>"
     )
 
@@ -429,13 +415,7 @@ def build_digest_text(
                 if pdf:
                     lines.append(f"    Official PDF: {pdf}")
     lines += ["", site, "", "Amendments are shown as references and are never applied to the statutory text.",
-              "A research aid, not legal advice.",
-              "",
-              # No bare URL here. Plain text cannot put a link behind a word, and a raw profile address
-              # printed in full is the opposite of the discreet credit the HTML carries. Every client that
-              # can render the HTML part shows that one instead; this is the fallback, and it reads better
-              # without it.
-              f"Built with Claude; Curated by {CURATOR_NAME}"]
+              "A research aid, not legal advice."]
     return "\n".join(lines)
 
 
