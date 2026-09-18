@@ -1,10 +1,25 @@
 import type { Metadata, Viewport } from "next";
+import { Inter, Source_Serif_4 } from "next/font/google";
 import Link from "next/link";
 import { SearchBox } from "@/components/SearchBox";
 import { SiteNav } from "@/components/SiteNav";
 import { fmtDateTime } from "@/lib/format";
 import { lastRevised } from "@/lib/queries";
 import "./globals.css";
+
+/* Self-hosted at build time, not fetched from Google at run time: the files are served from this origin, so
+ * there is no third-party request, nothing for a blocker or a strict CSP to catch, and no visitor handed to
+ * Google merely for reading an Act.
+ *
+ * Both are variable fonts, so every weight the site uses arrives in one file each.
+ *
+ * Neither loads an italic. Source Serif never needs one -- the statutory text is set in it and statutes do
+ * not italicise. Inter needs one in four places of interface prose, which is not worth another 45 KB on every
+ * visit; the browser slants it instead, and at that size and frequency the difference is not worth paying
+ * for. Add `style: ["normal", "italic"]` here if that ever stops being true.
+ */
+const serif = Source_Serif_4({ subsets: ["latin"], display: "swap", variable: "--font-serif" });
+const sans = Inter({ subsets: ["latin"], display: "swap", variable: "--font-ui" });
 
 export const metadata: Metadata = {
   title: {
@@ -34,7 +49,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     // the header must render even if the database is briefly unreachable
   }
   return (
-    <html lang="en">
+    <html lang="en" className={`${sans.variable} ${serif.variable}`}>
       <body className="min-h-screen antialiased">
         <a
           href="#main"

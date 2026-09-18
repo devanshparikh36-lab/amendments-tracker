@@ -37,8 +37,11 @@
   --sub-sebi: #7c3aed;
   --sub-companies: #be123c;
 
-  --ui: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Source Serif 4", Georgia, "Times New Roman", serif;
+  /* Inter for the interface, Source Serif 4 for the statutory text. Both are self-hosted by next/font, which
+   * defines --font-ui and --font-serif on <html>; the stacks behind them are what renders if a font file
+   * ever fails to arrive, so the site degrades to what it looked like before rather than to Times. */
+  --ui: var(--font-ui), ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --serif: var(--font-serif), "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
 }
 
 @theme inline {
