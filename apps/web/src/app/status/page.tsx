@@ -1,9 +1,11 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { Badge } from "@/components/Badge";
 import { fmtDateTime } from "@/lib/format";
 import { provisionHref } from "@/lib/lookup";
 import { jobStats, recentEffects, sourceRuns } from "@/lib/queries";
 
+// Deliberately dynamic: this page answers "is collection alive right now", and a cached answer to that
+// question is worse than a slow one.
 export const dynamic = "force-dynamic";
 
 export const metadata = { title: "Collection status" };

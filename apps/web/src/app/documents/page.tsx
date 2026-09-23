@@ -1,11 +1,12 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { Badge } from "@/components/Badge";
 import { OfficialNumber } from "@/components/OfficialNumber";
 import { REGULATOR_LABEL, SUBJECTS } from "@/lib/catalogue";
 import { DOC_TYPE_LABEL, fmtDate } from "@/lib/format";
 import { instrumentIndex, listDocuments } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+// Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
+// root layout said so. Next works that out for itself.
 
 export const metadata = { title: "Notifications and circulars" };
 
@@ -49,7 +50,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b border-[var(--rule)] pb-3">
         <div>
           <h1 className="page-title">
-            {subject ? `${subject.name} — notifications and circulars` : "Notifications, circulars and gazette copies"}
+            {subject ? `${subject.name} â€” notifications and circulars` : "Notifications, circulars and gazette copies"}
           </h1>
           <p className="meta mt-1">
             As collected from the regulator&rsquo;s own site. Each entry links to the official source and to the

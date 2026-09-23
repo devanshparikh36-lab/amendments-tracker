@@ -38,7 +38,21 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export const dynamic = "force-dynamic";
+/* Ten minutes, and not force-dynamic.
+ *
+ * This is the root layout, so whatever it declares applies to every route beneath it. `force-dynamic` here
+ * meant all twenty routes were server-rendered on demand, and Next sent `Cache-Control: private, no-cache,
+ * no-store` with every one of them -- so no page was ever cached by anyone, and reloading the same section
+ * twice invoked a function twice. That is what ran an account out of credits.
+ *
+ * The only reason it was dynamic is the "Last checked" stamp below, which reads the database on every
+ * request to show a value that changes once a day, when collection runs at 07:00. Ten minutes of staleness
+ * on that is invisible; a database round trip per page view is not.
+ *
+ * Pages that genuinely need per-request rendering still get it: reading searchParams makes a route dynamic
+ * on its own, which is most of them here, and that is the right reason rather than a blanket setting.
+ */
+export const revalidate = 600;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Shown small, in the header: when the collection last checked the regulators' sites.

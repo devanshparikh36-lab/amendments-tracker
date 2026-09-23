@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { redirect } from "next/navigation";
 import { SearchBox } from "@/components/SearchBox";
 import { KIND_LABEL, unitPlural } from "@/lib/catalogue";
@@ -7,7 +7,8 @@ import { fmtDate } from "@/lib/format";
 import { pdfPageHref, provisionHref, resolveLookup } from "@/lib/lookup";
 import { search, searchAllPages } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+// Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
+// root layout said so. Next works that out for itself.
 
 export const metadata = { title: "Look up" };
 
@@ -138,10 +139,10 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
                   <span className="meta num whitespace-nowrap">
                     {KIND_LABEL[i.kind] ?? i.kind}
                     {i.pdf_only
-                      ? ` · official PDF, ${(i.page_count || i.pdf_page_count || 0).toLocaleString("en-IN")} pages`
+                      ? ` Â· official PDF, ${(i.page_count || i.pdf_page_count || 0).toLocaleString("en-IN")} pages`
                       : i.provision_count > 0
-                        ? ` · ${i.provision_count.toLocaleString("en-IN")} ${unitPlural(i.kind)}`
-                        : " · no text yet"}
+                        ? ` Â· ${i.provision_count.toLocaleString("en-IN")} ${unitPlural(i.kind)}`
+                        : " Â· no text yet"}
                   </span>
                 </Link>
               </li>
@@ -159,7 +160,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
             {text.provisions.map((r) => (
               <li key={r.provision_id} className="py-2">
                 <Link href={provisionHref(r.instrument_slug, r.number)} className="font-medium hover:underline">
-                  {r.instrument_title} · {r.number}
+                  {r.instrument_title} Â· {r.number}
                 </Link>
                 <p
                   className="snippet mt-0.5 text-[13px] text-[var(--ink-2)]"
@@ -190,8 +191,8 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
                     {r.title}
                   </Link>
                   <div className="meta num">
-                    {fmtDate(r.date_issued)} {r.number && <>· {r.number}</>}
-                    {" · "}
+                    {fmtDate(r.date_issued)} {r.number && <>Â· {r.number}</>}
+                    {" Â· "}
                     <a
                       href={`/api/jump?doc=${r.id}&q=${encodeURIComponent(q)}`}
                       target="_blank"

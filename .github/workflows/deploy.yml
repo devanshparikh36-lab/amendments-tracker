@@ -197,3 +197,21 @@ jobs:
             exit 1
           fi
           echo "  suggestions differ per query, so the cache is keyed correctly"
+
+          # A page that should be cached must not come back saying it cannot be.
+          #
+          # Every route on this site once sent `private, no-cache, no-store`, so nothing was ever cached by
+          # anyone and each view of each page cost a function invocation -- which is what ran an account out
+          # of credits. Two routes are now prerendered and should carry an s-maxage instead. Proven against a
+          # local production build, but Netlify's runtime sits between that and the reader, and this is the
+          # only place that finds out whether it agrees.
+          for path in "/documents/9077" "/browse/companies-accounts-rules-2014/12/history"; do
+            cc=$(curl -sI --max-time 30 "$SITE_URL$path" | tr -d '\r' | awk -F': ' 'tolower($1)=="cache-control"{print $2}')
+            echo "  $path -> ${cc:-(none)}"
+            case "$cc" in
+              *no-store*|"")
+                echo "::error::$path is not cacheable (${cc:-no header}). It is prerendered at build, so the CDN should be holding it rather than invoking a function for every view."
+                exit 1 ;;
+            esac
+          done
+          echo "  prerendered pages are CDN-cacheable"

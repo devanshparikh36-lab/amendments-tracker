@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { SearchBox } from "@/components/SearchBox";
 import {
   COMPARE_HREF,
@@ -11,7 +11,8 @@ import {
 import { fmtDate } from "@/lib/format";
 import { instrumentIndex, listDocuments, recentByRegulator, type InstrumentRow } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+// Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
+// root layout said so. Next works that out for itself.
 
 const EXAMPLES = [
   { q: "80C", label: "80C" },
@@ -26,7 +27,7 @@ function hasText(i: InstrumentRow): boolean {
 }
 
 // The few instruments a subject actually opens with: the curated slugs that exist and have text,
-// then — for SEBI — its most recently stated master circulars. Nothing else.
+// then â€” for SEBI â€” its most recently stated master circulars. Nothing else.
 function curated(s: Subject, bySlug: Map<string, InstrumentRow>, all: InstrumentRow[]) {
   const picked: InstrumentRow[] = [];
   for (const slug of s.featured) {
@@ -194,7 +195,7 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
                 <ul className="pt-1.5">
                   {b.recent.map((d) => (
                     <li key={d.id} className="flex items-baseline gap-2.5 py-[5px] leading-6">
-                      <span className="feed-date w-[4.6rem] shrink-0">{fmtDate(d.date_issued) || "—"}</span>
+                      <span className="feed-date w-[4.6rem] shrink-0">{fmtDate(d.date_issued) || "â€”"}</span>
                       <Link href={`/documents/${d.id}`} className="min-w-0 flex-1 text-[13.5px] hover:underline">
                         {d.title}
                       </Link>
@@ -251,7 +252,7 @@ function CompareCallout({ label = "Compare the Income-tax Act, 1961 with the Inc
   );
 }
 
-// One entry point: what it is called, and — quietly — the date the regulator states its text as.
+// One entry point: what it is called, and â€” quietly â€” the date the regulator states its text as.
 function Entry({ i, hideKind }: { i: InstrumentRow; hideKind?: boolean }) {
   return (
     <li className="py-[7px] leading-6">
@@ -259,8 +260,8 @@ function Entry({ i, hideKind }: { i: InstrumentRow; hideKind?: boolean }) {
         <span className="text-[14px] text-[var(--ink)] group-hover:underline">{shortTitle(i.title)}</span>
         <span className="ml-2 whitespace-nowrap text-[12px] text-[var(--ink-4)]">
           {hideKind ? "" : (KIND_LABEL[i.kind] ?? i.kind)}
-          {i.official_updated_as_on ? `${hideKind ? "" : " · "}as on ${fmtDate(i.official_updated_as_on)}` : ""}
-          {i.pdf_only ? " · official PDF" : ""}
+          {i.official_updated_as_on ? `${hideKind ? "" : " Â· "}as on ${fmtDate(i.official_updated_as_on)}` : ""}
+          {i.pdf_only ? " Â· official PDF" : ""}
         </span>
       </Link>
     </li>

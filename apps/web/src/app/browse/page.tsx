@@ -1,9 +1,10 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { KIND_LABEL, REGULATOR_LABEL, SUBJECTS, subjectClass, unitPlural } from "@/lib/catalogue";
 import { fmtDate } from "@/lib/format";
 import { instrumentIndex } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+// Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
+// root layout said so. Next works that out for itself.
 
 export const metadata = { title: "Acts, Rules, Regulations and Master Directions" };
 
@@ -58,12 +59,12 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
         <div>
           <h1 className="page-title">Acts, Rules, Regulations and Master Directions</h1>
           <p className="meta mt-1">
-            Every instrument has its own page — what it is, who issued it, and what has amended it.
+            Every instrument has its own page â€” what it is, who issued it, and what has amended it.
           </p>
         </div>
         <p className="meta num">
-          {n(instruments.length)} of {n(all.length)} tracked ·{" "}
-          {n(instruments.reduce((t, i) => t + (i.pdf_only ? 0 : i.provision_count), 0))} provisions ·{" "}
+          {n(instruments.length)} of {n(all.length)} tracked Â·{" "}
+          {n(instruments.reduce((t, i) => t + (i.pdf_only ? 0 : i.provision_count), 0))} provisions Â·{" "}
           {n(instruments.reduce((t, i) => t + (i.pdf_only ? i.page_count : 0), 0))} official PDF pages
         </p>
       </div>
@@ -126,18 +127,18 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
                   {i.title}
                 </Link>
                 <p className="meta mt-0.5">
-                  {KIND_LABEL[i.kind] ?? i.kind} · {REGULATOR_LABEL[i.regulator_code] ?? i.regulator_code}
-                  {i.official_updated_as_on && <> · text as on {fmtDate(i.official_updated_as_on)}</>}
+                  {KIND_LABEL[i.kind] ?? i.kind} Â· {REGULATOR_LABEL[i.regulator_code] ?? i.regulator_code}
+                  {i.official_updated_as_on && <> Â· text as on {fmtDate(i.official_updated_as_on)}</>}
                   {i.pdf_only ? (
-                    <> · served as the official PDF{i.page_count ? `, ${n(i.page_count)} pages` : ""}</>
+                    <> Â· served as the official PDF{i.page_count ? `, ${n(i.page_count)} pages` : ""}</>
                   ) : i.provision_count ? (
-                    <> · {n(i.provision_count)} {unitPlural(i.kind)}</>
+                    <> Â· {n(i.provision_count)} {unitPlural(i.kind)}</>
                   ) : (
-                    <> · text not loaded yet</>
+                    <> Â· text not loaded yet</>
                   )}
                   {i.doc_count > 0 && (
                     <>
-                      {" · "}
+                      {" Â· "}
                       <Link href={`/documents?instrument=${i.slug}`} className="text-[var(--link)] hover:underline">
                         {n(i.doc_count)} document{i.doc_count === 1 ? "" : "s"}
                       </Link>

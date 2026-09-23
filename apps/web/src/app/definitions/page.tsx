@@ -1,8 +1,9 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { KIND_LABEL } from "@/lib/catalogue";
 import { searchDefinitions, type DefinitionHit } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+// Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
+// root layout said so. Next works that out for itself.
 
 export const metadata = { title: "Search definitions" };
 
@@ -33,7 +34,7 @@ function Hit({ h, term }: { h: DefinitionHit; term: string }) {
     <li className="border-b border-[var(--rule)] py-3 last:border-0">
       <div className="flex flex-wrap items-baseline gap-x-2">
         <Link href={sectionHref} className="serif text-[15px] font-semibold text-[var(--link)] hover:underline">
-          {h.short_code} — {h.number}
+          {h.short_code} â€” {h.number}
         </Link>
         {h.heading && <span className="text-[13px] text-[var(--ink-2)]">{h.heading.replace(/[.\-\s]+$/, "")}</span>}
         <span className="meta">{KIND_LABEL[h.kind] ?? h.kind}</span>
@@ -44,7 +45,7 @@ function Hit({ h, term }: { h: DefinitionHit; term: string }) {
         )}
       </div>
       <p className="mt-1 text-[13px] leading-relaxed text-[var(--ink-1)]">
-        …<Snippet text={h.snippet} term={term} />…
+        â€¦<Snippet text={h.snippet} term={term} />â€¦
       </p>
       <p className="mt-1 text-[12px]">
         <Link href={sectionHref} className="text-[var(--link)] hover:underline">
@@ -52,7 +53,7 @@ function Hit({ h, term }: { h: DefinitionHit; term: string }) {
         </Link>
         {pdfHref && (
           <>
-            {" · "}
+            {" Â· "}
             <a href={pdfHref} target="_blank" rel="noreferrer" className="text-[var(--link)] hover:underline">
               Official PDF, page {h.pdf_page}
             </a>
@@ -76,7 +77,7 @@ export default async function DefinitionsPage({ searchParams }: { searchParams: 
         </p>
         <h1 className="serif mt-1 text-[19px] font-semibold tracking-tight">Search definitions</h1>
         <p className="mt-1 max-w-[62ch] text-[13px] text-[var(--ink-2)]">
-          Where a word is <em>defined</em> — not merely mentioned. Every Act, Rule and Regulation whose text we
+          Where a word is <em>defined</em> â€” not merely mentioned. Every Act, Rule and Regulation whose text we
           hold is searched for the drafting that introduces a defined term, with the dedicated definitions
           sections listed first.
         </p>
@@ -104,7 +105,7 @@ export default async function DefinitionsPage({ searchParams }: { searchParams: 
           Try{" "}
           {EXAMPLES.map((e, i) => (
             <span key={e}>
-              {i > 0 && " · "}
+              {i > 0 && " Â· "}
               <Link href={`/definitions?q=${encodeURIComponent(e)}`} className="text-[var(--link)] hover:underline">
                 {e}
               </Link>
@@ -117,8 +118,8 @@ export default async function DefinitionsPage({ searchParams }: { searchParams: 
         <section className="panel px-5 py-1">
           <p className="py-2 text-[12px] text-[var(--ink-3)]">
             {hits.length === 0
-              ? `No instrument we hold defines “${term}”.`
-              : `${hits.length} ${hits.length === 1 ? "definition" : "definitions"} of “${term}”.`}
+              ? `No instrument we hold defines â€œ${term}â€.`
+              : `${hits.length} ${hits.length === 1 ? "definition" : "definitions"} of â€œ${term}â€.`}
           </p>
           {hits.length > 0 && (
             <ul className="mb-2">
@@ -130,7 +131,7 @@ export default async function DefinitionsPage({ searchParams }: { searchParams: 
           {hits.length === 0 && (
             <p className="pb-3 text-[13px] text-[var(--ink-2)]">
               A term is only found here when the text quotes it and then says <em>means</em>, <em>includes</em>,
-              or similar. A word used throughout an Act but never formally defined will not appear — try{" "}
+              or similar. A word used throughout an Act but never formally defined will not appear â€” try{" "}
               <Link href={`/search?q=${encodeURIComponent(term)}`} className="text-[var(--link)] hover:underline">
                 the full-text search
               </Link>{" "}

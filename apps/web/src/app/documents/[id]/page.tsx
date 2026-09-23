@@ -4,10 +4,40 @@ import { Badge } from "@/components/Badge";
 import { Diff } from "@/components/Diff";
 import { fileHref } from "@/lib/files";
 import { DOC_TYPE_LABEL, fmtBytes, fmtDate } from "@/lib/format";
+import { query } from "@/db";
 import { provisionHref } from "@/lib/lookup";
 import { getDocument } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+// A notification does not change after it is published. What can change is our tagging of it, which happens
+// during collection, so an hour is generous and still far fresher than the document itself will ever be.
+export const revalidate = 3600;
+
+/* Prerender the recent ones, render the rest on demand and keep them.
+ *
+ * `revalidate` alone left this route fully dynamic: a segment with a parameter and no list of values cannot
+ * be built ahead of time, so Next rendered it per request and sent `no-store` with every response -- a
+ * function invocation for every view of every notification, including the same one twice.
+ *
+ * There are 8,003 documents and prerendering all of them would make every build absurd for pages nobody
+ * opens. The recent ones are what anybody actually follows a link to, so those are built; `dynamicParams`
+ * leaves the rest reachable, rendered once on first request and then cached like the others.
+ */
+export const dynamicParams = true;
+
+export async function generateStaticParams() {
+  // Deliberately tolerant: a build must not fail because the database is unreachable. With no list, every
+  // document simply falls through to on-demand rendering, which is where they were already.
+  try {
+    const rows = await query<{ id: number }>(
+      `SELECT id FROM document ORDER BY first_seen_at DESC LIMIT 100`,
+      [],
+      3600,
+    );
+    return rows.map((r) => ({ id: String(r.id) }));
+  } catch {
+    return [];
+  }
+}
 
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

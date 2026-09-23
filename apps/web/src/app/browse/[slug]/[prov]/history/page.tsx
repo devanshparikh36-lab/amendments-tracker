@@ -8,7 +8,25 @@ import { fmtDate, fmtDateTime, slugifyNumber } from "@/lib/format";
 import { provisionHref } from "@/lib/lookup";
 import { getInstrument, listProvisions, provisionHistory } from "@/lib/queries";
 
-export const dynamic = "force-dynamic";
+// An amendment history only changes when a new version of the provision is recorded, which happens during
+// collection at 07:00 if at all. Rendered once and reused for an hour, rather than rebuilt for every reader.
+export const revalidate = 3600;
+
+/* Nothing is prerendered here, and the empty list is the point.
+ *
+ * A segment with parameters and no generateStaticParams at all is treated as fully dynamic: rendered per
+ * request, with `no-store` on every response. Declaring the function -- even returning nothing from it --
+ * puts the route on the static path instead, so each history is rendered once on first request and then
+ * cached like any other page.
+ *
+ * Empty rather than populated because there are 5,882 provisions and no way to guess which handful anyone
+ * will open. Building all of them would cost minutes on every deploy to prepare pages nobody asks for.
+ */
+export const dynamicParams = true;
+
+export async function generateStaticParams() {
+  return [];
+}
 
 export default async function HistoryPage({ params }: { params: Promise<{ slug: string; prov: string }> }) {
   const { slug, prov } = await params;

@@ -828,12 +828,21 @@ export async function recentEffects(limit = 50) {
 
 // When the collection last ran successfully, and when a document was last added: what "as of" means for
 // everything on the site.
+/** The "Last checked" stamp in the header.
+ *
+ * Ten minutes, not the thirty seconds the status page uses, and the difference matters far more than it
+ * looks. This runs in the root layout, so it is part of every page; Next takes the shortest revalidate
+ * anywhere in a route's tree as the route's own. At thirty seconds it was capping every cacheable page on
+ * the site at a thirty-second CDN window -- for a value that changes once a day, when collection runs.
+ */
+const HEADER_STAMP_SECONDS = 600;
+
 export async function lastRevised(): Promise<{ checked: string | null; added: string | null }> {
   const rows = await query<{ checked: string | null; added: string | null }>(
     `SELECT (SELECT max(finished_at) FROM source_run WHERE ok) AS checked,
             (SELECT max(first_seen_at) FROM document) AS added`,
     [],
-    LIVE_SECONDS,
+    HEADER_STAMP_SECONDS,
   );
   return rows[0] ?? { checked: null, added: null };
 }

@@ -22,7 +22,8 @@ import {
 } from "@/lib/queries";
 import { officialSource, type OfficialSource } from "@/lib/source";
 
-export const dynamic = "force-dynamic";
+// Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
+// root layout said so. Next works that out for itself.
 
 type Params = Promise<{ slug: string }>;
 type Search = Promise<{ p?: string; asOn?: string; view?: string; pq?: string; page?: string }>;
