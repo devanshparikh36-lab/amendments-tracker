@@ -8,13 +8,14 @@ import difflib
 import json
 import logging
 import re
+import time
 import traceback
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 import psycopg
 
-from . import db, rules
+from . import browser, db, rules
 from .adapters import registry, official_text_for
 from .adapters.base import DiscoveredDocument, SeedResult
 from .ai import tasks as ai
@@ -185,7 +186,15 @@ class EmptyDiscovery(RuntimeError):
     warnings go to the log, and `discover` returns an empty list. Recorded as a successful run, that leaves the
     collector green on /status while it quietly collects nothing, which is how five adapters went a full day
     without anyone noticing. So an empty result from an adapter that was productive days ago is raised as a failure.
+
+    Raised only after a retry on a fresh browser. The usual cause of an empty list is a session that died
+    partway through rather than a regulator that published nothing, and one retry recovers it.
     """
+
+
+# How long to wait before the second attempt. Long enough that a site shedding load has a moment to recover,
+# short enough to be irrelevant against a run that already takes over an hour.
+RETRY_PAUSE_SECONDS = 20
 
 
 def _recent_peak(conn: psycopg.Connection, adapter_name: str, days: int = 30) -> int:
@@ -265,9 +274,33 @@ def run_discovery(adapter_names: list[str] | None = None, *, since_year: int | N
                 with db.transaction() as conn:
                     peak = _recent_peak(conn, name)
                 if peak:
+                    # Try once more, on a browser that has not been used yet.
+                    #
+                    # An adapter listing nothing against a peak of hundreds is almost never a regulator that
+                    # published nothing: it is a browser session that died partway through. Reproduced by
+                    # hand, CBDT did exactly this -- "browser call failed (Error), restarting page", and
+                    # then listed 1,909 documents on the retry. The same days show SEBI failing while CBDT
+                    # worked and the reverse the following day, which is the shape of a flaky session rather
+                    # than a broken adapter.
+                    #
+                    # One Chromium is shared by every browser-backed adapter, so the restart has to close it
+                    # rather than reuse the one that just failed. A second failure still raises, because two
+                    # empty runs in a row is no longer something to explain away.
+                    log.warning("%s listed nothing against a recent peak of %d; retrying on a fresh browser", name, peak)
+                    try:
+                        browser.close_all()
+                    except Exception:  # a browser that will not close is exactly what we are recovering from
+                        log.warning("%s: could not close the browser cleanly before retrying", name)
+                    time.sleep(RETRY_PAUSE_SECONDS)
+                    docs = adapter.discover(since_year=since_year)
+                    found = len(docs)
+                    if found:
+                        log.info("%s: recovered on retry, %d documents", name, found)
+                if found == 0 and peak:
                     raise EmptyDiscovery(
-                        f"listed 0 documents, but listed up to {peak} in a successful run within the last 30 days. "
-                        "Every unit of work inside the adapter failed; the per-unit warnings are above this line."
+                        f"listed 0 documents twice, but listed up to {peak} in a successful run within the last "
+                        "30 days. Every unit of work inside the adapter failed, on a fresh browser as well as "
+                        "the first one; the per-unit warnings are above this line."
                     )
             with db.transaction() as conn:
                 reg_id = db.regulator_id(conn, adapter.regulator_code)
