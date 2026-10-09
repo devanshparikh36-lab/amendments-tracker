@@ -85,3 +85,56 @@ jobs:
           else
             python cli.py "$CMD"
           fi
+
+      # Everything below was documented as happening and was not happening.
+      #
+      # docs/HANDOFF.md described this workflow as "discover -> fetch -> tag -> page index -> OCR" and listed
+      # the page-index and re-fetch backlogs as "running unattended". They were not: `cli.py run` is discovery
+      # plus the job queue plus a storage check, and `pageindex`, `refetch` and `ocr` are separate subcommands
+      # with no job type behind them, so nothing ever invoked them once the Windows tasks were disabled on
+      # 14 Sept. The result was 2,974 attachments waiting to be page-indexed and 836 holding an Imperva bot
+      # wall instead of a document, both standing still for three weeks while the run reported green.
+      #
+      # Each step is bounded and each is `if: always()` with a soft failure, because none of them is the
+      # collection: a page index that fails must not turn a successful fetch of today's notifications red,
+      # and must not stop the steps after it.
+      - name: Re-fetch attachments that hold an anti-bot page instead of a document
+        if: always() && (github.event.inputs.command || 'run') == 'run'
+        continue-on-error: true
+        run: |
+          python cli.py refetch --limit 400
+          # Only the re-fetches, not the whole queue: the queue is strictly oldest-first, so without --type
+          # these sit behind every tagging and self-check job and a bounded pass reaches none of them.
+          python cli.py work --limit 400 --type fetch_document
+
+      - name: Index PDF pages, so in-PDF search can land on the right page
+        if: always() && (github.event.inputs.command || 'run') == 'run'
+        continue-on-error: true
+        run: python cli.py pageindex --limit 400
+
+      # Finds nothing in about six seconds on an ordinary day. The budget is a ceiling for a day that brings
+      # a pile of scans, not a cost paid every run -- OCR is ~0.3 seconds a page.
+      - name: Read any newly arrived scans that carry no text layer
+        if: always() && (github.event.inputs.command || 'run') == 'run'
+        continue-on-error: true
+        run: python cli.py ocr --minutes 20
+
+      # Reported last and loudly, because the steps above are allowed to fail quietly and a backlog that
+      # never shrinks is the failure this whole block exists to end.
+      - name: Report what is still queued
+        if: always()
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          from amendments import db
+          with db.transaction() as conn:
+              for label, sql in [
+                  ("attachments still to page-index",
+                   "SELECT count(*) AS n FROM attachment WHERE storage_key IS NOT NULL AND page_index_key IS NULL"),
+                  ("attachments with no stored file",
+                   "SELECT count(*) AS n FROM attachment WHERE storage_key IS NULL"),
+                  ("jobs failed and not retrying",
+                   "SELECT count(*) AS n FROM job WHERE status = 'failed'"),
+              ]:
+                  print(f"{label:38} {db.fetch_one(conn, sql)['n']:>7}")
+          PY

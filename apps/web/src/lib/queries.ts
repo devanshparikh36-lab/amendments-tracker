@@ -675,18 +675,27 @@ export async function search(q: string, limit = 50) {
   // tax credit" average 173,018 characters and run to 6.4 million, so ranking them meant detoasting and
   // tokenising 62 MB on every search. Measured at 9.6 seconds, against 3.2 bounded.
   //
-  // This changes the order of results, never the set: the WHERE still matches on the complete text through
-  // the index, so nothing becomes unfindable. A document whose only mention of the term is beyond 20,000
-  // characters is still returned, it simply ranks on what came before. The alternative -- a stored tsvector
-  // column -- would be faster still and cost about 32 MB plus its index, taking the database from 49% to
-  // roughly 61% of the free tier, which is the wrong trade here.
+  // This changes the order of results, not the set: a document whose only mention of the term is beyond
+  // 20,000 characters is still returned, it simply ranks on what came before. The alternative -- a stored
+  // tsvector column -- would be faster still and cost about 32 MB plus its index, taking the database from
+  // 49% to roughly 61% of the free tier, which is the wrong trade here.
+  //
+  // The WHERE below matches on the first 500,000 characters rather than the complete text. That is a real,
+  // if narrow, limit and it is deliberate: unbounded, the index could not be written at all for the longest
+  // documents (see 0008_bounded_fts.sql), so the choice was never "whole text or part" but "part of the
+  // longest documents, or none of them".
   const documents = await query<{ id: number; title: string; number: string | null; date_issued: string | null; snippet: string; rank: number }>(
     `SELECT d.id, d.title, d.number, d.date_issued,
             ts_headline('english', left(coalesce(d.extracted_text, d.title), 20000), ${ts},
                         'MaxFragments=2, MaxWords=25, MinWords=10') AS snippet,
             ts_rank(to_tsvector('english', coalesce(d.title,'') || ' ' || left(coalesce(d.extracted_text,''), 20000)), ${ts}) AS rank
      FROM document d
-     WHERE to_tsvector('english', coalesce(d.title,'') || ' ' || coalesce(d.extracted_text,'')) @@ ${ts}
+     -- Character-for-character identical to document_fts_idx in packages/db/migrations/0008_bounded_fts.sql,
+     -- and it has to stay that way: Postgres uses an expression index only when the query repeats the
+     -- expression exactly, and a mismatch does not error -- it quietly sequential-scans 182 MB of OCR text.
+     -- The left(...) bound is there because an unbounded tsvector over the longest documents exceeds the
+     -- 1 MB tsvector cap and made them unwritable; 500,000 characters is about a 200-page PDF.
+     WHERE to_tsvector('english', left(coalesce(d.title,'') || ' ' || coalesce(d.extracted_text,''), 500000)) @@ ${ts}
      ORDER BY rank DESC, d.date_issued DESC NULLS LAST LIMIT $2`,
     [q, limit],
   );

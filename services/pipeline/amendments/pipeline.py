@@ -817,7 +817,17 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
         cfg = {"adapter": "document_text", "style": "regulations"}
     if cfg is None:
         raise RuntimeError(f"no seed source configured for {slug}")
-    official = official_text_for(inst, cfg)
+    try:
+        official = official_text_for(inst, cfg)
+    except Exception as exc:
+        # Say which instrument, which source and which adapter. Without this the job table filled with 397
+        # rows reading only "timed out" -- true, useless, and indistinguishable from one another, so the
+        # backlog could not be triaged without re-running every instrument by hand to find out.
+        raise RuntimeError(
+            f"{slug}: could not read the official text via adapter "
+            f"{cfg.get('adapter', '?')} from {inst.get('official_url') or '(no official_url)'}: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
     # Seeders return either a SeedResult (with the regulator's own PDF) or the older 3-tuple.
     if isinstance(official, SeedResult):
         text = official.provisions if official.provisions is not None else official.text
@@ -1318,8 +1328,13 @@ def requeue_missing_attachments(limit: int = 2000) -> int:
             conn,
             """SELECT DISTINCT a.document_id AS id FROM attachment a
                 WHERE a.storage_key IS NULL
+                  -- 'queued', not 'pending'. A job row is queued | running | done | failed; 'pending' is
+                  -- document.tag_status and has never been a job status, so this clause matched nothing and
+                  -- every already-queued document was selected and looped over again. Harmless only because
+                  -- enqueue() dedupes on (type, payload) -- but it made the returned count a lie, reporting
+                  -- work queued that was already queued.
                   AND NOT EXISTS (SELECT 1 FROM job j
-                                   WHERE j.type = 'fetch_document' AND j.status IN ('pending', 'running')
+                                   WHERE j.type = 'fetch_document' AND j.status IN ('queued', 'running')
                                      AND (j.payload->>'document_id')::int = a.document_id)
                 ORDER BY a.document_id LIMIT %s""",
             (limit,),

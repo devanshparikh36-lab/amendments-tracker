@@ -46,14 +46,35 @@ def _throttle() -> None:
     _last_request_at = time.monotonic()
 
 
-def client() -> httpx.Client:
+def timeout_for(read_seconds: float | None = None) -> httpx.Timeout:
+    """Connect fast, read patiently.
+
+    One scalar timeout applies the same number to connect, read, write and pool, which is the wrong shape for
+    these sites. Connecting to a regulator either works in a couple of seconds or is not going to; *reading*
+    a consolidated SEBI Regulation runs to a few megabytes over a link that is frequently slow, and 60
+    seconds is not always enough for it. The two failures are not alike and should not share a budget.
+
+    This is the direct cause of the self-check backlog: 397 `selfcheck_instrument` jobs failed with the bare
+    message "timed out", which is what `str(httpx.ReadTimeout)` gives you. They were not broken sources --
+    they were large official PDFs that needed longer than one minute to arrive.
+    """
+    base = settings.request_timeout_seconds
+    return httpx.Timeout(
+        connect=min(20.0, base),
+        read=read_seconds or base,
+        write=base,
+        pool=base,
+    )
+
+
+def client(*, read_seconds: float | None = None) -> httpx.Client:
     return httpx.Client(
         headers={
             "User-Agent": settings.user_agent,
             "Accept": "text/html,application/xhtml+xml,application/pdf,*/*;q=0.8",
             "Accept-Language": "en-IN,en;q=0.9",
         },
-        timeout=settings.request_timeout_seconds,
+        timeout=timeout_for(read_seconds),
         follow_redirects=True,
         verify=ssl_context(),
     )
@@ -63,18 +84,34 @@ class RetryableHTTPError(Exception):
     pass
 
 
+# How long a file download may take to arrive, as opposed to a listing or detail page.
+#
+# Four minutes, against the one minute a page gets. The files this matters for are the regulators' own
+# consolidated texts -- SEBI publishes LODR as a 230-page PDF -- and they are fetched once per refresh, not
+# per request, so waiting is cheap and failing is not: a timeout here aborts the whole self-check and the
+# instrument keeps serving older text.
+LARGE_FILE_READ_SECONDS = 240.0
+
+
 @retry(
     retry=retry_if_exception_type((RetryableHTTPError, httpx.TransportError)),
     stop=stop_after_attempt(4),
     wait=wait_exponential(multiplier=2, min=2, max=30),
     reraise=True,
 )
-def get(url: str, *, http: httpx.Client | None = None, **kwargs) -> httpx.Response:
+def get(url: str, *, http: httpx.Client | None = None, read_seconds: float | None = None, **kwargs) -> httpx.Response:
     _throttle()
     own = http is None
-    http = http or client()
+    http = http or client(read_seconds=read_seconds)
     try:
         resp = http.get(url, **kwargs)
+    except httpx.TimeoutException as exc:
+        # str(httpx.ReadTimeout) is the single word "timed out", which told nobody anything: 397 self-check
+        # jobs failed carrying exactly that and the URL had to be guessed. Name the target and the budget.
+        kind = type(exc).__name__
+        raise RetryableHTTPError(
+            f"{kind} after {read_seconds or settings.request_timeout_seconds:.0f}s fetching {url}"
+        ) from exc
     finally:
         if own:
             http.close()
@@ -132,7 +169,12 @@ def unwrap_base64_envelope(content: bytes, content_type: str | None) -> tuple[by
 
 
 def get_bytes(url: str, **kwargs) -> tuple[bytes, str | None]:
-    """Return (content, content-type). Base64 JSON envelopes (taxinformation.cbic.gov.in `content/pdf/...`) are decoded."""
+    """Return (content, content-type). Base64 JSON envelopes (taxinformation.cbic.gov.in `content/pdf/...`) are decoded.
+
+    Every caller of this is downloading a file rather than reading a page, so the patient read budget is the
+    default here and the short one stays the default for `get` / `get_text`. Pass `read_seconds` to override.
+    """
+    kwargs.setdefault("read_seconds", LARGE_FILE_READ_SECONDS)
     resp = get(url, **kwargs)
     unwrapped = unwrap_base64_envelope(resp.content, resp.headers.get("content-type"))
     if unwrapped is not None:

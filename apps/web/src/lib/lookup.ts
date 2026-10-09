@@ -129,7 +129,22 @@ export async function resolveLookup(raw: string): Promise<LookupResult> {
 
   // Instruments served as the regulator's PDF have no provision rows to match, so the pages of that
   // file answer instead. Only the instruments the query actually named are searched.
-  const pdfTargets = instruments.filter((i) => i.pdf_only && i.page_count > 0).slice(0, 3);
+  //
+  // "Named" has to mean more than "shares one common word with", which is what it used to mean, and the
+  // results were bad in a way that looked authoritative. findInstruments scores an all-words match 10n+5
+  // and a partial match as the number of words hit, so "input tax credit" gave every instrument with
+  // "tax" or "credit" in its title a rank of 1 -- and the tie was then broken by size, which handed the
+  // top of the page to the largest PDFs that happened to contain one of those words. A reader asking
+  // about input tax credit got nine pages of SEBI's Credit Rating Agencies circular, above the CGST
+  // sections that actually answer it.
+  //
+  // So: a number in the query is enough (that is the "LODR 17" path, where the instrument is named
+  // explicitly), or every query word matched, or at least two distinct words matched. Two is what keeps
+  // "mutual funds valuation" working -- it hits "mutual" and "funds" in the Mutual Funds Regulations but
+  // not "valuation" -- while one is never enough on its own.
+  const pdfTargets = instruments
+    .filter((i) => i.pdf_only && i.page_count > 0 && (parsed.number != null || i.rank >= 2))
+    .slice(0, 3);
   const pageLists = await Promise.all(pdfTargets.map((i) => pagesFor(i, parsed)));
   // Stable: each instrument keeps the order its own page search returned, and pages carrying the
   // asked-for number as a heading come first across all of them.

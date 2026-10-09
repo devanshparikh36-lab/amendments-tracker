@@ -16,6 +16,15 @@ export default async function StatusPage() {
     (e) => e.change_type === "cannot_apply" || e.verification_status === "differs_from_official",
   );
 
+  // A job that has exhausted its three attempts is never retried by anything. It is therefore the one thing
+  // on this page that genuinely needs a person, and it was the one thing this page would not admit to: the
+  // panel below counted only amendment effects, so it printed "Nothing outstanding" above a table showing
+  // 397 failed self-checks and 6 failed fetches. The whole point of the page is to answer "what should I
+  // look at", and it was answering "nothing" while the answer was 403.
+  const failed = jobs.filter((j) => j.status === "failed" && j.n > 0);
+  const failedTotal = failed.reduce((n, j) => n + j.n, 0);
+  const attention = problems.length + failedTotal;
+
   return (
     <div className="space-y-6">
       <div className="border-b border-[var(--rule)] pb-3">
@@ -100,13 +109,26 @@ export default async function StatusPage() {
 
       <section>
         <div className="mb-2">
-          <h2 className="section-title">Needs attention ({problems.length})</h2>
+          <h2 className="section-title">Needs attention ({attention})</h2>
           <p className="meta mt-0.5 max-w-3xl">
-            Amendments the merge engine could not apply unambiguously, and machine merges the regulator&rsquo;s later
-            republication contradicted. In both cases the official text is what the reader is shown.
+            Jobs that have given up after three attempts and will not be retried by anything, plus amendments the
+            merge engine could not apply unambiguously. In every case the official text is what the reader is
+            shown &mdash; nothing here changes a provision, it only means something was not collected.
           </p>
         </div>
         <ul className="space-y-2">
+          {failed.map((j) => (
+            <li key={`${j.type}-${j.status}`} className="panel panel-body">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge kind="failed">{j.n.toLocaleString("en-IN")} failed</Badge>
+                <span className="num font-medium">{j.type}</span>
+                <span className="meta ml-auto">no further retries</span>
+              </div>
+              {j.last_error && (
+                <p className="mt-1 break-words text-[12.5px] text-[var(--ink-2)]">{j.last_error}</p>
+              )}
+            </li>
+          ))}
           {problems.map((e) => (
             <li key={e.id} className="panel panel-body">
               <div className="flex flex-wrap items-center gap-2">
@@ -126,7 +148,7 @@ export default async function StatusPage() {
               {e.ai_note && <p className="mt-1 text-[12.5px] text-[var(--ink-2)]">{e.ai_note}</p>}
             </li>
           ))}
-          {problems.length === 0 && (
+          {attention === 0 && (
             <li className="panel border-dashed p-6 text-center text-[var(--ink-3)]">Nothing outstanding.</li>
           )}
         </ul>

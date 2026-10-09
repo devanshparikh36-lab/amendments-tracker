@@ -5,17 +5,15 @@ from datetime import date
 
 import logging
 
+from . import cbdt, cbic_gst, mca, rbi_fema_act, rbi_master_directions, sebi
 from .base import Adapter, SeedResult
+from .cbdt import CbdtCirculars, CbdtNotifications
 from .cbic_gst import CbicGstCirculars, CbicGstNotifications
+from .mca import McaCirculars, McaNotifications
 from .rbi_apdir import RbiApDirCirculars
 from .rbi_fema_notifications import RbiFemaNotifications
 from .rbi_master_directions import RbiMasterDirections
-from . import cbdt, cbic_gst, rbi_fema_act, rbi_master_directions, sebi
-from .cbdt import CbdtCirculars, CbdtNotifications
 from .sebi import SebiCirculars, SebiMasterCirculars, SebiRegulations
-from . import rbi_master_directions, rbi_fema_act, cbdt, mca
-from .cbdt import CbdtCirculars, CbdtNotifications
-from .mca import McaCirculars, McaNotifications
 
 log = logging.getLogger(__name__)
 

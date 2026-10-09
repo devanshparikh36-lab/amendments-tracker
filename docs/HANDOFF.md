@@ -1,7 +1,49 @@
-# Handoff — 12 Sept 2026
+# Handoff — 9 Oct 2026
 
-State of As Amended and what the next session should pick up. Supersedes the 11 Sept note, which
-described an architecture that no longer exists: collection has moved off GitHub Actions entirely.
+State of As Amended and what the next session should pick up. Supersedes the 12 Sept note; the sections below
+are that note, corrected where it had gone wrong. Read this header first, because two of its claims were
+false and cost three weeks.
+
+## Corrections to the 12 Sept note, found 9 Oct
+
+**The site had not been deployed since 18 September.** Three deploys failed in a row — 21 Sept (×2) and
+23 Sept — every one of them at the `Confirm which site we are deploying to` step, before `netlify build` ran.
+`deploy.yml` was byte-identical to the last successful run and `netlify-cli@27.6.0` is still on npm, so the
+cause is external: a secret. Most likely `NETLIFY_AUTH_TOKEN` expired or was revoked. **No Netlify build or
+deploy minutes were consumed by the failures** — the step dies before either. Two consequences were live on
+the site for three weeks:
+
+- `/preview`, the scratch page for choosing type and colour, was still being served (`d3e9d19` deleted it).
+- Every page still sent `private, no-cache, no-store`, because the `force-dynamic` removal in `862f3e2` never
+  shipped. That is the setting the notes below blame for running an account out of credits, and it was still
+  in force: one function invocation and one Neon query per page view, nothing cacheable.
+
+That step now reports which of the three failure modes it hit and which secret to fix, rather than exiting
+with the CLI's own message and no context.
+
+**The page-index and OCR backlogs were not "running unattended".** The table below used to claim this
+workflow did "discover → fetch → tag → page index → OCR". It did not: `cli.py run` is discovery, the job
+queue and a storage check, and `pageindex` / `refetch` / `ocr` are separate subcommands with no job type
+behind them, so nothing had invoked them since the Windows tasks were disabled on 14 Sept. 2,974 attachments
+waiting to be indexed and 836 holding an Imperva bot wall stood still while every run reported green.
+`worker.yml` now runs all three as bounded, soft-failing steps and prints what is still queued.
+
+**Teams and Resend are no longer unconfigured.** `digest.yml` has succeeded every day this month, and
+`cli.py digest` exits non-zero when `RESEND_API_KEY` or `DIGEST_TO` is missing, so both are set. The "Open"
+section below is wrong about this.
+
+**Two real bugs, fixed.** `document_fts_idx` indexed the whole of `title || extracted_text`, so any document
+whose text exceeded Postgres's 1 MB tsvector cap could not be written at all — six `fetch_document` jobs died
+on it and stayed dead. The index is now bounded to 500,000 characters and the query in `lib/queries.ts`
+repeats the expression exactly (it must, or Postgres sequential-scans). `attachment_fts_idx` was dropped
+outright: nothing reads it, and it was a GIN index over the OCR text of ~89,000 pages in a 500 MB database.
+Separately, `requeue_missing_attachments` filtered on `job.status = 'pending'`, which is not a job status —
+it is `document.tag_status`. The clause matched nothing, so the count it returned was a lie.
+
+**397 failed self-checks were a timeout, not a broken source.** They carried the message `timed out`, which
+is `str(httpx.ReadTimeout)` and says nothing about what was being read. One scalar 60-second timeout applied
+to connect and read alike; a consolidated SEBI Regulation is a multi-megabyte PDF. Reads now get four
+minutes, connects twenty seconds, and a failure names the instrument, the adapter and the URL.
 
 ## Live
 
@@ -21,7 +63,7 @@ will stop mid-month unless the schedule drops well below daily.**
 
 | workflow | what it does | when |
 |---|---|---|
-| `worker.yml` | discover → fetch → tag → page index → OCR (new scans only) | **07:00 IST daily** |
+| `worker.yml` | discover → fetch → tag, then re-fetch → page index → OCR as separate bounded steps | **07:00 IST daily** |
 | `digest.yml` | mails what changed | 08:00 IST daily |
 | `storage.yml` | free-tier alarm, fails past 60% | daily |
 | `keepalive.yml` | keeps schedules alive | monthly |
@@ -137,16 +179,22 @@ every instrument — its own parsing project. Run `mergepreview` before revisiti
 So the honest choice is: enable AI and pay per document, or leave amendments as references, which is what the
 site does today and what "official text only, no human review" already implies.
 
-## Open — still queued, running unattended
+## Open
 
-- **2,974 attachments to page-index** (1,603 done). 400 per collection run.
-- **836 attachments to re-fetch**, through the browser path. RBI's Imperva wall answered scripted PDF requests
-  with an HTML interstitial carrying HTTP 200; 545 of those were stored as documents before anything checked.
-  The indexer now refuses a one-or-two-page file whose text is a bot wall and records it unfetched.
-- **Teams and Resend unconfigured.** `DIGEST_TO` should be the owner's own address — *not* the one in
-  `git config user.email`, which is the account address and would mail the wrong person daily. Until set, the
-  digest exits non-zero every run, which is deliberate: a digest that silently mails nobody is the failure this
-  project kept having.
+- **The Netlify secret has to be fixed by hand.** Until it is, nothing reaches the live site. See the
+  corrections at the top; the deploy step will now name which secret is at fault on the next run.
+- **2,974 attachments to page-index** (1,603 done) and **836 to re-fetch** through the browser path. RBI's
+  Imperva wall answered scripted PDF requests with an HTML interstitial carrying HTTP 200; 545 of those were
+  stored as documents before anything checked. The indexer refuses a one-or-two-page file whose text is a bot
+  wall and records it unfetched. Both backlogs now advance 400 per run — but they had not moved at all
+  between 14 Sept and 9 Oct, so treat the counts above as the starting point, not the current state.
+- **403 failed jobs** (397 self-check, 6 fetch). Both causes are fixed, but a failed job is never retried by
+  anything: they need re-queuing before the count will fall. They are now listed on `/status` under "Needs
+  attention", which previously counted only amendment effects and so printed "Nothing outstanding" above a
+  table of 403 failures.
+- **Teams is still unconfigured.** `TEAMS_WEBHOOK_URL` is unset; the Resend digest is configured and sending.
+  `DIGEST_TO` must stay the owner's own address — *not* the one in `git config user.email`, which is the
+  account address and would mail the wrong person daily.
 
 ## Things that cost a session to learn
 

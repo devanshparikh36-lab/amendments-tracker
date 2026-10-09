@@ -10,8 +10,8 @@ export const dynamic = "force-dynamic";
 // short window around what you are reading and the rest arrives here, so the first paint carries the provision
 // you asked for rather than the table of contents.
 //
-// Behind the passcode gate like every other route: the middleware matches this path, so it is no more public
-// than the page that calls it.
+// As public as the page that calls it, which is the whole site: the passcode gate was removed on 14 Sept 2026
+// because everything served here is already public -- the regulators' own documents.
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
   const inst = await getInstrument(slug);

@@ -38,6 +38,51 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
     !text.provisions.length &&
     !text.documents.length;
 
+  // Where the block of PDF pages belongs depends on what was asked.
+  //
+  // A query carrying a provision number ("LODR 17") is answered by a page of the regulator's own file that
+  // opens at that number, so it leads. A phrase ("input tax credit") is answered better by the parsed
+  // consolidated text, which knows which section it is; a page hit only knows which page it is. Leading with
+  // pages for a phrase put the loosest match on the page at the top and the exact one below the fold.
+  const pdfPagesLead = lookup.parsed.number != null;
+  const pdfPagesSection = pages.length > 0 && (
+    <section className="panel">
+      <div className="panel-head">
+        <h2 className="eyebrow">In the regulator&rsquo;s own PDF</h2>
+        <span className="meta ml-auto">each result opens that file at the page the match is on</span>
+      </div>
+      <ol className="feed px-4 py-1">
+        {pages.map((p) => {
+          const url = fileHref(p.pdf_storage_key, p.pdf_source_url);
+          return (
+            <li key={`${p.instrument_slug}-${p.page_no}`} className="py-2">
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <Link href={pdfPageHref(p.instrument_slug, p.page_no, q)} className="font-semibold hover:underline">
+                  Page {p.page_no}
+                </Link>
+                <span className="text-[13.5px] text-[var(--ink-2)]">{p.instrument_title}</span>
+                {url && (
+                  <a
+                    href={pdfHref(url, p.page_no)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-auto text-[12px] text-[var(--ink-3)] hover:underline"
+                  >
+                    open the PDF here
+                  </a>
+                )}
+              </div>
+              <p
+                className="snippet mt-0.5 line-clamp-2 text-[13px] text-[var(--ink-2)]"
+                dangerouslySetInnerHTML={{ __html: p.snippet }}
+              />
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <div>
@@ -58,43 +103,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         )}
       </div>
 
-      {pages.length > 0 && (
-        <section className="panel">
-          <div className="panel-head">
-            <h2 className="eyebrow">In the regulator&rsquo;s own PDF</h2>
-            <span className="meta ml-auto">each result opens that file at the page the match is on</span>
-          </div>
-          <ol className="feed px-4 py-1">
-            {pages.map((p) => {
-              const url = fileHref(p.pdf_storage_key, p.pdf_source_url);
-              return (
-                <li key={`${p.instrument_slug}-${p.page_no}`} className="py-2">
-                  <div className="flex flex-wrap items-baseline gap-x-2">
-                    <Link href={pdfPageHref(p.instrument_slug, p.page_no, q)} className="font-semibold hover:underline">
-                      Page {p.page_no}
-                    </Link>
-                    <span className="text-[13.5px] text-[var(--ink-2)]">{p.instrument_title}</span>
-                    {url && (
-                      <a
-                        href={pdfHref(url, p.page_no)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="ml-auto text-[12px] text-[var(--ink-3)] hover:underline"
-                      >
-                        open the PDF here
-                      </a>
-                    )}
-                  </div>
-                  <p
-                    className="snippet mt-0.5 line-clamp-2 text-[13px] text-[var(--ink-2)]"
-                    dangerouslySetInnerHTML={{ __html: p.snippet }}
-                  />
-                </li>
-              );
-            })}
-          </ol>
-        </section>
-      )}
+      {pdfPagesLead && pdfPagesSection}
 
       {lookup.provisions.length > 0 && (
         <section className="panel">
@@ -171,6 +180,8 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
           </ul>
         </section>
       )}
+
+      {!pdfPagesLead && pdfPagesSection}
 
       {/* One panel, full width. There used to be a second beside it searching attachment.extracted_text --
           dropped, because it searched a copy. Compaction moved that text onto the document row, so no
