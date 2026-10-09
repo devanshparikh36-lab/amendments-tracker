@@ -1742,6 +1742,54 @@ MAX_ATTEMPTS = 3
 STALE_MINUTES = 30
 
 
+def requeue_failed_jobs(*, types: list[str] | None = None) -> dict[str, int]:
+    """Put jobs that exhausted their attempts back on the queue, once their cause is fixed.
+
+    A job that fails MAX_ATTEMPTS times is never looked at again by anything, and there is no automatic way
+    back: `requeue_stale_jobs` only rescues 'running' rows a dead worker left behind, and
+    `enqueue_stale_instruments` re-queues instruments on a timer and reaches nothing else. So a fixed bug
+    leaves its casualties where they fell -- 6 fetches killed by the tsvector cap sat failed for weeks after
+    anyone could have retried them, because retrying was not a thing this could be asked to do.
+
+    Fix the cause first. Re-queueing into an unfixed failure just spends three more attempts on it.
+
+    The document's tag_status goes back to 'pending' alongside, the way `retag` does it: process_jobs marks a
+    document 'failed' when its job gives up, and a re-queued fetch that left that behind would be collected
+    and then ignored by everything that filters on tag_status.
+    """
+    counts: dict[str, int] = {}
+    with db.transaction() as conn:
+        where = ["status = 'failed'"]
+        params: list = []
+        if types:
+            where.append(f"type IN ({', '.join(['%s'] * len(types))})")
+            params.extend(types)
+        clause = " AND ".join(where)
+        for row in db.fetch_all(conn, f"SELECT type, count(*)::int AS n FROM job WHERE {clause} GROUP BY type", tuple(params)):
+            counts[row["type"]] = row["n"]
+        doc_ids = [
+            r["id"]
+            for r in db.fetch_all(
+                conn,
+                f"SELECT DISTINCT (payload->>'document_id')::int AS id FROM job"
+                f" WHERE {clause} AND payload->>'document_id' IS NOT NULL",
+                tuple(params),
+            )
+        ]
+        db.execute(
+            conn,
+            f"UPDATE job SET status = 'queued', attempts = 0, error = NULL, updated_at = now() WHERE {clause}",
+            tuple(params),
+        )
+        if doc_ids:
+            db.execute(
+                conn,
+                "UPDATE document SET tag_status = 'pending' WHERE id = ANY(%s) AND tag_status = 'failed'",
+                (doc_ids,),
+            )
+    return counts
+
+
 def requeue_stale_jobs() -> int:
     """A worker that dies (or is killed) leaves jobs marked 'running'. Put them back on the queue."""
     with db.transaction() as conn:

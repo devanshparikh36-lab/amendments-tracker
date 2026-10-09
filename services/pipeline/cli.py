@@ -5,6 +5,7 @@
   python cli.py discover [--since-year Y]    list documents on every adapter and queue new ones
   python cli.py work [--limit N]             process queued jobs (fetch, tag, merge, selfcheck)
   python cli.py digest                       send the daily email digest
+  python cli.py requeue [--type T]           put jobs that gave up back on the queue (fix the cause first)
   python cli.py compact [--apply]            reclaim database space held by duplicated or never-read text
   python cli.py run                          discover + work (what the Railway cron runs)
   python cli.py backfill --since-year 2000   discover archive years then work through everything
@@ -65,6 +66,9 @@ def main(argv: list[str] | None = None) -> int:
         ),
     )
     sub.add_parser("retag", help="re-queue tagging for documents skipped while AI was disabled")
+    p_rq = sub.add_parser("requeue", help="put jobs that gave up after three attempts back on the queue (fix the cause first)")
+    p_rq.add_argument("--type", action="append",
+                      help="only this job type, e.g. fetch_document (repeatable); omitted means every failed job")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
     p_mp = sub.add_parser("mergepreview", help="report what an AI-free deterministic merge would change (writes nothing)")
     p_mp.add_argument("--limit", type=int, default=500)
@@ -247,6 +251,16 @@ def main(argv: list[str] | None = None) -> int:
                 db.execute(conn, "UPDATE document SET tag_status = 'pending' WHERE id = %s", (r["id"],))
                 pipeline.enqueue(conn, "tag_document", {"document_id": r["id"]})
         print(f"queued tagging for {len(rows)} documents; run 'work' to process")
+        return 0
+
+    if args.cmd == "requeue":
+        counts = pipeline.requeue_failed_jobs(types=args.type)
+        if not counts:
+            print("nothing failed" + (f" of type {', '.join(args.type)}" if args.type else ""))
+            return 0
+        for job_type, n in sorted(counts.items()):
+            print(f"{job_type:24} {n:>6} re-queued")
+        print(f"\n{sum(counts.values())} jobs back on the queue; run 'work' to process them")
         return 0
 
     if args.cmd == "run":

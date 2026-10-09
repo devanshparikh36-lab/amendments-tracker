@@ -23,7 +23,7 @@ on:
         description: "Worker command"
         default: "run"
         type: choice
-        options: [run, work, discover, seed, retag, prune, digest]
+        options: [run, work, discover, seed, retag, requeue, pageindex, refetch, ocr, prune, digest]
       limit:
         description: "Max jobs to process (run/work)"
         default: "500"
