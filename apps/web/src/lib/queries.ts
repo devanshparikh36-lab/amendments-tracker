@@ -888,12 +888,13 @@ export type DefinitionHit = {
 
 // How Indian drafting introduces a defined term.
 //
-// The quotes are optional, and that is the difference between this covering the library and covering a
+// The quotes are not required, and that is the difference between this covering the library and covering a
 // third of it. Requiring them was defensible while only parsed text was searched, where quotation marks
 // survive. Most of what this searches now is text read out of a PDF, where opening quotes are routinely
 // lost, mangled into stray characters, or swallowed by OCR -- and a definition does not stop being one
-// because the extraction dropped its punctuation. Quoted hits are still ranked first, so the cleanest
-// evidence leads and the looser matches sit below it rather than instead of it.
+// because the extraction dropped its punctuation. What the quotes buy, when present, is the licence to
+// look further along the sentence for the defining verb; without them the verb has to follow the term
+// almost at once. Quoted hits are still ranked first, so the cleanest evidence leads.
 const DEFINING = "(means|includes|shall\\s+mean|shall\\s+include|shall\\s+be\\s+deemed|has\\s+the\\s+meaning|shall\\s+have\\s+the\\s+meaning)";
 
 /** Every place a word is *defined*, across every Act, Rule and Regulation that has text. */
@@ -906,8 +907,19 @@ export async function searchDefinitions(term: string, limit = 80): Promise<Defin
   // without letting a match run on into the next sentence.
   // \y, not \b: this regex runs in Postgres, whose POSIX syntax reads \b as a literal backspace, so a pattern
   // written with \b matches nothing at all and does it silently.
-  const pattern = `[“"'‘]?\\s*${escaped}\\s*[”"'’]?[^.;]{0,90}?\\y${DEFINING}\\y`;
+  // Two ways a definition is recognised, and the difference between them is what keeps this honest.
+  //
+  // Quoted, the term may sit some distance from the defining verb: «"capital asset", in relation to an
+  // assessee, means ...» is plainly a definition, and the quotation marks are what prove it.
+  //
+  // Unquoted, there is no such proof, so the verb must follow almost immediately -- "capital asset means".
+  // Allowing the same 90-character gap without quotes was a mistake I made and measured: it took "control"
+  // from 15 hits to 67, of which five in six were not definitions at all but prose that happened to contain
+  // "means" somewhere nearby ("internal controls to ensure compliance with the requirements ... means").
+  // Adjacency costs a little coverage and buys back nearly all the precision: control 67 → 21, turnover
+  // 23 → 3, while "capital asset" still finds 8 where quoting alone finds 2.
   const quotedPattern = `[“"'‘]\\s*${escaped}\\s*[”"'’][^.;]{0,90}?\\y${DEFINING}\\y`;
+  const pattern = `(?:${quotedPattern}|\\y${escaped}\\y[ ,]{0,3}\\y${DEFINING}\\y)`;
   return query<DefinitionHit>(
     `(SELECT i.slug, i.title AS instrument_title, i.short_code, i.kind, i.pdf_storage_key,
             p.number, p.heading,

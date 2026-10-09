@@ -1,13 +1,6 @@
 ﻿import Link from "next/link";
 import { SearchBox } from "@/components/SearchBox";
-import {
-  COMPARE_HREF,
-  KIND_LABEL,
-  SUBJECTS,
-  type Subject,
-  shortTitle,
-  subjectClass,
-} from "@/lib/catalogue";
+import { COMPARE_HREF, GROUP_HEADING, KIND_LABEL, SUBJECTS, instrumentGroup, shortTitle, subjectClass, type Subject } from "@/lib/catalogue";
 import { fmtDate } from "@/lib/format";
 import { instrumentIndex, listDocuments, recentByRegulator, type InstrumentRow } from "@/lib/queries";
 
@@ -147,14 +140,32 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
               </form>
             )}
 
-            <ul className="flex-1 px-5 py-4">
-              {b.picked.map((i) => (
-                <Entry key={i.slug} i={i} />
-              ))}
+            {/* Acts above, the rules made under them below, the same split /browse uses. A subject card
+                that runs "Act 2025, Act 1961, Rules 2026, Rules 1962" in one column asks the reader to
+                sort two kinds of instrument apart by reading the titles. Only split when there is
+                something on both sides: a single heading over a single list is noise. */}
+            <div className="flex-1 px-5 py-4">
+              {(["acts", "rules"] as const).map((which) => {
+                const of = b.picked.filter((i) => instrumentGroup(i.kind) === which);
+                if (!of.length) return null;
+                const bothPresent = b.picked.some((i) => instrumentGroup(i.kind) !== which);
+                return (
+                  <div key={which} className={which === "rules" && bothPresent ? "mt-2.5" : ""}>
+                    {bothPresent && (
+                      <h3 className="eyebrow border-b border-[var(--rule)] pb-1">{GROUP_HEADING[which]}</h3>
+                    )}
+                    <ul className={bothPresent ? "pt-1" : ""}>
+                      {of.map((i) => (
+                        <Entry key={i.slug} i={i} />
+                      ))}
+                    </ul>
+                  </div>
+                );
+              })}
               {b.picked.length === 0 && (
-                <li className="py-2 text-[13px] text-[var(--ink-3)]">Text not loaded yet.</li>
+                <p className="py-2 text-[13px] text-[var(--ink-3)]">Text not loaded yet.</p>
               )}
-            </ul>
+            </div>
 
             {b.extra.length > 0 && (
               <div className="px-5 pb-4">
