@@ -28,8 +28,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   }));
   return NextResponse.json(
     { items },
-    // The contents of an Act change only when collection re-reads it, so this is safe to hold for a while,
-    // and holding it is the point: the sidebar asks for it on every page within the instrument.
-    { headers: { "cache-control": "private, max-age=600" } },
+    {
+      // `public`, not `private`, and that one word is the whole cost of this route.
+      //
+      // The sidebar asks for this on every page within an instrument, and `private` tells the CDN it may not
+      // store the response -- so it was held only in each reader's own browser, and every new reader, and
+      // every reader after ten minutes, cost a function invocation Netlify's edge could have answered for
+      // nothing. There is nothing per-visitor in here to protect: it is a list of section numbers and
+      // headings from an Act, identical for everyone, and the passcode gate that might once have argued for
+      // caution was removed on 14 Sept 2026.
+      //
+      // Same shape as /api/suggest, with one difference: no Netlify-Vary is needed. Netlify's CDN drops
+      // query parameters from the cache key unless told otherwise, which is the trap that route documents --
+      // but the slug here is a path segment, and path segments are always part of the key.
+      headers: { "cache-control": "public, max-age=600, s-maxage=3600, stale-while-revalidate=86400" },
+    },
   );
 }
