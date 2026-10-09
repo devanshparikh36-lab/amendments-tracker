@@ -602,3 +602,23 @@ summary:focus-visible,
   font-size: 12.5px;
   color: var(--ink-3);
 }
+
+/* A citation inside statutory text.
+ *
+ * Deliberately quiet. Indian drafting cites constantly -- a single sub-section can carry six references --
+ * and rendering each as a standard blue underlined link turns the page into a mesh of blue. The number
+ * keeps the colour and weight of the text around it and picks up an underline on hover, so the text still
+ * reads as text and the reference is there when wanted.
+ */
+.xref {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 2px;
+}
+.xref:hover {
+  color: var(--link);
+  text-decoration-style: solid;
+  text-decoration-color: currentColor;
+}

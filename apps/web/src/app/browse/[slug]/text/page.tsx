@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { ProvisionBody, Provenance } from "@/components/LegalText";
+import type { RefContext } from "@/lib/crossref";
 import { OfficialNumber } from "@/components/OfficialNumber";
 import { SectionFilter } from "@/components/SectionFilter";
 import { KIND_LABEL, unitFor } from "@/lib/catalogue";
@@ -9,6 +10,7 @@ import { fileHref, pdfHref } from "@/lib/files";
 import { fmtDate, slugifyNumber } from "@/lib/format";
 import { parseQuery } from "@/lib/lookup";
 import {
+  instrumentIndex,
   getInstrument,
   getProvision,
   listProvisionIndex,
@@ -39,6 +41,20 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
   const { slug } = await params;
   const sp = await searchParams;
   const inst = await getInstrument(slug);
+
+  // Everything needed to resolve a citation that names its instrument ("of the Income-tax Act, 1961").
+  // instrumentIndex() is the same cached read the browse page makes, so this costs a cache hit.
+  const refs: RefContext | undefined = inst
+    ? {
+        current: { slug: inst.slug, kind: inst.kind, short_code: inst.short_code, title: inst.title },
+        all: (await instrumentIndex()).map((i) => ({
+          slug: i.slug,
+          kind: i.kind,
+          short_code: i.short_code,
+          title: i.title,
+        })),
+      }
+    : undefined;
   if (!inst) notFound();
   if (inst.pdf_only) return <PdfReader inst={inst} slug={slug} sp={sp} />;
 
@@ -154,6 +170,7 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
               prev={prevSection}
               next={nextSection}
               suffix={suffix}
+              refs={refs}
             />
           ) : fullText ? (
             <article className="space-y-3">
@@ -176,7 +193,7 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
                     )}
                     {p.source_kind === "machine_merged" && <Badge kind="machine_merged" />}
                   </div>
-                  <ProvisionBody p={p} />
+                  <ProvisionBody p={p} refs={refs} />
                 </section>
               ))}
               {fullRows.length === 0 && <NotSeeded />}
@@ -242,6 +259,7 @@ function ProvisionView({
   prev,
   next,
   suffix,
+  refs,
 }: {
   inst: InstrumentRow;
   p: ProvisionRow;
@@ -253,6 +271,7 @@ function ProvisionView({
   prev: Neighbour;
   next: Neighbour;
   suffix: string;
+  refs?: RefContext;
 }) {
   const showEmbed = source?.kind === "pdf";
   const last = lastAmendment(docs);
@@ -337,7 +356,7 @@ function ProvisionView({
           <div className="no-print mb-3">
             <Provenance p={p} regulator={inst.regulator_code} />
           </div>
-          <ProvisionBody p={p} />
+          <ProvisionBody p={p} refs={refs} />
           {p.footnote && (
             <p className="mt-3 border-t border-[var(--rule)] pt-2 text-[12px] leading-relaxed text-[var(--ink-3)]">
               {p.footnote}

@@ -116,6 +116,34 @@ export function supersededBy(slug: string): string | null {
   return SUPERSEDED_BY[slug] ?? null;
 }
 
+/* The Act a set of Rules is made under.
+ *
+ * Needed because Rules have no sections. When the Income-tax Rules say "referred to in section 139", they
+ * mean section 139 of the Income-tax Act -- the citation names no instrument precisely because, to a reader
+ * who knows the context, it does not need to. A cross-reference linker without this either refuses every
+ * such citation, which is most of them, or links them to a section of the Rules that does not exist.
+ *
+ * Curated like the supersession list, and for the same reason: the relationship is a legal one. Rules made
+ * under the Companies Act all point at it; the GST Rules point at the CGST Act even where the text being
+ * read is the IGST Rules, because that is where the sections live.
+ */
+export const PARENT_ACT: Record<string, string> = {
+  "itr-1962": "ita-1961",
+  "itr-2026": "ita-2025",
+  "cgst-rules-2017": "cgst-act-2017",
+  "igst-rules-2017": "igst-act-2017",
+  "companies-incorporation-rules-2014": "companies-act-2013",
+  "companies-management-and-administration-rules-2014": "companies-act-2013",
+  "companies-registered-valuers-and-valuation-rules-2017": "companies-act-2013",
+  "companies-share-capital-and-debentures-rules-2014": "companies-act-2013",
+  "companies-appointment-and-qualification-of-directors-rules-2014": "companies-act-2013",
+  "companies-prospectus-and-allotment-of-securities-rules-2014": "companies-act-2013",
+  "companies-accounts-rules-2014": "companies-act-2013",
+  "companies-meetings-of-board-and-its-powers-rules-2014": "companies-act-2013",
+  "companies-audit-and-auditors-rules-2014": "companies-act-2013",
+  "companies-corporate-social-responsibility-policy-rules-2014": "companies-act-2013",
+};
+
 // The two headed groups an instrument can fall into on a listing. Master Directions and Master Circulars sit
 // with Rules and Regulations: a reader looking for "the working rules" wants them in the same place, not
 // under a heading that says Acts.
