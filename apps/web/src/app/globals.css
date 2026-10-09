@@ -107,6 +107,17 @@ summary:focus-visible,
   color: var(--ink-3);
 }
 
+/* The heading of a card that groups things -- a subject on the home page or on /browse. One size for one
+ * role: these were 16px in one place and 17px in the other, which is not a difference anyone chose. */
+.card-title {
+  font-family: var(--serif);
+  font-size: 17px;
+  line-height: 1.25;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
 .page-title {
   font-family: var(--serif);
   font-size: 25px;

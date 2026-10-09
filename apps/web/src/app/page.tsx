@@ -116,7 +116,7 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
         {blocks.map((b) => (
           <section key={b.subject.key} className={`panel sub-rule ${subjectClass(b.subject.key)} flex flex-col`}>
             <div className="px-5 pt-4">
-              <h2 className="serif text-[17px] font-semibold tracking-tight">
+              <h2 className="card-title">
                 <Link href={`/browse?subject=${b.subject.key}`} className="hover:underline">
                   {b.subject.name}
                 </Link>

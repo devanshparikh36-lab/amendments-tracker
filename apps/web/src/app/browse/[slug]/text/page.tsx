@@ -3,6 +3,7 @@ import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { ProvisionBody, Provenance } from "@/components/LegalText";
+import { InstrumentTabs } from "@/components/InstrumentTabs";
 import type { RefContext } from "@/lib/crossref";
 import { OfficialNumber } from "@/components/OfficialNumber";
 import { SectionFilter } from "@/components/SectionFilter";
@@ -106,7 +107,7 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
           ]}
         />
         <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="serif text-[19px] font-semibold tracking-tight">
+          <h1 className="page-title">
             <Link href={`/browse/${slug}`} className="hover:underline">
               {inst.title}
             </Link>
@@ -116,10 +117,8 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
             {inst.official_updated_as_on && <> · text as on {fmtDate(inst.official_updated_as_on)}</>}
           </span>
         </div>
+        <InstrumentTabs slug={slug} current={fullText ? "full" : "text"} documentCount={inst.doc_count} />
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Link href={`/browse/${slug}`} className="btn">
-            &larr; About this {KIND_LABEL[inst.kind]?.toLowerCase() ?? "instrument"}
-          </Link>
           <Link
             href={`/browse/${slug}/text${fullText ? "" : "?view=full"}${
               sp.asOn ? `${fullText ? "?" : "&"}asOn=${sp.asOn}` : ""
@@ -510,7 +509,7 @@ async function PdfReader({
           ]}
         />
         <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="serif text-[19px] font-semibold tracking-tight">
+          <h1 className="page-title">
             <Link href={`/browse/${slug}`} className="hover:underline">
               {inst.title}
             </Link>
@@ -521,10 +520,8 @@ async function PdfReader({
             {inst.official_updated_as_on && <> · text as on {fmtDate(inst.official_updated_as_on)}</>}
           </span>
         </div>
+        <InstrumentTabs slug={slug} current="text" pdfOnly documentCount={inst.doc_count} />
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Link href={`/browse/${slug}`} className="btn">
-            &larr; About this document
-          </Link>
           {pdfUrl ? (
             <a href={pdfHref(pdfUrl, page)} target="_blank" rel="noreferrer" className="btn btn-primary">
               Open the official PDF{page ? ` at page ${page}` : ""}

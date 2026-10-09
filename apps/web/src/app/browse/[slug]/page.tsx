@@ -13,6 +13,7 @@ import {
 } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
 import { regulatorPageUrl } from "@/lib/source";
+import { InstrumentTabs } from "@/components/InstrumentTabs";
 import { SearchBox } from "@/components/SearchBox";
 import { supersededBy } from "@/lib/catalogue";
 import { DOC_TYPE_LABEL, fmtDate, slugifyNumber } from "@/lib/format";
@@ -185,6 +186,7 @@ export default async function InstrumentPage({ params, searchParams }: { params:
           />
           <button className="btn">Search</button>
         </form>
+        <InstrumentTabs slug={slug} current="about" pdfOnly={inst.pdf_only} documentCount={inst.doc_count} />
       </header>
 
       {compareLabel && (
@@ -444,19 +446,7 @@ export default async function InstrumentPage({ params, searchParams }: { params:
                     </div>
                   </form>
                 )}
-                <div className="flex flex-wrap gap-2 border-t border-[var(--rule)] pt-3">
-                  <Link href={readHref} className="btn">
-                    {inst.pdf_only ? "Open the PDF" : "Contents"}
-                  </Link>
-                  {!inst.pdf_only && (
-                    <Link href={`${readHref}?view=full`} className="btn">
-                      Full text
-                    </Link>
-                  )}
-                  <Link href={`/documents?instrument=${slug}`} className="btn">
-                    Documents
-                  </Link>
-                </div>
+
               </div>
             </section>
           )}

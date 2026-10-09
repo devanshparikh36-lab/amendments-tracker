@@ -110,6 +110,15 @@ export const SUPERSEDED_BY: Record<string, string> = {
   // instruments.py records this directly: SEBI recast the 1996 Regulations as the current ones and its Legal
   // listing now carries only the latter.
   "sebi-mutual-funds-1996": "sebi-mutual-funds",
+
+  // The FEMA entries below were each confirmed by the firm on 10 Oct 2026, not inferred from their titles.
+  // Export went through three generations and the names do not line up with each other at all -- "Export of
+  // goods and services" (2000), "Export of Goods & Services" (2015), "Export and Import of Goods and
+  // Services" (2026) -- which is exactly why no rule could have derived this.
+  "fem-export-of-goods-and-services-regulations-2000": "fem-export-and-import-of-goods-and-services-regulations-2026",
+  "fem-export-of-goods-services-regulations-2015": "fem-export-and-import-of-goods-and-services-regulations-2026",
+  "fem-borrowing-or-lending-in-foreign-exchange-regulations-2000": "fem-borrowing-and-lending-regulations-2018",
+  "fem-manner-of-receipt-payment-regulations-2000": "fem-manner-of-receipt-and-payment-regulations-2023",
 };
 
 export function supersededBy(slug: string): string | null {

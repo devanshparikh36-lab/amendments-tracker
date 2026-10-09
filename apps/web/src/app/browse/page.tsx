@@ -157,7 +157,7 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
       {groups.map((g) => (
         <section key={g.subject.key} className={`panel sub-rule ${subjectClass(g.subject.key)}`}>
           <div className="panel-head">
-            <h2 className="serif text-[16px] font-semibold">{g.subject.name}</h2>
+            <h2 className="card-title">{g.subject.name}</h2>
             <span className="meta num ml-auto">
               {g.acts.total + g.rules.total === g.total ? n(g.total) : `${n(g.acts.items.length + g.rules.items.length)} of ${n(g.total)}`}{" "}
               instruments
