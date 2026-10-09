@@ -222,7 +222,11 @@ PHASE1_INSTRUMENTS: list[dict] = SEBI_INSTRUMENTS + CBDT_INSTRUMENTS + MCA_INSTR
         "regulator": "DEA",
         # RBI's Act page links to the Government's India Code copy; the seeder follows that link.
         "official_url": "https://www.rbi.org.in/scripts/Act.aspx",
-        "seed": {"adapter": "rbi_fema_act", "style": "act", "text_url": None},
+        # pdf_only, for the same reason SEBI's Acts are. India Code publishes this as a scan whose pages
+        # interleave footnotes with the body ("1. Subs. by Act 7 of 2017, s.165..."), and a section
+        # splitter reads those as sections -- seeding section 3 with a footnote about section 18.
+        # Serving the official file and indexing its pages shows nothing that is not the Act.
+        "seed": {"adapter": "rbi_fema_act", "style": "act", "text_url": None, "pdf_only": True},
     },
     {
         "slug": "md-ecb",
