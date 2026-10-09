@@ -25,6 +25,16 @@
 [[plugins]]
   package = "@netlify/plugin-nextjs"
 
+# Scoped to this one function on purpose, not set globally.
+#
+# keepwarm connects to Neon directly rather than fetching /api/health over HTTP, which halves what the
+# schedule costs. `pg` carries an optional require of `pg-native` that bundlers resolve badly, so it is left
+# out of the bundle and loaded from node_modules at run time instead. A global [functions] block would apply
+# the same treatment to the Next.js server functions the plugin generates, which have their own arrangements
+# -- hence the name in the header.
+[functions."keepwarm"]
+  external_node_modules = ["pg"]
+
 # Set in the Netlify UI (Project configuration > Environment variables):
 #   DATABASE_URL        Neon pooled connection string
 #   R2_PUBLIC_BASE_URL  public base URL of the R2 bucket, so file links go straight to R2
