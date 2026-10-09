@@ -53,6 +53,7 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
           kind: i.kind,
           short_code: i.short_code,
           title: i.title,
+          pdf_only: i.pdf_only,
         })),
       }
     : undefined;

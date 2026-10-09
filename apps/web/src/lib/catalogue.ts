@@ -142,6 +142,42 @@ export const PARENT_ACT: Record<string, string> = {
   "companies-meetings-of-board-and-its-powers-rules-2014": "companies-act-2013",
   "companies-audit-and-auditors-rules-2014": "companies-act-2013",
   "companies-corporate-social-responsibility-policy-rules-2014": "companies-act-2013",
+  // Every FEM regulation is made under the Foreign Exchange Management Act, so "section 6 of the Act"
+  // inside one means section 6 of FEMA. Worth adding only now that the Act has a text at all: until
+  // today it held none, and a link into an empty instrument is a worse answer than no link. The Act
+  // is served as a PDF, so these open the official file with the citation already searched.
+  "fem-acquisition-and-transfer-of-immovable-property-in-india-regulations-2000": "fema-1999",
+  "fem-acquisition-and-transfer-of-immovable-property-outside-india-regulations-200": "fema-1999",
+  "fem-borrowing-and-lending-in-rupees-regulations-2000": "fema-1999",
+  "fem-borrowing-and-lending-regulations-2018": "fema-1999",
+  "fem-borrowing-or-lending-in-foreign-exchange-regulations-2000": "fema-1999",
+  "fem-cross-border-merger-regulations-2018": "fema-1999",
+  "fem-crystallization-of-inoperative-foreign-currency-deposits-regulations-2014": "fema-1999",
+  "fem-debt-instruments-regulations-2019": "fema-1999",
+  "fem-deposit-regulations-2016": "fema-1999",
+  "fem-establishment-in-india-of-a-branch-office-or-a-liaison-office-or-a-project-o": "fema-1999",
+  "fem-establishment-in-india-of-branch-or-office-or-other-place-of-business-regula": "fema-1999",
+  "fem-export-and-import-of-currency-regulations-2015": "fema-1999",
+  "fem-export-and-import-of-goods-and-services-regulations-2026": "fema-1999",
+  "fem-export-of-goods-and-services-regulations-2000": "fema-1999",
+  "fem-export-of-goods-services-regulations-2015": "fema-1999",
+  "fem-foreign-exchange-derivative-contracts-regulations-2000": "fema-1999",
+  "fem-guarantees-regulations-2026": "fema-1999",
+  "fem-insurance-regulations-2000": "fema-1999",
+  "fem-international-financial-services-centre-regulations-2015": "fema-1999",
+  "fem-investment-in-firm-or-proprietary-concern-in-india-regulations-2000": "fema-1999",
+  "fem-issue-of-security-in-india-by-a-branch-office-or-agency-of-a-person-resident": "fema-1999",
+  "fem-manner-of-receipt-and-payment-regulations-2023": "fema-1999",
+  "fem-manner-of-receipt-payment-regulations-2000": "fema-1999",
+  "fem-margin-for-derivative-contracts-regulations-2020": "fema-1999",
+  "fem-mode-of-payment-and-reporting-of-non-debt-instruments-regulations-2019": "fema-1999",
+  "fem-overseas-investment-regulations-2022": "fema-1999",
+  "fem-permissible-capital-account-transactions-regulations-2000": "fema-1999",
+  "fem-possession-and-retention-of-foreign-currency-regulations-2000": "fema-1999",
+  "fem-realisation-repatriation-and-surrender-of-foreign-exchange-regulations-2000": "fema-1999",
+  "fem-regularization-of-assets-held-abroad-by-a-person-resident-in-india-regulatio": "fema-1999",
+  "fem-remittance-of-assets-regulations-2000": "fema-1999",
+  "fem-transfer-or-issue-of-any-foreign-security-regulations-2000": "fema-1999",
 };
 
 // The two headed groups an instrument can fall into on a listing. Master Directions and Master Circulars sit

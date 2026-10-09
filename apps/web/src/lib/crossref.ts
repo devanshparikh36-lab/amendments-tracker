@@ -25,7 +25,14 @@ import { INSTRUMENT_ALIASES, PARENT_ACT } from "@/lib/catalogue";
  * heading anyway; that was checked rather than assumed.
  */
 
-export type RefInstrument = { slug: string; kind: string; short_code: string; title: string };
+export type RefInstrument = {
+  slug: string;
+  kind: string;
+  short_code: string;
+  title: string;
+  /** Served as the regulator's own PDF, so it has no provision pages to link to. */
+  pdf_only?: boolean;
+};
 
 export type RefContext = {
   /** The instrument whose text is being read. */
@@ -97,7 +104,14 @@ function resolveInstrument(unit: string, named: string | undefined, ctx: RefCont
   return null;
 }
 
-function href(inst: RefInstrument, number: string): string {
+function href(inst: RefInstrument, unit: string, number: string): string {
+  // An instrument served as a PDF has no provision pages, and its reading view ignores ?p= entirely -- so a
+  // citation into one used to open the file at page 1 with nothing found, which looks like a broken link
+  // rather than a limitation. ?pq= is what that view does read: it opens the official PDF with the citation
+  // already searched, which lands the reader on the right page for 107 of the 195 instruments here.
+  if (inst.pdf_only) {
+    return `/browse/${inst.slug}/text?pq=${encodeURIComponent(`${unit} ${number}`)}`;
+  }
   return `/browse/${inst.slug}/text?p=${encodeURIComponent(normaliseNumber(number))}`;
 }
 
@@ -117,7 +131,7 @@ function linkifyChunk(escaped: string, ctx: RefContext): string {
       // target="_blank" because a citation is an aside: you follow it, read it and come back to the
       // sentence you were in the middle of. Losing your place in a 900-section Act to check one
       // cross-reference is the behaviour this is meant to remove, not reproduce.
-      return `<a class="xref" href="${href(target, num)}" target="_blank" rel="noreferrer" title="${title}">${num}</a>`;
+      return `<a class="xref" href="${href(target, one, num)}" target="_blank" rel="noreferrer" title="${title}">${num}</a>`;
     });
     return whole.replace(numbers, linkedNumbers);
   });
