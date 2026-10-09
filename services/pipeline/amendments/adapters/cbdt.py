@@ -314,7 +314,16 @@ def _sections(
             chapter = (f.get("chapterTitle") or "").strip()
             # The PDF a section may carry instead of HTML, and the department's own page for this section.
             pdf_url = f.get("reportFile__url")
-            cms_id = (f.get("sectionCMSID") or "").strip()
+            # Every section and rule has an address of its own. The listing's own "open in new tab" control
+            # resolves `embedded.friendlyUrlPath` against `/w/`, which is how the portal itself links a
+            # section, so that is what is recorded here. The paths are globally unique, which is why some
+            # carry a disambiguating suffix -- `section-1-270` is the 1961 Act, `section-1-269` the 2025 one
+            # -- and others none at all (`section-10aa`, `rule-18bba`). The suffix is not derivable from the
+            # number, so it has to come from the listing rather than be constructed.
+            #
+            # `sectionCMSID` is also published and looks like a deep link, but `/documents/d/guest/<cmsId>`
+            # 404s; it is not read.
+            friendly = ((item.get("embedded") or {}).get("friendlyUrlPath") or "").strip().strip("/")
             provisions.append(
                 ParsedProvision(
                     number=number,
@@ -325,10 +334,12 @@ def _sections(
                     chapter_label=chapter or None,
                     footnotes=[footnotes] if footnotes else [],
                     html=_provision_html(number, heading, official_html, footnotes_html),
-                    # The portal has no per-section address (it is a single-page app), so a section links to
-                    # the department's page for the Act or Rules it belongs to. `/documents/d/guest/<cmsId>`
-                    # looks like a deep link but 404s.
-                    source_url=(BASE + pdf_url) if pdf_url else page_url,
+                    # The section's own page first; its own PDF next; and only then the Act's listing, which
+                    # is a last resort rather than an answer -- it opens ten sections at a time across 94
+                    # pages, leaving the reader to find the one they asked for.
+                    source_url=(
+                        f"{BASE}/w/{friendly}" if friendly else (BASE + pdf_url) if pdf_url else page_url
+                    ),
                 )
             )
         if len(items) < size:

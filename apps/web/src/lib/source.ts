@@ -56,7 +56,7 @@ export type OfficialSource =
 
 // The official document behind what is on screen: the provision's own page in its own file if the
 // pipeline recorded one, otherwise the instrument's consolidated PDF, otherwise the regulator's page.
-export function officialSource(inst: InstrumentRow, p?: ProvisionRow | null): OfficialSource {
+export function officialSource(inst: InstrumentRow, p?: ProvisionRow | null, unit?: string): OfficialSource {
   const key = p?.pdf_storage_key ?? inst.pdf_storage_key ?? null;
   const url = fileHref(key, null) || null;
   const page = p?.pdf_page ?? null;
@@ -68,6 +68,25 @@ export function officialSource(inst: InstrumentRow, p?: ProvisionRow | null): Of
       label: page ? `Official PDF, page ${page}` : "Official PDF",
       page,
     };
+  }
+  /* A link that belongs to this provision alone is worth saying so.
+   *
+   * CBDT publishes every section and rule at an address of its own, which the pipeline now records. Until it
+   * did, all 935 sections of the 1961 Act shared one link -- the Act's landing page, which lists ten sections
+   * at a time across 94 pages. So "Official source" on section 80C opened a listing the reader then had to
+   * page through by hand, which is the opposite of what the button promises. The target is fixed in the data;
+   * this is what tells them where it goes before they click.
+   *
+   * Claimed only when the link really is the provision's own. Falling back to the instrument's page is still
+   * the right answer for the regulators that have no per-provision address, and must not be dressed up as
+   * more than it is.
+   */
+  const ownPage =
+    p?.source_url && p.source_url !== inst.official_url && p.source_url !== inst.pdf_source_url
+      ? p.source_url
+      : null;
+  if (ownPage && unit) {
+    return { kind: "link", href: ownPage, embed: null, label: `This ${unit} on the official site`, page: null };
   }
   const link = p?.source_url ?? inst.pdf_source_url ?? inst.official_url ?? null;
   return link ? { kind: "link", href: link, embed: null, label: "Official source", page: null } : null;

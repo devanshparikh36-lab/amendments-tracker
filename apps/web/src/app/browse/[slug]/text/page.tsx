@@ -71,7 +71,7 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
     fullText ? listProvisions(inst.id, sp.asOn) : Promise.resolve([]),
   ]);
   const selectedDocs = selected ? await provisionDocuments(selected.id) : [];
-  const source = officialSource(inst, selected);
+  const source = officialSource(inst, selected, unit);
   const sections = index.filter((i) => i.level !== "chapter");
   // Neighbours of the section being read, in the instrument's own order, so it can be read straight through
   // without going back to the contents list between every section. Chapters are excluded above, so "next"
