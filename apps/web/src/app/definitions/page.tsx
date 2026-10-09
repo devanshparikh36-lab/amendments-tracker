@@ -25,16 +25,28 @@ function Snippet({ text, term }: { text: string; term: string }) {
 }
 
 function Hit({ h, term }: { h: DefinitionHit; term: string }) {
-  const sectionHref = `/browse/${h.slug}/text?p=${encodeURIComponent(h.number)}`;
-  // The regulator's own file, opened at the page the definition sits on. Only offered when the provision was
-  // actually located in the PDF: a link to page 1 of a 900-page Act would be worse than no link.
+  // A hit from a PDF-served instrument has no provision number -- those rows are deleted at seed time and
+  // the page is all there is. It still gets a destination: the reading view opened at that page, with the
+  // term carried through so the in-PDF search box arrives already filled in.
+  const sectionHref = h.number
+    ? `/browse/${h.slug}/text?p=${encodeURIComponent(h.number)}`
+    : h.pdf_page
+      ? `/browse/${h.slug}/text?page=${h.pdf_page}&pq=${encodeURIComponent(term)}`
+      : `/browse/${h.slug}`;
+  // The regulator's own file, opened at the page the definition sits on. Only offered when the definition
+  // was actually located: a link to page 1 of a 900-page Act would be worse than no link.
+  //
+  // #page=N is the whole of what a browser's built-in PDF viewer honours. #search= is Adobe-only and is
+  // silently ignored by Chrome and Firefox, so it is not used and not promised. Landing on the right page
+  // with the sentence quoted and highlighted above the link is what actually gets a reader to the words.
   const pdfHref =
     h.pdf_storage_key && h.pdf_page ? `/api/files/${h.pdf_storage_key}#page=${h.pdf_page}` : null;
   return (
     <li className="border-b border-[var(--rule)] py-3 last:border-0">
       <div className="flex flex-wrap items-baseline gap-x-2">
         <Link href={sectionHref} className="serif text-[15px] font-semibold text-[var(--link)] hover:underline">
-          {h.short_code} — {h.number}
+          {h.short_code}
+          {h.number ? ` — ${h.number}` : h.pdf_page ? ` — page ${h.pdf_page}` : ""}
         </Link>
         {h.heading && <span className="text-[13px] text-[var(--ink-2)]">{h.heading.replace(/[.\-\s]+$/, "")}</span>}
         <span className="meta">{KIND_LABEL[h.kind] ?? h.kind}</span>
@@ -43,13 +55,20 @@ function Hit({ h, term }: { h: DefinitionHit; term: string }) {
             definitions section
           </span>
         )}
+        {h.from_pdf && (
+          <span className="meta" title="Read out of the regulator's own PDF, which is a finding aid rather than the official rendering">
+            from the official PDF
+          </span>
+        )}
       </div>
       <p className="mt-1 text-[13px] leading-relaxed text-[var(--ink-1)]">
         …<Snippet text={h.snippet} term={term} />…
       </p>
       <p className="mt-1 text-[12px]">
         <Link href={sectionHref} className="text-[var(--link)] hover:underline">
-          Read the {KIND_LABEL[h.kind]?.toLowerCase() === "act" ? "section" : "provision"}
+          {h.number
+            ? `Read the ${KIND_LABEL[h.kind]?.toLowerCase() === "act" ? "section" : "provision"}`
+            : "Open at this page"}
         </Link>
         {pdfHref && (
           <>

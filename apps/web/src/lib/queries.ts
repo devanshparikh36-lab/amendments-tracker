@@ -872,16 +872,25 @@ export type DefinitionHit = {
   short_code: string;
   kind: string;
   pdf_storage_key: string | null;
-  number: string;
+  number: string | null;
   heading: string | null;
   pdf_page: number | null;
   snippet: string;
   in_definitions_section: boolean;
+  /** The term appeared in quotes -- how Indian drafting marks a term being defined. */
+  quoted: boolean;
+  /** Read out of the regulator's PDF rather than from parsed provisions. */
+  from_pdf: boolean;
 };
 
-// How Indian drafting introduces a defined term. Kept deliberately narrow: "means" and "includes" after a
-// quoted term are definitional, whereas the same words in running prose are not, which is why the quotes are
-// required rather than optional.
+// How Indian drafting introduces a defined term.
+//
+// The quotes are optional, and that is the difference between this covering the library and covering a
+// third of it. Requiring them was defensible while only parsed text was searched, where quotation marks
+// survive. Most of what this searches now is text read out of a PDF, where opening quotes are routinely
+// lost, mangled into stray characters, or swallowed by OCR -- and a definition does not stop being one
+// because the extraction dropped its punctuation. Quoted hits are still ranked first, so the cleanest
+// evidence leads and the looser matches sit below it rather than instead of it.
 const DEFINING = "(means|includes|shall\\s+mean|shall\\s+include|shall\\s+be\\s+deemed|has\\s+the\\s+meaning|shall\\s+have\\s+the\\s+meaning)";
 
 /** Every place a word is *defined*, across every Act, Rule and Regulation that has text. */
@@ -894,13 +903,16 @@ export async function searchDefinitions(term: string, limit = 80): Promise<Defin
   // without letting a match run on into the next sentence.
   // \y, not \b: this regex runs in Postgres, whose POSIX syntax reads \b as a literal backspace, so a pattern
   // written with \b matches nothing at all and does it silently.
-  const pattern = `[“"'‘]\\s*${escaped}\\s*[”"'’][^.;]{0,90}?\\y${DEFINING}\\y`;
+  const pattern = `[“"'‘]?\\s*${escaped}\\s*[”"'’]?[^.;]{0,90}?\\y${DEFINING}\\y`;
+  const quotedPattern = `[“"'‘]\\s*${escaped}\\s*[”"'’][^.;]{0,90}?\\y${DEFINING}\\y`;
   return query<DefinitionHit>(
-    `SELECT i.slug, i.title AS instrument_title, i.short_code, i.kind, i.pdf_storage_key,
+    `(SELECT i.slug, i.title AS instrument_title, i.short_code, i.kind, i.pdf_storage_key,
             p.number, p.heading,
             coalesce(p.pdf_page, pg.page_no) AS pdf_page,
             substring(v.text from greatest(1, strpos(lower(v.text), lower($2)) - 60) for 420) AS snippet,
-            (p.heading ~* '(definition|interpretation)') AS in_definitions_section
+            (p.heading ~* '(definition|interpretation)') AS in_definitions_section,
+            (v.text ~* $4) AS quoted,
+            false AS from_pdf
        FROM provision p
        JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
        JOIN instrument i ON i.id = p.instrument_id
@@ -912,11 +924,32 @@ export async function searchDefinitions(term: string, limit = 80): Promise<Defin
           WHERE ip.instrument_id = i.id AND ip.text ~* $1
           ORDER BY ip.page_no LIMIT 1
        ) pg ON p.pdf_page IS NULL
-      WHERE v.text ILIKE '%' || $2 || '%' AND v.text ~* $1
-      ORDER BY (p.heading ~* '(definition|interpretation)') DESC, i.title, p.sort_key
+      WHERE v.text ILIKE '%' || $2 || '%' AND v.text ~* $1)
+     UNION ALL
+     -- The other 107 of 195 instruments.
+     --
+     -- SEBI's regulations, the FEMA Act and every gazette-published text are served as the regulator's own
+     -- PDF, and seeding deletes their provision rows outright -- so a search over provision_version could
+     -- not see them at all. More than half the library was silently absent from a page that promises "every
+     -- Act, Rule and Regulation whose text we hold". Their pages are indexed, so they can be searched with
+     -- the same pattern; a page hit carries no provision number, only the page it is printed on, which is
+     -- exactly what is needed to open the official file at the right place.
+     (SELECT i.slug, i.title, i.short_code, i.kind, i.pdf_storage_key,
+             NULL::text, NULL::text,
+             ip.page_no,
+             substring(ip.text from greatest(1, strpos(lower(ip.text), lower($2)) - 60) for 420),
+             (ip.text ~* '(definition|interpretation)'),
+             (ip.text ~* $4),
+             true
+        FROM instrument_page ip
+        JOIN instrument i ON i.id = ip.instrument_id
+       WHERE ip.text ILIKE '%' || $2 || '%' AND ip.text ~* $1)
+      -- Quoted first, being the clearest evidence; then a dedicated definitions clause; then parsed text
+      -- ahead of text read out of a PDF, which is a finding aid and should not outrank the real thing.
+      ORDER BY quoted DESC, in_definitions_section DESC, from_pdf, instrument_title, pdf_page NULLS LAST
       LIMIT $3`,
-    // The cheap ILIKE runs first and throws out almost everything before the regex is considered.
-    [pattern, cleaned, limit],
+    // The cheap ILIKE runs first and throws out almost everything before either regex is considered.
+    [pattern, cleaned, limit, quotedPattern],
   );
 }
 
