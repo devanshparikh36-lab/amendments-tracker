@@ -84,7 +84,7 @@ jobs:
         working-directory: apps/web
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          CONFIGURED_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
           SITE_URL: ${{ secrets.SITE_URL }}
           CLI: netlify-cli@${{ env.NETLIFY_CLI_VERSION }}
         run: |
@@ -94,62 +94,83 @@ jobs:
             echo "::error::NETLIFY_AUTH_TOKEN is empty. Add it under Settings > Secrets and variables > Actions."
             exit 1
           fi
-          if [ -z "$NETLIFY_SITE_ID" ]; then
-            echo "::error::NETLIFY_SITE_ID is empty. Add it under Settings > Secrets and variables > Actions."
+          if [ -z "$SITE_URL" ]; then
+            echo "::error::SITE_URL is empty, so there is no way to tell which site this should deploy to. Set it to the site's address, e.g. https://as-amended.netlify.app"
             exit 1
           fi
 
-          # Deliberately not allowed to kill the step on its own: the exit code is worth less than the
-          # explanation that goes with it.
-          set +e
-          npx --yes "$CLI" status --json > status.json 2> status.err
-          rc=$?
-          set -e
+          # Two candidates, tried in order, because a site id goes stale in a way a hostname does not.
+          #
+          # Netlify accepts a site's own domain wherever it accepts a site id, which makes SITE_URL a second
+          # way of naming the same site -- and a better-behaved one, since it is the value that already
+          # defines where this is meant to publish. On 9 Oct 2026 the configured NETLIFY_SITE_ID resolved to
+          # no site at all (the project was renamed from teal-strudel-5db88d and the stored id went with the
+          # old name), which stopped the deploy dead even though the token was valid and the site was up.
+          #
+          # The id still goes first: it is explicit, and someone who set it meant it. The hostname is the
+          # fallback that stops a rename from being an outage.
+          host=$(printf '%s' "$SITE_URL" | sed -e 's#^[a-z]*://##' -e 's#/.*$##')
 
-          if [ "$rc" -ne 0 ]; then
-            echo "--- what netlify status actually said ---"
-            # Anything long enough to be a token is masked before it reaches the log, which is public.
-            sed -e 's/[A-Za-z0-9_-]\{32,\}/<redacted>/g' status.err || true
-            echo "-----------------------------------------"
-            echo "::error::netlify status exited $rc, so the credentials were refused before anything was built. In order of likelihood: (1) NETLIFY_AUTH_TOKEN has expired or been revoked -- make a new one at Netlify > User settings > Applications > Personal access tokens and update the secret; (2) the site this NETLIFY_SITE_ID names was deleted or renamed; (3) the token belongs to an account that can no longer see that site. Nothing was deployed and no Netlify build ran."
-            exit 1
-          fi
-
-          # Written to a file rather than inlined: a regex with $ inside a shell run block is escaping waiting
-          # to go wrong, and this check exists precisely to catch quiet mistakes.
-          cat > check-site.cjs <<'CHECK'
+          cat > resolve.cjs <<'CHECK'
           const fs = require("fs");
           let s;
           try {
             s = JSON.parse(fs.readFileSync("./status.json", "utf8"));
-          } catch (e) {
-            // `require` used to do this, and threw a Node module error that read like a bug in this workflow
-            // rather than the CLI having printed something that was not JSON.
-            console.error("::error::netlify status succeeded but did not return JSON, so the destination could not be confirmed. Check whether netlify-cli changed the shape of 'status --json' in the pinned version.");
+          } catch {
+            console.log("    (netlify status returned something that was not JSON)");
             process.exit(1);
           }
           const site = s.siteData || {};
-          const strip = (v) => (v && v.endsWith("/") ? v.slice(0, -1) : v || "");
-          const live = strip(site.ssl_url || site.url);
-          const want = strip(process.env.SITE_URL);
-          console.log("account    :", (s.user && (s.user.email || s.user.name)) || "(unknown)");
-          console.log("site id    :", site.id || "(none)");
-          console.log("site name  :", site.name || "(unnamed)");
-          console.log("site url   :", live || "(no url)");
-          console.log("SITE_URL   :", want || "(not set)");
           if (!site.id) {
-            console.error("::error::the credentials worked but resolved to no site at all, so NETLIFY_SITE_ID does not name a site this token can see. Copy the site id again from Netlify > Site configuration > General > Site information.");
+            console.log("    resolved to no site");
             process.exit(1);
           }
-          if (want && live && live !== want) {
-            console.error("::error::site id points at " + live + " but SITE_URL says " + want + ". One of the two secrets is stale -- fix whichever is wrong rather than removing this check, which is the only thing standing between a correct build and a deploy to the wrong site.");
-            process.exit(1);
-          }
-          if (!want) console.log("SITE_URL not set, so the destination could not be cross-checked");
-          console.log("  destination confirmed");
+          const strip = (v) => (v && v.endsWith("/") ? v.slice(0, -1) : v || "");
+          console.log("    account  :", (s.user && (s.user.email || s.user.name)) || "(unknown)");
+          console.log("    site name:", site.name || "(unnamed)");
+          console.log("    site url :", strip(site.ssl_url || site.url) || "(no url)");
+          // One line, space separated, so nothing here has to carry an escaped newline through a YAML
+          // block scalar and a shell heredoc. Both of those eat backslashes, and this file is hard enough
+          // to get right without it.
+          fs.writeFileSync("resolved.txt", site.id + " " + (strip(site.ssl_url || site.url) || "-"));
           CHECK
-          node check-site.cjs
-          rm -f status.json status.err check-site.cjs
+
+          resolved=""
+          for candidate in "$CONFIGURED_SITE_ID" "$host"; do
+            [ -z "$candidate" ] && continue
+            echo "trying site id: $candidate"
+            set +e
+            NETLIFY_SITE_ID="$candidate" npx --yes "$CLI" status --json > status.json 2> status.err
+            rc=$?
+            set -e
+            if [ "$rc" -ne 0 ]; then
+              echo "    netlify status exited $rc"
+              # Anything long enough to be a token is masked before it reaches the log, which is public.
+              sed -e 's/[A-Za-z0-9_-]\{32,\}/<redacted>/g' status.err | sed 's/^/    /' || true
+              continue
+            fi
+            if node resolve.cjs; then resolved="$candidate"; break; fi
+          done
+
+          if [ -z "$resolved" ]; then
+            echo "::error::Neither the configured NETLIFY_SITE_ID nor the hostname from SITE_URL ($host) resolved to a site this token can see. If the token is valid, the likeliest cause is that the site belongs to a different Netlify team than the account the token was made from. Fix NETLIFY_SITE_ID from Netlify > Project configuration > General > Site information, or make the token from the account that owns the site. Nothing was deployed and no Netlify build ran."
+            exit 1
+          fi
+
+          live=$(cut -d' ' -f2 resolved.txt)
+          [ "$live" = "-" ] && live=""
+          want=$(printf '%s' "$SITE_URL" | sed 's#/$##')
+          if [ -n "$live" ] && [ "$live" != "$want" ]; then
+            echo "::error::Resolved to $live but SITE_URL says $want. One of the two is stale -- fix whichever is wrong rather than removing this check, which is the only thing standing between a correct build and a deploy to the wrong site."
+            exit 1
+          fi
+
+          # Hand the working id to Build and Deploy. Those steps deliberately no longer set NETLIFY_SITE_ID
+          # from the secret: a step-level env wins over GITHUB_ENV, so setting it there would silently undo
+          # the fallback above and send the build back to the id that does not resolve.
+          echo "NETLIFY_SITE_ID=$resolved" >> "$GITHUB_ENV"
+          echo "  destination confirmed, deploying to $resolved"
+          rm -f status.json status.err resolve.cjs resolved.txt
 
       # `netlify build` runs the same build Netlify would, including @netlify/plugin-nextjs, and writes the
       # deployable output to .netlify/. It runs here, on this runner, which is the whole point.
@@ -157,7 +178,8 @@ jobs:
         working-directory: apps/web
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          # NETLIFY_SITE_ID comes from GITHUB_ENV, set by the step above. Not from the secret: a step-level
+          # env wins over GITHUB_ENV and would undo the hostname fallback.
         run: npx --yes "netlify-cli@${NETLIFY_CLI_VERSION}" build
 
       # `--no-build` is what stops the CLI building again here; the previous step already did that. The flag
@@ -179,7 +201,7 @@ jobs:
         working-directory: apps/web
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          # NETLIFY_SITE_ID comes from GITHUB_ENV, set by the confirm step. See the note on Build.
         run: |
           if [ ! -d .netlify/static ]; then
             echo "::error::.netlify/static does not exist -- the Next.js plugin did not produce its usual output."
