@@ -84,132 +84,86 @@ jobs:
         working-directory: apps/web
         env:
           NETLIFY_AUTH_TOKEN: ${{ secrets.NETLIFY_AUTH_TOKEN }}
-          CONFIGURED_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
+          NETLIFY_SITE_ID: ${{ secrets.NETLIFY_SITE_ID }}
           SITE_URL: ${{ secrets.SITE_URL }}
           CLI: netlify-cli@${{ env.NETLIFY_CLI_VERSION }}
         run: |
-          # An empty secret and a rejected secret are different problems with different fixes, so they get
-          # different messages. GitHub hands an unset secret through as an empty string, not an error.
+          # Built on `sites:list`, not on `netlify status`, and that is the whole point of this step.
+          #
+          # `status` reports the *linked* site -- the one recorded in .netlify/state.json by `netlify link`.
+          # On a CI runner nothing is ever linked: the checkout is fresh and .netlify is gitignored. Setting
+          # NETLIFY_SITE_ID is enough for `build` and `deploy`, which take it directly, but `status` answers
+          # with no siteData at all, which this step then read as "the site does not exist".
+          #
+          # That cost three weeks and five failed runs in October 2026. The secrets were correct the entire
+          # time -- the site list proved it, by printing the id and url as *** where GitHub masked them for
+          # matching NETLIFY_SITE_ID and SITE_URL. The check was wrong, not the configuration.
+          #
+          # `sites:list` asks the API what this token can actually reach, which is the real question.
           if [ -z "$NETLIFY_AUTH_TOKEN" ]; then
             echo "::error::NETLIFY_AUTH_TOKEN is empty. Add it under Settings > Secrets and variables > Actions."
             exit 1
           fi
           if [ -z "$SITE_URL" ]; then
-            echo "::error::SITE_URL is empty, so there is no way to tell which site this should deploy to. Set it to the site's address, e.g. https://as-amended.netlify.app"
+            echo "::error::SITE_URL is empty, so there is nothing to confirm the destination against. Set it to the site's address, e.g. https://as-amended.netlify.app"
             exit 1
           fi
 
-          # Two candidates, tried in order, because a site id goes stale in a way a hostname does not.
-          #
-          # Netlify accepts a site's own domain wherever it accepts a site id, which makes SITE_URL a second
-          # way of naming the same site -- and a better-behaved one, since it is the value that already
-          # defines where this is meant to publish. On 9 Oct 2026 the configured NETLIFY_SITE_ID resolved to
-          # no site at all (the project was renamed from teal-strudel-5db88d and the stored id went with the
-          # old name), which stopped the deploy dead even though the token was valid and the site was up.
-          #
-          # The id still goes first: it is explicit, and someone who set it meant it. The hostname is the
-          # fallback that stops a rename from being an outage.
-          host=$(printf '%s' "$SITE_URL" | sed -e 's#^[a-z]*://##' -e 's#/.*$##')
+          set +e
+          npx --yes "$CLI" sites:list --json > sites.json 2> sites.err
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ]; then
+            echo "--- what netlify said ---"
+            # Anything long enough to be a token is masked before it reaches the log, which is public.
+            sed -e 's/[A-Za-z0-9_-]\{32,\}/<redacted>/g' sites.err | sed 's/^/  /' || true
+            echo "-------------------------"
+            echo "::error::Could not list sites (exit $rc), so the token was refused before anything was built. Make a new one at Netlify > User settings > Applications > Personal access tokens and update NETLIFY_AUTH_TOKEN. Nothing was deployed and no Netlify build ran."
+            exit 1
+          fi
 
-          cat > resolve.cjs <<'CHECK'
+          cat > pick.cjs <<'PICK'
           const fs = require("fs");
-          let s;
+          const strip = (v) => String(v || "").replace(/\/+$/, "");
+          const want = strip(process.env.SITE_URL);
+          const wantId = String(process.env.NETLIFY_SITE_ID || "");
+          let list;
           try {
-            s = JSON.parse(fs.readFileSync("./status.json", "utf8"));
+            list = JSON.parse(fs.readFileSync("sites.json", "utf8"));
           } catch {
-            console.log("    (netlify status returned something that was not JSON)");
+            console.log("::error::netlify sites:list did not return JSON, so the destination could not be confirmed.");
             process.exit(1);
           }
-          const site = s.siteData || {};
-          if (!site.id) {
-            console.log("    resolved to no site");
+          if (!Array.isArray(list)) list = [];
+          // By URL first. SITE_URL is the definition of where this publishes, so a site answering on that
+          // address is the site meant, whatever id anyone stored. Falling back to the id covers a site whose
+          // primary domain is a custom one that SITE_URL does not name.
+          let site = list.find((x) => strip(x.ssl_url) === want || strip(x.url) === want);
+          let how = "its address";
+          if (!site && wantId) { site = list.find((x) => x.id === wantId); how = "NETLIFY_SITE_ID"; }
+          if (!site) {
+            const lines = list.length
+              ? list.slice(0, 20).map((x) => (x.name || "(unnamed)").padEnd(32) + " " + strip(x.ssl_url || x.url))
+              : ["none at all -- this token sees no sites, so it was made from an account with no access to this project."];
+            for (const l of lines) console.log("  " + l);
+            console.log("::error::No site this token can see answers to " + want + ". Sites it can see:%0A" + lines.join("%0A"));
             process.exit(1);
           }
-          const strip = (v) => (v && v.endsWith("/") ? v.slice(0, -1) : v || "");
-          console.log("    account  :", (s.user && (s.user.email || s.user.name)) || "(unknown)");
-          console.log("    site name:", site.name || "(unnamed)");
-          console.log("    site url :", strip(site.ssl_url || site.url) || "(no url)");
-          // One line, space separated, so nothing here has to carry an escaped newline through a YAML
-          // block scalar and a shell heredoc. Both of those eat backslashes, and this file is hard enough
-          // to get right without it.
-          fs.writeFileSync("resolved.txt", site.id + " " + (strip(site.ssl_url || site.url) || "-"));
-          CHECK
+          console.log("  matched by  : " + how);
+          console.log("  site name   : " + (site.name || "(unnamed)"));
+          console.log("  site url    : " + strip(site.ssl_url || site.url));
+          fs.writeFileSync("resolved.txt", site.id);
+          PICK
 
-          resolved=""
-          for candidate in "$CONFIGURED_SITE_ID" "$host"; do
-            [ -z "$candidate" ] && continue
-            echo "trying site id: $candidate"
-            set +e
-            NETLIFY_SITE_ID="$candidate" npx --yes "$CLI" status --json > status.json 2> status.err
-            rc=$?
-            set -e
-            if [ "$rc" -ne 0 ]; then
-              echo "    netlify status exited $rc"
-              # Anything long enough to be a token is masked before it reaches the log, which is public.
-              sed -e 's/[A-Za-z0-9_-]\{32,\}/<redacted>/g' status.err | sed 's/^/    /' || true
-              continue
-            fi
-            if node resolve.cjs; then resolved="$candidate"; break; fi
-          done
+          node pick.cjs || exit 1
+          resolved=$(cat resolved.txt)
 
-          if [ -z "$resolved" ]; then
-            # Stop guessing and ask the token what it can see.
-            #
-            # Two very different problems look the same from here: an id that names nothing, and a token
-            # whose account cannot see the site at all. Both produce "resolved to no site", and no amount of
-            # re-copying the id fixes the second one. Listing is the only thing that distinguishes them --
-            # and when the token *can* see the site, the list contains the correct id, which is the value
-            # that was wanted in the first place.
-            #
-            # Site names and ids are not credentials -- they appear in netlify.toml and in client-side code
-            # routinely -- so printing them to a public log costs nothing. The token never is printed.
-            echo "--- sites this token can see ---"
-            set +e
-            npx --yes "$CLI" sites:list --json > sites.json 2> sites.err
-            lrc=$?
-            set -e
-            if [ "$lrc" -ne 0 ]; then
-              echo "  could not list sites either (exit $lrc):"
-              sed -e 's/[A-Za-z0-9_-]\{32,\}/<redacted>/g' sites.err | sed 's/^/    /' || true
-            else
-              # Printed twice, to the log and as an annotation.
-              #
-              # Only annotations come back from the GitHub API; plain step output needs an authenticated log
-              # download. When the person debugging this is reading the run through the API rather than the
-              # web UI -- which is the case that matters, because it is the one where nobody has to go and
-              # look -- a list that exists only in the log might as well not exist. %0A is how a single
-              # annotation carries more than one line.
-              node -e '
-                const s = JSON.parse(require("fs").readFileSync("sites.json", "utf8"));
-                const list = Array.isArray(s) ? s : [];
-                const lines = list.length
-                  ? list.slice(0, 20).map((x) =>
-                      (x.name || "(unnamed)").padEnd(32) + " " + (x.id || "") + "  " + (x.ssl_url || x.url || ""))
-                  : ["none at all -- this token sees no sites, so it belongs to an account with no access to this project (wrong team, or a personal account)."];
-                if (list.length > 20) lines.push("... and " + (list.length - 20) + " more");
-                for (const l of lines) console.log("  " + l);
-                console.log("::warning::sites this token can see:%0A" + lines.join("%0A"));
-              ' || echo "  (could not parse the site list)"
-            fi
-            echo "--------------------------------"
-            echo "::error::Neither the configured NETLIFY_SITE_ID nor the hostname from SITE_URL ($host) resolved to a site this token can see. The list above says which it is: if the site is in it, copy its id into NETLIFY_SITE_ID; if the list is empty or does not contain it, the token was made from an account that cannot see this project, so make a new one from the account that owns it. Nothing was deployed and no Netlify build ran."
-            exit 1
-          fi
-
-          live=$(cut -d' ' -f2 resolved.txt)
-          [ "$live" = "-" ] && live=""
-          want=$(printf '%s' "$SITE_URL" | sed 's#/$##')
-          if [ -n "$live" ] && [ "$live" != "$want" ]; then
-            echo "::error::Resolved to $live but SITE_URL says $want. One of the two is stale -- fix whichever is wrong rather than removing this check, which is the only thing standing between a correct build and a deploy to the wrong site."
-            exit 1
-          fi
-
-          # Hand the working id to Build and Deploy. Those steps deliberately no longer set NETLIFY_SITE_ID
-          # from the secret: a step-level env wins over GITHUB_ENV, so setting it there would silently undo
-          # the fallback above and send the build back to the id that does not resolve.
+          # Hand the id to Build and Deploy through GITHUB_ENV. Those steps deliberately do not set
+          # NETLIFY_SITE_ID themselves: a step-level env wins over GITHUB_ENV, so setting it there would
+          # override whatever this step resolved.
           echo "NETLIFY_SITE_ID=$resolved" >> "$GITHUB_ENV"
-          echo "  destination confirmed, deploying to $resolved"
-          rm -f status.json status.err resolve.cjs resolved.txt
+          echo "  destination confirmed"
+          rm -f sites.json sites.err pick.cjs resolved.txt
 
       # `netlify build` runs the same build Netlify would, including @netlify/plugin-nextjs, and writes the
       # deployable output to .netlify/. It runs here, on this runner, which is the whole point.
