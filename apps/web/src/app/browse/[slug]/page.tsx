@@ -12,6 +12,7 @@ import {
 } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
 import { regulatorPageUrl } from "@/lib/source";
+import { SearchBox } from "@/components/SearchBox";
 import { supersededBy } from "@/lib/catalogue";
 import { DOC_TYPE_LABEL, fmtDate, slugifyNumber } from "@/lib/format";
 import {
@@ -168,6 +169,23 @@ export default async function InstrumentPage({ params, searchParams }: { params:
             The text of this instrument has not been loaded yet. Documents recorded against it are listed below.
           </p>
         )}
+
+        {/* Scoped on purpose. Someone reading an Act and typing into a box on its own page is asking about
+            that Act; the palette in the masthead is there for everything else. */}
+        <form action="/find" role="search" className="no-print mt-3 flex flex-wrap items-center gap-2">
+          <input type="hidden" name="in" value={inst.slug} />
+          <label htmlFor="inst-q" className="sr-only">
+            Search within {inst.title}
+          </label>
+          <SearchBox
+            id="inst-q"
+            placeholder={`Search within ${inst.short_code}`}
+            within={inst.slug}
+            className="field min-w-0 flex-1"
+            wrapperClassName="relative min-w-0 flex-1 sm:max-w-md"
+          />
+          <button className="btn">Search</button>
+        </form>
       </header>
 
       {compareLabel && (

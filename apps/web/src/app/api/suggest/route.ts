@@ -16,13 +16,15 @@ export const dynamic = "force-dynamic";
 // missed.
 export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim();
+  // `in` scopes every suggestion to one instrument, for the search box on an Act's own page.
+  const within = (req.nextUrl.searchParams.get("in") ?? "").trim() || null;
   if (q.length < 2) return NextResponse.json({ items: [] });
 
   // More than the box shows. The extra rows are never rendered: they exist so that more answers arrive
   // complete rather than cut off at the limit, and a complete answer is one the box can narrow by itself on
   // the next keystroke instead of waiting on another round trip. The query is prefix matching over three
   // small tables, so the wider limit costs nothing worth measuring.
-  const { items: rows, complete } = await suggest(q, 20);
+  const { items: rows, complete } = await suggest(q, 20, within);
   const items = rows.map((r) => ({
     kind: r.kind,
     label: r.label,
@@ -59,7 +61,7 @@ export async function GET(req: NextRequest) {
         // ?q=80C and ?q=LODR are the same entry. With a public Cache-Control and without this line, the
         // first search of the minute was cached and then returned to everyone: every query answered with
         // somebody else's suggestions, at a convincing 140ms.
-        "Netlify-Vary": "query=q",
+        "Netlify-Vary": "query=q|in",
       },
     },
   );

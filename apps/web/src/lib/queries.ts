@@ -654,8 +654,10 @@ export async function getDocument(id: number) {
   return { doc: docs[0], attachments, tags, effects };
 }
 
-export async function search(q: string, limit = 50) {
+/** Full-text search. `within` confines every result to one instrument, for searching inside an open Act. */
+export async function search(q: string, limit = 50, within?: string | null) {
   const ts = `websearch_to_tsquery('english', $1)`;
+  const scope = within ?? null;
   const provisions = await query<{
     provision_id: number; number: string; instrument_slug: string; instrument_title: string; snippet: string; rank: number;
   }>(
@@ -664,8 +666,9 @@ export async function search(q: string, limit = 50) {
             ts_rank(to_tsvector('english', v.text), ${ts}) AS rank
      FROM provision_version v JOIN provision p ON p.id = v.provision_id JOIN instrument i ON i.id = p.instrument_id
      WHERE v.effective_to IS NULL AND NOT i.pdf_only AND to_tsvector('english', v.text) @@ ${ts}
+       AND ($3::text IS NULL OR i.slug = $3)
      ORDER BY rank DESC LIMIT $2`,
-    [q, limit],
+    [q, limit, scope],
   );
   // Ranked and excerpted on the first 20,000 characters, not on the whole document.
   //
@@ -696,8 +699,13 @@ export async function search(q: string, limit = 50) {
      -- The left(...) bound is there because an unbounded tsvector over the longest documents exceeds the
      -- 1 MB tsvector cap and made them unwritable; 500,000 characters is about a 200-page PDF.
      WHERE to_tsvector('english', left(coalesce(d.title,'') || ' ' || coalesce(d.extracted_text,''), 500000)) @@ ${ts}
+       -- Scoped by the tags the pipeline already records, so "inside this Act" means the notifications and
+       -- circulars filed against it rather than everything that happens to mention its name.
+       AND ($3::text IS NULL OR EXISTS (
+             SELECT 1 FROM document_tag dt JOIN instrument di ON di.id = dt.instrument_id
+              WHERE dt.document_id = d.id AND di.slug = $3))
      ORDER BY rank DESC, d.date_issued DESC NULLS LAST LIMIT $2`,
-    [q, limit],
+    [q, limit, scope],
   );
 
   // Finding a notification by its own number, as its own query.
@@ -937,11 +945,18 @@ export type Suggestion = {
  * Numbers are matched as prefixes and titles as substrings, because that is how each is recalled -- nobody
  * half-remembers a section number from its middle, and nobody remembers an Act's title from its first word.
  */
-export async function suggest(raw: string, limit = 12): Promise<{ items: Suggestion[]; complete: boolean }> {
+/** Suggestions for the search box. `within` restricts every branch to one instrument, which is what makes
+ * searching from inside an Act answer about that Act instead of about everything. */
+export async function suggest(
+  raw: string,
+  limit = 12,
+  within?: string | null,
+): Promise<{ items: Suggestion[]; complete: boolean }> {
   const q = raw.trim();
   if (q.length < 2) return { items: [], complete: true };
   const prefix = `${q}%`;
   const anywhere = `%${q}%`;
+  const scope = within ?? null;
 
   const rows = await query<Suggestion & { grp: number }>(
     `(SELECT 'section' AS kind, p.number AS label, p.heading AS sub,
@@ -949,14 +964,14 @@ export async function suggest(raw: string, limit = 12): Promise<{ items: Suggest
              -- an exact number first, then the shortest: typing "80" should offer 80 before 80-IBA
              (lower(p.number) = lower($1)) AS exact, length(p.number) AS len, 1 AS grp
         FROM provision p JOIN instrument i ON i.id = p.instrument_id
-       WHERE NOT i.pdf_only AND p.number ILIKE $2
+       WHERE NOT i.pdf_only AND p.number ILIKE $2 AND ($5::text IS NULL OR i.slug = $5)
        ORDER BY exact DESC, len, i.short_code
        LIMIT ${BRANCH_BY_NUMBER})
      UNION ALL
      (SELECT 'section', p.number, p.heading, i.short_code, i.slug, NULL::int,
              false, length(coalesce(p.heading, '')), 2
         FROM provision p JOIN instrument i ON i.id = p.instrument_id
-       WHERE NOT i.pdf_only AND p.heading ILIKE $3
+       WHERE NOT i.pdf_only AND p.heading ILIKE $3 AND ($5::text IS NULL OR i.slug = $5)
        ORDER BY length(coalesce(p.heading, '')), i.short_code
        LIMIT ${BRANCH_BY_HEADING})
      UNION ALL
@@ -966,7 +981,7 @@ export async function suggest(raw: string, limit = 12): Promise<{ items: Suggest
      (SELECT 'instrument', i.title, i.short_code, upper(i.kind), i.slug, NULL::int,
              (lower(coalesce(i.short_code, '')) = lower($1)), length(i.title), 3
         FROM instrument i
-       WHERE i.title ILIKE $3 OR i.short_code ILIKE $3
+       WHERE (i.title ILIKE $3 OR i.short_code ILIKE $3) AND ($5::text IS NULL OR i.slug = $5)
        ORDER BY 7 DESC, length(i.title)
        LIMIT ${BRANCH_INSTRUMENT})
      UNION ALL
@@ -977,11 +992,14 @@ export async function suggest(raw: string, limit = 12): Promise<{ items: Suggest
              (lower(d.number) = lower($1)), 0, 4
         FROM document d JOIN regulator r ON r.id = d.regulator_id
        WHERE d.number ILIKE $3
+         AND ($5::text IS NULL OR EXISTS (
+               SELECT 1 FROM document_tag dt JOIN instrument di ON di.id = dt.instrument_id
+                WHERE dt.document_id = d.id AND di.slug = $5))
        ORDER BY 7 DESC, d.date_issued DESC NULLS LAST
        LIMIT ${BRANCH_NOTIFICATION})
      ORDER BY grp, exact DESC, len
      LIMIT $4`,
-    [q, prefix, anywhere, limit],
+    [q, prefix, anywhere, limit, scope],
   );
 
   // Whether this is the whole answer, or only as much of it as the limits allowed.

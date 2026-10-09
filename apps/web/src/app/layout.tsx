@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
 import Link from "next/link";
-import { SearchBox } from "@/components/SearchBox";
+import { CommandPalette } from "@/components/CommandPalette";
 import { SiteNav } from "@/components/SiteNav";
 import { fmtDateTime } from "@/lib/format";
 import { lastRevised } from "@/lib/queries";
@@ -99,13 +99,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </Link>
               )}
 
-              <form action="/find" role="search" className="flex min-w-[16rem] items-center gap-1.5 sm:w-[26rem]">
-                <label htmlFor="header-q" className="sr-only">
-                  Search sections, regulations and notifications
-                </label>
-                <SearchBox id="header-q" placeholder="80C · LODR 17 · section 16 CGST · ECB" />
-                <button className="btn">Look up</button>
-              </form>
+              {/* The search box that used to sit here is gone, and with it the "Look up" button.
+                  A box in the masthead is a box on every screen, including the ones that have their own and
+                  better-scoped one, and it answered about the whole site even while you were reading a
+                  single Act. Search is now the palette below -- one keystroke from anywhere -- plus a real
+                  box on the pages where searching is the point. */}
+              <CommandPalette />
             </div>
           </div>
           <div className="mx-auto max-w-[1360px] px-3.5 pt-1">

@@ -5,36 +5,53 @@ import { KIND_LABEL, unitPlural } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
 import { fmtDate } from "@/lib/format";
 import { pdfPageHref, provisionHref, resolveLookup } from "@/lib/lookup";
-import { search, searchAllPages } from "@/lib/queries";
+import { getInstrument, search, searchAllPages } from "@/lib/queries";
 
 // Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
 // root layout said so. Next works that out for itself.
 
-export const metadata = { title: "Look up" };
+// "Look up" was the old header button's name and went with it; this page is where a search lands.
+export const metadata = { title: "Search" };
 
 // One box for everything. A query that names one obvious provision goes straight there;
 // anything else lands on a short list of one-click answers.
-export default async function FindPage({ searchParams }: { searchParams: Promise<{ q?: string; all?: string }> }) {
+export default async function FindPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; all?: string; in?: string }>;
+}) {
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   if (!q) redirect("/");
+  // Searching from inside an Act answers about that Act. Without this the results were the whole library,
+  // which is rarely what someone reading one instrument is asking.
+  const within = (sp.in ?? "").trim() || null;
+  const scope = within ? await getInstrument(within) : null;
 
   const lookup = await resolveLookup(q);
-  if (lookup.jumpTo && sp.all !== "1") redirect(lookup.jumpTo);
+  if (lookup.jumpTo && sp.all !== "1" && !scope) redirect(lookup.jumpTo);
 
-  const [text, wordPages] = await Promise.all([search(q, 25), searchAllPages(q, 12)]);
+  // The text search is scoped in SQL -- a document knows which instruments it is tagged against, and the
+  // page cannot reconstruct that from what it is sent. The page search is narrowed here instead, because it
+  // already returns the instrument on every row; its limit is raised when scoped so that confining to one
+  // Act does not leave only the handful that ranked highest across the whole library.
+  const [text, wordPagesAll] = await Promise.all([search(q, 25, within), searchAllPages(q, scope ? 100 : 12)]);
+  const wordPages = scope ? wordPagesAll.filter((p) => p.instrument_slug === scope.slug) : wordPagesAll;
 
   // resolveLookup only searches the pages of instruments the query *named*, so a phrase on its own reached
   // none of the 107 PDF-only instruments. These are the pages matched by words alone, merged in behind
   // them: a page found both ways is the same page, and the lookup's ordering is the better one because it
   // knows about heading hits.
-  const seenPages = new Set(lookup.pages.map((p) => `${p.instrument_slug}#${p.page_no}`));
-  const pages = [...lookup.pages, ...wordPages.filter((p) => !seenPages.has(`${p.instrument_slug}#${p.page_no}`))];
+  const lookupPages = scope ? lookup.pages.filter((p) => p.instrument_slug === scope.slug) : lookup.pages;
+  const seenPages = new Set(lookupPages.map((p) => `${p.instrument_slug}#${p.page_no}`));
+  const pages = [...lookupPages, ...wordPages.filter((p) => !seenPages.has(`${p.instrument_slug}#${p.page_no}`))];
+  const instruments = scope ? [] : lookup.instruments;
+  const numbered = scope ? lookup.provisions.filter((p) => p.instrument_slug === scope.slug) : lookup.provisions;
 
   const nothing =
-    !lookup.provisions.length &&
+    !numbered.length &&
     !pages.length &&
-    !lookup.instruments.length &&
+    !instruments.length &&
     !text.provisions.length &&
     !text.documents.length;
 
@@ -88,12 +105,31 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
       <div>
         <form action="/find" role="search" className="flex flex-wrap gap-2">
           <label htmlFor="find-q" className="sr-only">
-            Search
+            {scope ? `Search within ${scope.title}` : "Search"}
           </label>
-          <SearchBox id="find-q" defaultValue={q} autoFocus className="field field-lg w-full" />
+          {scope && <input type="hidden" name="in" value={scope.slug} />}
+          <SearchBox
+            id="find-q"
+            defaultValue={q}
+            autoFocus
+            className="field field-lg w-full"
+            within={scope?.slug ?? null}
+          />
           <button className="btn btn-primary px-5">Search</button>
         </form>
-        {sp.all === "1" && lookup.jumpTo && (
+        {scope && (
+          <p className="meta mt-2">
+            Searching inside{" "}
+            <Link href={`/browse/${scope.slug}`} className="font-medium text-[var(--ink-2)] hover:underline">
+              {scope.title}
+            </Link>
+            .{" "}
+            <Link href={`/find?q=${encodeURIComponent(q)}&all=1`} className="text-[var(--link)] hover:underline">
+              Search everything instead
+            </Link>
+          </p>
+        )}
+        {!scope && sp.all === "1" && lookup.jumpTo && (
           <p className="meta mt-2">
             Showing every match for &ldquo;{q}&rdquo;.{" "}
             <Link href={lookup.jumpTo} className="text-[var(--link)] hover:underline">
@@ -105,16 +141,16 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
 
       {pdfPagesLead && pdfPagesSection}
 
-      {lookup.provisions.length > 0 && (
+      {numbered.length > 0 && (
         <section className="panel">
           <div className="panel-head">
             <h2 className="eyebrow">
               {lookup.parsed.number} in{" "}
-              {lookup.provisions.length === 1 ? "one instrument" : `${lookup.provisions.length} instruments`}
+              {numbered.length === 1 ? "one instrument" : `${numbered.length} instruments`}
             </h2>
           </div>
           <ol className="feed">
-            {lookup.provisions.map((p) => (
+            {numbered.map((p) => (
               <li key={p.id}>
                 <Link
                   href={provisionHref(p.instrument_slug, p.number)}
@@ -135,13 +171,13 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
         </section>
       )}
 
-      {lookup.instruments.length > 0 && (
+      {instruments.length > 0 && (
         <section className="panel">
           <div className="panel-head">
             <h2 className="eyebrow">Regulations</h2>
           </div>
           <ul className="feed">
-            {lookup.instruments.map((i) => (
+            {instruments.map((i) => (
               <li key={i.id}>
                 <Link href={`/browse/${i.slug}`} className="flex items-baseline gap-3 px-4 py-2 hover:bg-[#faf9f6]">
                   <span className="min-w-0 flex-1 text-[13.5px]">{i.title}</span>

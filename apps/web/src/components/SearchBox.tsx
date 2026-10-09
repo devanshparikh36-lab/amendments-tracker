@@ -40,6 +40,7 @@ export function SearchBox({
   autoFocus,
   className = "field min-w-0 flex-1",
   wrapperClassName = "relative min-w-0 flex-1",
+  within = null,
 }: {
   name?: string;
   id?: string;
@@ -48,6 +49,8 @@ export function SearchBox({
   autoFocus?: boolean;
   className?: string;
   wrapperClassName?: string;
+  /** Slug of the instrument to search inside. Null searches everything. */
+  within?: string | null;
 }) {
   const router = useRouter();
   const listId = useId();
@@ -88,7 +91,8 @@ export function SearchBox({
       return;
     }
 
-    const hit = cache.current.get(q);
+    const key = within ? `${within}::${q}` : q;
+    const hit = cache.current.get(key);
     if (hit) {
       setItems(hit.items);
       setActive(-1);
@@ -96,7 +100,7 @@ export function SearchBox({
     }
 
     for (let i = q.length - 1; i >= 2; i--) {
-      const shorter = cache.current.get(q.slice(0, i));
+      const shorter = cache.current.get(within ? `${within}::${q.slice(0, i)}` : q.slice(0, i));
       if (shorter) {
         const needle = q.toLowerCase();
         setItems(
@@ -111,11 +115,13 @@ export function SearchBox({
 
     const ac = new AbortController();
     const t = setTimeout(() => {
-      fetch(`/api/suggest?q=${encodeURIComponent(q)}`, { signal: ac.signal })
+      fetch(`/api/suggest?q=${encodeURIComponent(q)}${within ? `&in=${encodeURIComponent(within)}` : ""}`, {
+        signal: ac.signal,
+      })
         .then((r) => (r.ok ? r.json() : { items: [], complete: false }))
         .then((d: { items: Item[]; complete?: boolean }) => {
           const got = d.items ?? [];
-          cache.current.set(q, { items: got, complete: d.complete === true });
+          cache.current.set(key, { items: got, complete: d.complete === true });
           setItems(got);
           setActive(-1);
         })
@@ -127,7 +133,7 @@ export function SearchBox({
       clearTimeout(t);
       ac.abort();
     };
-  }, [value]);
+  }, [value, within]);
 
   // Clicking anywhere else closes the list. Pointerdown rather than click, so it closes before the click
   // lands on whatever is underneath.
