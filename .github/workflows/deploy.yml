@@ -153,7 +153,40 @@ jobs:
           done
 
           if [ -z "$resolved" ]; then
-            echo "::error::Neither the configured NETLIFY_SITE_ID nor the hostname from SITE_URL ($host) resolved to a site this token can see. If the token is valid, the likeliest cause is that the site belongs to a different Netlify team than the account the token was made from. Fix NETLIFY_SITE_ID from Netlify > Project configuration > General > Site information, or make the token from the account that owns the site. Nothing was deployed and no Netlify build ran."
+            # Stop guessing and ask the token what it can see.
+            #
+            # Two very different problems look the same from here: an id that names nothing, and a token
+            # whose account cannot see the site at all. Both produce "resolved to no site", and no amount of
+            # re-copying the id fixes the second one. Listing is the only thing that distinguishes them --
+            # and when the token *can* see the site, the list contains the correct id, which is the value
+            # that was wanted in the first place.
+            #
+            # Site names and ids are not credentials -- they appear in netlify.toml and in client-side code
+            # routinely -- so printing them to a public log costs nothing. The token never is printed.
+            echo "--- sites this token can see ---"
+            set +e
+            npx --yes "$CLI" sites:list --json > sites.json 2> sites.err
+            lrc=$?
+            set -e
+            if [ "$lrc" -ne 0 ]; then
+              echo "  could not list sites either (exit $lrc):"
+              sed -e 's/[A-Za-z0-9_-]\{32,\}/<redacted>/g' sites.err | sed 's/^/    /' || true
+            else
+              node -e '
+                const s = JSON.parse(require("fs").readFileSync("sites.json", "utf8"));
+                const list = Array.isArray(s) ? s : [];
+                if (!list.length) {
+                  console.log("  none at all -- this token sees no sites, so it belongs to an account");
+                  console.log("  with no access to this project (wrong team, or a personal account).");
+                }
+                for (const x of list.slice(0, 40)) {
+                  console.log("  " + (x.name || "(unnamed)").padEnd(32) + " " + (x.id || "") + "  " + (x.ssl_url || x.url || ""));
+                }
+                if (list.length > 40) console.log("  ... and " + (list.length - 40) + " more");
+              ' || echo "  (could not parse the site list)"
+            fi
+            echo "--------------------------------"
+            echo "::error::Neither the configured NETLIFY_SITE_ID nor the hostname from SITE_URL ($host) resolved to a site this token can see. The list above says which it is: if the site is in it, copy its id into NETLIFY_SITE_ID; if the list is empty or does not contain it, the token was made from an account that cannot see this project, so make a new one from the account that owns it. Nothing was deployed and no Netlify build ran."
             exit 1
           fi
 
