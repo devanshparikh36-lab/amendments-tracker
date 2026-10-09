@@ -12,6 +12,7 @@ import {
 } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
 import { regulatorPageUrl } from "@/lib/source";
+import { supersededBy } from "@/lib/catalogue";
 import { DOC_TYPE_LABEL, fmtDate, slugifyNumber } from "@/lib/format";
 import {
   getInstrument,
@@ -64,6 +65,8 @@ export default async function InstrumentPage({ params, searchParams }: { params:
   const pdfUrl = fileHref(inst.pdf_storage_key, inst.pdf_source_url);
   // Where a reader should be sent, which is not always where the seeder reads from.
   const readerUrl = regulatorPageUrl(inst);
+  const replacedBySlug = supersededBy(slug);
+  const replacedBy = replacedBySlug ? (await getInstrument(replacedBySlug)) : null;
   const pageCount = inst.page_count || inst.pdf_page_count || 0;
   const hasText = inst.pdf_only ? pageCount > 0 : overview.provisions > 0;
   const readHref = `/browse/${slug}/text`;
@@ -82,6 +85,27 @@ export default async function InstrumentPage({ params, searchParams }: { params:
             </>
           )}
         </p>
+        {/* Said at the top, before the text, and not as a quiet line in the details table further down.
+            Somebody who arrives here from a search or an old link is about to read a provision that no
+            longer applies, and the one thing they need is to be told so before they read it. */}
+        {replacedBySlug && (
+          <p className="mt-2 rounded border border-[var(--flag-alert)]/30 bg-[var(--flag-alert)]/5 px-3 py-2 text-[13px] text-[var(--ink-2)]">
+            <span className="font-semibold text-[var(--flag-alert)]">Superseded.</span> The regulator has
+            replaced this instrument
+            {replacedBy ? (
+              <>
+                {" "}
+                with{" "}
+                <Link href={`/browse/${replacedBy.slug}`} className="font-medium text-[var(--link)] hover:underline">
+                  {replacedBy.title}
+                </Link>
+              </>
+            ) : null}
+            . It is kept because notifications and circulars still cite it, and because earlier periods were
+            governed by it.
+          </p>
+        )}
+
         <div className="mt-1 flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
           <div className="min-w-0">
             <h1 className="page-title">{inst.title}</h1>

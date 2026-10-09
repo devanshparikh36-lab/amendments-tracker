@@ -89,6 +89,45 @@ export const SUBJECT_BY_REGULATOR: Record<string, Subject> = Object.fromEntries(
   SUBJECTS.flatMap((s) => s.regulators.map((r) => [r, s] as const)),
 );
 
+/* Instruments the regulator has replaced, and what replaced them.
+ *
+ * Curated by hand, deliberately. Supersession is a legal fact, not something to infer: titles are the only
+ * signal in the data and they lie in both directions. "FEM (Export of Goods & Services) Regulations, 2015"
+ * and "FEM (Export and Import of Goods and Services) Regulations, 2026" are plainly related and share almost
+ * no words, while the Income-tax Acts of 1961 and 2025 look exactly like a replacement pair and are not one
+ * -- the 1961 Act governs earlier years and the 2025 Act applies from 1 April 2026, so both are live and
+ * hiding either would be wrong. The whole comparison tool exists because both matter.
+ *
+ * So entries are added only where supersession is established, never where it merely looks likely. A missing
+ * entry shows a reader one instrument too many, which is recoverable; a wrong entry hides the law that
+ * applies to them, which is not.
+ *
+ * Several FEMA regulations from 2000 are very likely superseded -- the Deposit Regulations 2000 by those of
+ * 2016, TISPRO 2000 by the Non-Debt Instruments Rules 2019 -- but "likely" is not the standard here. Add
+ * them once someone who knows has confirmed each one.
+ */
+export const SUPERSEDED_BY: Record<string, string> = {
+  // instruments.py records this directly: SEBI recast the 1996 Regulations as the current ones and its Legal
+  // listing now carries only the latter.
+  "sebi-mutual-funds-1996": "sebi-mutual-funds",
+};
+
+export function supersededBy(slug: string): string | null {
+  return SUPERSEDED_BY[slug] ?? null;
+}
+
+// The two headed groups an instrument can fall into on a listing. Master Directions and Master Circulars sit
+// with Rules and Regulations: a reader looking for "the working rules" wants them in the same place, not
+// under a heading that says Acts.
+export function instrumentGroup(kind: string): "acts" | "rules" {
+  return kind === "act" ? "acts" : "rules";
+}
+
+export const GROUP_HEADING: Record<"acts" | "rules", string> = {
+  acts: "Acts",
+  rules: "Rules & Regulations",
+};
+
 // The subject's own accent, as a class the stylesheet turns into a 3px left rule.
 export function subjectClass(key: string): string {
   return `sub-${key}`;

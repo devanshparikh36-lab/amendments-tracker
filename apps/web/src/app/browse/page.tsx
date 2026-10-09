@@ -1,5 +1,14 @@
 ﻿import Link from "next/link";
-import { KIND_LABEL, REGULATOR_LABEL, SUBJECTS, subjectClass, unitPlural } from "@/lib/catalogue";
+import {
+  GROUP_HEADING,
+  KIND_LABEL,
+  REGULATOR_LABEL,
+  SUBJECTS,
+  instrumentGroup,
+  subjectClass,
+  supersededBy,
+  unitPlural,
+} from "@/lib/catalogue";
 import { fmtDate } from "@/lib/format";
 import { instrumentIndex } from "@/lib/queries";
 
@@ -10,7 +19,7 @@ export const metadata = { title: "Acts, Rules, Regulations and Master Directions
 
 const KIND_ORDER = ["act", "rules", "regulations", "master_direction", "master_circular", "scheme", "other"];
 
-type Search = Promise<{ q?: string; regulator?: string; subject?: string; seeded?: string }>;
+type Search = Promise<{ q?: string; regulator?: string; subject?: string; seeded?: string; superseded?: string }>;
 
 function n(v: number): string {
   return v.toLocaleString("en-IN");
@@ -22,13 +31,20 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
   const q = (sp.q ?? "").trim().toLowerCase();
   const subject = SUBJECTS.find((s) => s.key === sp.subject);
 
-  const instruments = all.filter(
+  // What the regulator has replaced is hidden by default: a reader looking up the law wants the one in
+  // force, and an older text sitting beside it in the same list is the one way this site could actively
+  // mislead. Nothing is removed -- the toggle below brings them back, and their own pages still work and
+  // still say what replaced them.
+  const showSuperseded = sp.superseded === "1";
+  const matches = all.filter(
     (i) =>
       (!subject || subject.regulators.includes(i.regulator_code)) &&
       (!sp.regulator || i.regulator_code === sp.regulator) &&
       (!q || i.title.toLowerCase().includes(q) || i.short_code.toLowerCase().includes(q) || i.slug.includes(q)) &&
       (sp.seeded !== "1" || i.provision_count > 0 || (i.pdf_only && i.page_count > 0)),
   );
+  const supersededCount = matches.filter((i) => supersededBy(i.slug)).length;
+  const instruments = showSuperseded ? matches : matches.filter((i) => !supersededBy(i.slug));
 
   // The unfiltered view shows a preview of each subject rather than all 198 instruments at once. A React
   // server component ships its rendered tree twice -- once as HTML, once as the flight payload it is escaped
@@ -46,12 +62,16 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
           b.provision_count - a.provision_count ||
           a.title.localeCompare(b.title),
       );
-    return {
-      subject: s,
-      total: items.length,
-      items: narrowed ? items : items.slice(0, PREVIEW_PER_SUBJECT),
+    // Each subject is shown as Acts first, then Rules & Regulations, under their own headings. The preview
+    // budget is spent per group rather than per subject, so a subject with one Act and ninety regulations
+    // still shows the Act -- previously the Act could be pushed off the end by its own rules.
+    const shown = narrowed ? items : null;
+    const take = (which: "acts" | "rules") => {
+      const of = items.filter((i) => instrumentGroup(i.kind) === which);
+      return { total: of.length, items: shown ? of : of.slice(0, PREVIEW_PER_SUBJECT) };
     };
-  }).filter((g) => g.items.length > 0);
+    return { subject: s, total: items.length, acts: take("acts"), rules: take("rules") };
+  }).filter((g) => g.acts.total + g.rules.total > 0);
 
   return (
     <div className="space-y-4">
@@ -63,7 +83,19 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
           </p>
         </div>
         <p className="meta num">
-          {n(instruments.length)} of {n(all.length)} tracked ·{" "}
+          {n(instruments.length)} of {n(all.length)} tracked
+          {!showSuperseded && supersededCount > 0 && (
+            <>
+              {" "}
+              <Link
+                href={{ pathname: "/browse", query: { ...sp, superseded: "1" } }}
+                className="text-[var(--link)] hover:underline"
+              >
+                (+{n(supersededCount)} superseded)
+              </Link>
+            </>
+          )}{" "}
+          ·{" "}
           {n(instruments.reduce((t, i) => t + (i.pdf_only ? 0 : i.provision_count), 0))} provisions ·{" "}
           {n(instruments.reduce((t, i) => t + (i.pdf_only ? i.page_count : 0), 0))} official PDF pages
         </p>
@@ -100,8 +132,16 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
           <label className="flex items-center gap-1.5 text-[12.5px] text-[var(--ink-2)]">
             <input type="checkbox" name="seeded" value="1" defaultChecked={sp.seeded === "1"} /> only with text
           </label>
+          {/* Only offered when there is something to show. A permanently unticked box for a set that is
+              usually empty is a question nobody asked. */}
+          {(supersededCount > 0 || showSuperseded) && (
+            <label className="flex items-center gap-1.5 text-[12.5px] text-[var(--ink-2)]">
+              <input type="checkbox" name="superseded" value="1" defaultChecked={showSuperseded} /> include
+              superseded
+            </label>
+          )}
           <button className="btn">Filter</button>
-          {(sp.q || sp.regulator || sp.seeded) && (
+          {(sp.q || sp.regulator || sp.seeded || sp.superseded) && (
             <Link
               href={subject ? `/browse?subject=${subject.key}` : "/browse"}
               className="text-[12.5px] text-[var(--ink-3)] hover:underline"
@@ -117,46 +157,71 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
           <div className="panel-head">
             <h2 className="serif text-[16px] font-semibold">{g.subject.name}</h2>
             <span className="meta num ml-auto">
-              {g.items.length < g.total ? `${n(g.items.length)} of ${n(g.total)}` : n(g.total)} instruments
+              {g.acts.total + g.rules.total === g.total ? n(g.total) : `${n(g.acts.items.length + g.rules.items.length)} of ${n(g.total)}`}{" "}
+              instruments
             </span>
           </div>
-          <ul className="px-5 py-2">
-            {g.items.map((i) => (
-              <li key={i.id} className="border-b border-[var(--rule)] py-2.5 last:border-b-0">
-                <Link href={`/browse/${i.slug}`} className="text-[14px] hover:underline">
-                  {i.title}
-                </Link>
-                <p className="meta mt-0.5">
-                  {KIND_LABEL[i.kind] ?? i.kind} · {REGULATOR_LABEL[i.regulator_code] ?? i.regulator_code}
-                  {i.official_updated_as_on && <> · text as on {fmtDate(i.official_updated_as_on)}</>}
-                  {i.pdf_only ? (
-                    <> · served as the official PDF{i.page_count ? `, ${n(i.page_count)} pages` : ""}</>
-                  ) : i.provision_count ? (
-                    <> · {n(i.provision_count)} {unitPlural(i.kind)}</>
-                  ) : (
-                    <> · text not loaded yet</>
-                  )}
-                  {i.doc_count > 0 && (
-                    <>
-                      {" · "}
-                      <Link href={`/documents?instrument=${i.slug}`} className="text-[var(--link)] hover:underline">
-                        {n(i.doc_count)} document{i.doc_count === 1 ? "" : "s"}
-                      </Link>
-                    </>
-                  )}
-                </p>
-              </li>
-            ))}
-            {g.items.length < g.total && (
-              <li className="py-2.5">
-                <Link href={`/browse?subject=${g.subject.key}`} className="text-[13px] text-[var(--link)] hover:underline">
-                  Show all {n(g.total)} in {g.subject.name} &rarr;
-                </Link>
-              </li>
+          <div className="px-5 py-1">
+            {(["acts", "rules"] as const).map((which) =>
+              g[which].total === 0 ? null : (
+                <div key={which} className="py-1.5">
+                  <h3 className="eyebrow border-b border-[var(--rule)] pb-1">
+                    {GROUP_HEADING[which]}
+                    <span className="meta num ml-2 font-normal">{n(g[which].total)}</span>
+                  </h3>
+                  <ul>
+                    {g[which].items.map((i) => (
+                      <li key={i.id} className="border-b border-[var(--rule)] py-2.5 last:border-b-0">
+                        <Link href={`/browse/${i.slug}`} className="text-[14px] hover:underline">
+                          {i.title}
+                        </Link>
+                        {supersededBy(i.slug) && (
+                          <span className="ml-2 rounded bg-stone-100 px-1.5 py-px text-[11px] font-medium text-stone-700 ring-1 ring-inset ring-stone-200">
+                            superseded
+                          </span>
+                        )}
+                        <p className="meta mt-0.5">
+                          {KIND_LABEL[i.kind] ?? i.kind} · {REGULATOR_LABEL[i.regulator_code] ?? i.regulator_code}
+                          {i.official_updated_as_on && <> · text as on {fmtDate(i.official_updated_as_on)}</>}
+                          {i.pdf_only ? (
+                            <> · served as the official PDF{i.page_count ? `, ${n(i.page_count)} pages` : ""}</>
+                          ) : i.provision_count ? (
+                            <>
+                              {" · "}
+                              {n(i.provision_count)} {unitPlural(i.kind)}
+                            </>
+                          ) : (
+                            <> · text not loaded yet</>
+                          )}
+                          {i.doc_count > 0 && (
+                            <>
+                              {" · "}
+                              <Link href={`/documents?instrument=${i.slug}`} className="text-[var(--link)] hover:underline">
+                                {n(i.doc_count)} document{i.doc_count === 1 ? "" : "s"}
+                              </Link>
+                            </>
+                          )}
+                        </p>
+                      </li>
+                    ))}
+                    {g[which].items.length < g[which].total && (
+                      <li className="py-2.5">
+                        <Link
+                          href={`/browse?subject=${g.subject.key}`}
+                          className="text-[13px] text-[var(--link)] hover:underline"
+                        >
+                          Show all {n(g[which].total)} {GROUP_HEADING[which].toLowerCase()} in {g.subject.name} &rarr;
+                        </Link>
+                      </li>
+                    )}
+                  </ul>
+                </div>
+              ),
             )}
-          </ul>
+          </div>
         </section>
       ))}
+
       {instruments.length === 0 && (
         <p className="panel border-dashed p-8 text-center text-[var(--ink-3)]">Nothing matches that filter.</p>
       )}
