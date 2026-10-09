@@ -1,4 +1,5 @@
 ﻿import Link from "next/link";
+import { Breadcrumbs } from "@/components/PageHeader";
 import { Badge } from "@/components/Badge";
 import { fmtDateTime } from "@/lib/format";
 import { provisionHref } from "@/lib/lookup";
@@ -28,7 +29,8 @@ export default async function StatusPage() {
   return (
     <div className="space-y-6">
       <div className="border-b border-[var(--rule)] pb-3">
-        <h1 className="page-title">Collection status</h1>
+        <Breadcrumbs trail={[{ label: "Collection status" }]} />
+        <h1 className="page-title mt-1">Collection status</h1>
         <p className="meta mt-1">What the collector last ran, what it queued, and what a person should look at.</p>
       </div>
 

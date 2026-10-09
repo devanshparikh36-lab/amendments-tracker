@@ -1,4 +1,5 @@
 ﻿import Link from "next/link";
+import { Breadcrumbs } from "@/components/PageHeader";
 import {
   GROUP_HEADING,
   KIND_LABEL,
@@ -77,6 +78,7 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
     <div className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b border-[var(--rule)] pb-3">
         <div>
+          <Breadcrumbs trail={[{ label: "Acts & Rules" }]} />
           <h1 className="page-title">Acts, Rules, Regulations and Master Directions</h1>
           <p className="meta mt-1">
             Every instrument has its own page — what it is, who issued it, and what has amended it.

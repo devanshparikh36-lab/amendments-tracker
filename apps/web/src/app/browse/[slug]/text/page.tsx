@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { ProvisionBody, Provenance } from "@/components/LegalText";
@@ -96,10 +97,13 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
   return (
     <div className="space-y-3">
       <div className="no-print">
-        <p className="crumbs">
-          <Link href="/">Home</Link> / <Link href="/browse">Acts &amp; Rules</Link> /{" "}
-          <Link href={`/browse/${slug}`}>{inst.short_code}</Link> / text
-        </p>
+        <Breadcrumbs
+          trail={[
+            { label: "Acts & Rules", href: "/browse" },
+            { label: inst.short_code, href: `/browse/${slug}` },
+            { label: "Text" },
+          ]}
+        />
         <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="serif text-[19px] font-semibold tracking-tight">
             <Link href={`/browse/${slug}`} className="hover:underline">
@@ -497,10 +501,13 @@ async function PdfReader({
   return (
     <div className="space-y-3">
       <div className="no-print">
-        <p className="crumbs">
-          <Link href="/">Home</Link> / <Link href="/browse">Acts &amp; Rules</Link> /{" "}
-          <Link href={`/browse/${slug}`}>{inst.short_code}</Link> / the official PDF
-        </p>
+        <Breadcrumbs
+          trail={[
+            { label: "Acts & Rules", href: "/browse" },
+            { label: inst.short_code, href: `/browse/${slug}` },
+            { label: "Official PDF" },
+          ]}
+        />
         <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <h1 className="serif text-[19px] font-semibold tracking-tight">
             <Link href={`/browse/${slug}`} className="hover:underline">

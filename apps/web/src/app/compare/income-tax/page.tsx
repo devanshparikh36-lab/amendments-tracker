@@ -1,4 +1,5 @@
 ﻿import Link from "next/link";
+import { Breadcrumbs } from "@/components/PageHeader";
 import { Badge } from "@/components/Badge";
 import { Diff } from "@/components/Diff";
 import { provisionHref } from "@/lib/lookup";
@@ -73,7 +74,8 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
   return (
     <div className="space-y-4">
       <div className="border-b border-[var(--rule)] pb-3">
-        <h1 className="page-title">Income-tax Act 1961 compared with the Act of 2025</h1>
+        <Breadcrumbs trail={[{ label: "Acts & Rules", href: "/browse" }, { label: "Compare 1961 ↔ 2025" }]} />
+        <h1 className="page-title mt-1">Income-tax Act 1961 compared with the Act of 2025</h1>
         <p className="meta mt-1 max-w-3xl">
           The mapping published by the Central Board of Direct Taxes. The Income-tax Act, 2025 came into force on 1
           April 2026; Rules 1962 and Rules 2026 are included. Text on both sides is the department&rsquo;s own.

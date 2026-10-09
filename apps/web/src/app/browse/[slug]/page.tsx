@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound, redirect } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import {
@@ -77,15 +78,13 @@ export default async function InstrumentPage({ params, searchParams }: { params:
   return (
     <div className="space-y-5">
       <header className={`panel sub-rule ${subject ? subjectClass(subject.key) : ""} px-6 py-5`}>
-        <p className="crumbs no-print">
-          <Link href="/">Home</Link> / <Link href="/browse">Acts &amp; Rules</Link>
-          {subject && (
-            <>
-              {" "}
-              / <Link href={`/browse?subject=${subject.key}`}>{subject.name}</Link>
-            </>
-          )}
-        </p>
+        <Breadcrumbs
+          trail={[
+            { label: "Acts & Rules", href: "/browse" },
+            ...(subject ? [{ label: subject.name, href: `/browse?subject=${subject.key}` }] : []),
+            { label: inst.short_code },
+          ]}
+        />
         {/* Said at the top, before the text, and not as a quiet line in the details table further down.
             Somebody who arrives here from a search or an old link is about to read a provision that no
             longer applies, and the one thing they need is to be told so before they read it. */}

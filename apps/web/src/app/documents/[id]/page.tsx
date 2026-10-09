@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { Diff } from "@/components/Diff";
@@ -55,10 +56,12 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
   return (
     <div className="space-y-5">
       <header className="panel px-6 py-5">
-        <p className="crumbs no-print">
-          <Link href="/">Home</Link> / <Link href="/documents">Notifications</Link> /{" "}
-          <Link href={`/documents?regulator=${doc.regulator_code}`}>{doc.regulator_code}</Link>
-        </p>
+        <Breadcrumbs
+          trail={[
+            { label: "Notifications", href: "/documents" },
+            { label: doc.regulator_code, href: `/documents?regulator=${doc.regulator_code}` },
+          ]}
+        />
         <h1 className="page-title mt-1">{doc.title}</h1>
         <div className="meta mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
           <span>{DOC_TYPE_LABEL[doc.doc_type] ?? doc.doc_type}</span>

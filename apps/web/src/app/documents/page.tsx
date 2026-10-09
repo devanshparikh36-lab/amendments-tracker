@@ -1,7 +1,7 @@
 ﻿import Link from "next/link";
 import { Badge } from "@/components/Badge";
 import { OfficialNumber } from "@/components/OfficialNumber";
-import { REGULATOR_LABEL, SUBJECTS } from "@/lib/catalogue";
+import {SUBJECTS } from "@/lib/catalogue";
 import { DOC_TYPE_LABEL, fmtDate } from "@/lib/format";
 import { instrumentIndex, listDocuments } from "@/lib/queries";
 
@@ -11,6 +11,7 @@ import { instrumentIndex, listDocuments } from "@/lib/queries";
 export const metadata = { title: "Notifications and circulars" };
 
 type Search = Promise<{
+  subject?: string;
   regulator?: string;
   type?: string;
   instrument?: string;
@@ -20,7 +21,6 @@ type Search = Promise<{
   page?: string;
 }>;
 
-const REGULATORS = ["CBDT", "CBIC", "RBI", "DEA", "SEBI", "MCA"];
 
 export default async function DocumentsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
@@ -32,6 +32,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
   const [docs, instruments] = await Promise.all([
     listDocuments({
       regulator: sp.regulator,
+      regulators: sp.subject ? SUBJECTS.find((s) => s.key === sp.subject)?.regulators : undefined,
       docType: sp.type,
       instrument: sp.instrument,
       q: sp.q,
@@ -43,7 +44,11 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
     instrumentIndex(),
   ]);
   const qs = new URLSearchParams(Object.entries(sp).filter(([k, v]) => v && k !== "page") as [string, string][]);
-  const subject = SUBJECTS.find((s) => sp.regulator && s.regulators.includes(sp.regulator));
+  // ?regulator= is still honoured: it is what the instrument pages and "what's new" links already point at,
+  // and old links should not break because the control above changed vocabulary.
+  const subject =
+    SUBJECTS.find((s) => s.key === sp.subject) ??
+    SUBJECTS.find((s) => sp.regulator && s.regulators.includes(sp.regulator));
 
   return (
     <div className="space-y-4">
@@ -63,27 +68,31 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
         </p>
       </div>
 
+      {/* The same control, with the same vocabulary, as /browse. This page used to offer regulators here
+          and the identical choice again as a dropdown in the form below -- the same filter twice, in two
+          different idioms, on one page. Subjects are what a reader thinks in; the regulator is still shown
+          on every row. */}
       <div className="no-print flex flex-wrap items-center gap-1.5">
-        <Link href="/documents" className={`chip ${!sp.regulator ? "chip-on" : ""}`}>
-          All regulators
+        <Link href="/documents" className={`chip ${!sp.subject ? "chip-on" : ""}`}>
+          All subjects
         </Link>
-        {REGULATORS.map((r) => (
-          <Link key={r} href={`/documents?regulator=${r}`} className={`chip ${sp.regulator === r ? "chip-on" : ""}`}>
-            {REGULATOR_LABEL[r] ?? r}
+        {SUBJECTS.map((s) => (
+          <Link
+            key={s.key}
+            href={`/documents?subject=${s.key}`}
+            className={`chip ${sp.subject === s.key ? "chip-on" : ""}`}
+          >
+            {s.name}
           </Link>
         ))}
       </div>
 
       <form className="no-print panel flex flex-wrap items-end gap-3 p-3">
-        <label className="flex flex-col text-[11.5px] text-[var(--ink-3)]">
-          Regulator
-          <select name="regulator" defaultValue={sp.regulator ?? ""} className="field mt-0.5">
-            <option value="">All</option>
-            {REGULATORS.map((r) => (
-              <option key={r}>{r}</option>
-            ))}
-          </select>
-        </label>
+        {/* The regulator dropdown that stood here has gone: the chips above are the same filter, and having
+            both meant two controls for one choice that could disagree with each other. The form keeps the
+            dimensions chips cannot carry -- a type, one of 195 instruments, a date range, a phrase. */}
+        {sp.subject && <input type="hidden" name="subject" value={sp.subject} />}
+        {sp.regulator && <input type="hidden" name="regulator" value={sp.regulator} />}
         <label className="flex flex-col text-[11.5px] text-[var(--ink-3)]">
           Type
           <select name="type" defaultValue={sp.type ?? ""} className="field mt-0.5">

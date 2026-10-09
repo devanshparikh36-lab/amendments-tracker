@@ -1,4 +1,5 @@
 ﻿import Link from "next/link";
+import { Breadcrumbs } from "@/components/PageHeader";
 import { KIND_LABEL } from "@/lib/catalogue";
 import { searchDefinitions, type DefinitionHit } from "@/lib/queries";
 
@@ -91,10 +92,8 @@ export default async function DefinitionsPage({ searchParams }: { searchParams: 
   return (
     <div className="space-y-4">
       <div>
-        <p className="crumbs">
-          <Link href="/">Home</Link> / definitions
-        </p>
-        <h1 className="serif mt-1 text-[19px] font-semibold tracking-tight">Search definitions</h1>
+        <Breadcrumbs trail={[{ label: "Definitions" }]} />
+        <h1 className="page-title mt-1">Search definitions</h1>
         <p className="mt-1 max-w-[62ch] text-[13px] text-[var(--ink-2)]">
           Where a word is <em>defined</em> — not merely mentioned. Every Act, Rule and Regulation whose text we
           hold is searched for the drafting that introduces a defined term, with the dedicated definitions

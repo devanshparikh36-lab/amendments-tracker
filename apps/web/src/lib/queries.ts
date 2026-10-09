@@ -596,12 +596,15 @@ export async function provisionHistory(instrumentId: number, provisionNumber: st
 }
 
 export async function listDocuments(opts: {
-  regulator?: string; docType?: string; instrument?: string; q?: string; from?: string; to?: string; limit?: number; offset?: number;
+  regulator?: string; regulators?: string[]; docType?: string; instrument?: string; q?: string; from?: string; to?: string; limit?: number; offset?: number;
 }) {
   const where: string[] = [];
   const params: unknown[] = [];
   const add = (sql: string, v: unknown) => { params.push(v); where.push(sql.replace("?", `$${params.length}`)); };
   if (opts.regulator) add("r.code = ?", opts.regulator);
+  // A subject can span more than one regulator -- FEMA is RBI and the Ministry of Finance -- so the subject
+  // chips filter on a set rather than on one code.
+  if (opts.regulators?.length) add("r.code = ANY(?)", opts.regulators);
   if (opts.docType) add("d.doc_type = ?", opts.docType);
   if (opts.from) add("d.date_issued >= ?::date", opts.from);
   if (opts.to) add("d.date_issued <= ?::date", opts.to);

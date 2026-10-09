@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { Diff } from "@/components/Diff";
@@ -44,10 +45,14 @@ export default async function HistoryPage({ params }: { params: Promise<{ slug: 
   return (
     <div className="space-y-4">
       <div className="border-b border-[var(--rule)] pb-3">
-        <p className="crumbs no-print">
-          <Link href="/browse">Acts &amp; Rules</Link> / <Link href={`/browse/${slug}`}>{inst.title}</Link> /{" "}
-          <Link href={provisionHref(slug, provision.number)}>{provision.number}</Link> / history
-        </p>
+        <Breadcrumbs
+          trail={[
+            { label: "Acts & Rules", href: "/browse" },
+            { label: inst.short_code, href: `/browse/${slug}` },
+            { label: provision.number, href: provisionHref(slug, provision.number) },
+            { label: "History" },
+          ]}
+        />
         <h1 className="page-title mt-1 capitalize">
           {unit} {provision.number}
           {provision.heading && (
