@@ -20,7 +20,7 @@ import {
   type PageHit,
   type ProvisionRow,
 } from "@/lib/queries";
-import { officialSource, type OfficialSource } from "@/lib/source";
+import { officialSource, type OfficialSource, regulatorPageUrl } from "@/lib/source";
 
 // Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
 // root layout said so. Next works that out for itself.
@@ -505,8 +505,8 @@ async function PdfReader({
           ) : (
             <span className="text-[12px] text-[var(--ink-4)]">The official file is not stored yet.</span>
           )}
-          {inst.official_url && (
-            <a href={inst.official_url} target="_blank" rel="noreferrer" className="btn">
+          {regulatorPageUrl(inst) && (
+            <a href={regulatorPageUrl(inst)!} target="_blank" rel="noreferrer" className="btn">
               {inst.regulator_code}&rsquo;s page for this document
             </a>
           )}
@@ -625,8 +625,8 @@ async function PdfReader({
         ) : (
           <aside className="panel border-dashed p-8 text-center text-[13.5px] text-[var(--ink-2)]">
             The official file has not been stored yet.{" "}
-            {inst.official_url && (
-              <a href={inst.official_url} target="_blank" rel="noreferrer" className="text-[var(--link)] underline">
+            {regulatorPageUrl(inst) && (
+              <a href={regulatorPageUrl(inst)!} target="_blank" rel="noreferrer" className="text-[var(--link)] underline">
                 Open it on {inst.regulator_code}&rsquo;s site
               </a>
             )}

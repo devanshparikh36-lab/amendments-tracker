@@ -11,6 +11,7 @@ import {
   unitFor,
 } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
+import { regulatorPageUrl } from "@/lib/source";
 import { DOC_TYPE_LABEL, fmtDate, slugifyNumber } from "@/lib/format";
 import {
   getInstrument,
@@ -61,6 +62,8 @@ export default async function InstrumentPage({ params, searchParams }: { params:
   const kindLabel = KIND_LABEL[inst.kind] ?? inst.kind;
   const subject = SUBJECT_BY_REGULATOR[inst.regulator_code];
   const pdfUrl = fileHref(inst.pdf_storage_key, inst.pdf_source_url);
+  // Where a reader should be sent, which is not always where the seeder reads from.
+  const readerUrl = regulatorPageUrl(inst);
   const pageCount = inst.page_count || inst.pdf_page_count || 0;
   const hasText = inst.pdf_only ? pageCount > 0 : overview.provisions > 0;
   const readHref = `/browse/${slug}/text`;
@@ -93,8 +96,8 @@ export default async function InstrumentPage({ params, searchParams }: { params:
                 {inst.pdf_only ? "Open the official PDF" : `Read the ${unit}s`}
               </Link>
             )}
-            {inst.official_url && (
-              <a href={inst.official_url} target="_blank" rel="noreferrer" className="btn">
+            {readerUrl && (
+              <a href={readerUrl} target="_blank" rel="noreferrer" className="btn">
                 {inst.regulator_code}&rsquo;s page
               </a>
             )}
@@ -245,14 +248,14 @@ export default async function InstrumentPage({ params, searchParams }: { params:
 
                 <dt>Official source</dt>
                 <dd className="space-y-0.5">
-                  {inst.official_url ? (
+                  {readerUrl ? (
                     <a
-                      href={inst.official_url}
+                      href={readerUrl}
                       target="_blank"
                       rel="noreferrer"
                       className="block break-all text-[var(--link)] hover:underline"
                     >
-                      {inst.official_url}
+                      {readerUrl}
                     </a>
                   ) : (
                     <span className="text-[var(--ink-4)]">no official page recorded</span>
