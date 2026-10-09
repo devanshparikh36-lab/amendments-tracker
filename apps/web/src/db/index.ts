@@ -37,7 +37,7 @@ export function getPool(): Pool {
 
 export { schema };
 
-// How long a query result may be reused. Collection runs every six hours, so minutes of staleness cost
+// How long a query result may be reused. Collection runs once a day, at 07:00 IST, so minutes of staleness cost
 // nothing, while the saving is the entire round trip: opening a connection to Neon costs ~1.9s from cold
 // (the free plan suspends the compute when idle) and each query another 150-300ms on top. Every page was
 // paying that on every click, because every route was marked force-dynamic.
