@@ -148,10 +148,10 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
                   <span className="meta num whitespace-nowrap">
                     {KIND_LABEL[i.kind] ?? i.kind}
                     {i.pdf_only
-                      ? ` Â· official PDF, ${(i.page_count || i.pdf_page_count || 0).toLocaleString("en-IN")} pages`
+                      ? ` · official PDF, ${(i.page_count || i.pdf_page_count || 0).toLocaleString("en-IN")} pages`
                       : i.provision_count > 0
-                        ? ` Â· ${i.provision_count.toLocaleString("en-IN")} ${unitPlural(i.kind)}`
-                        : " Â· no text yet"}
+                        ? ` · ${i.provision_count.toLocaleString("en-IN")} ${unitPlural(i.kind)}`
+                        : " · no text yet"}
                   </span>
                 </Link>
               </li>
@@ -169,7 +169,7 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
             {text.provisions.map((r) => (
               <li key={r.provision_id} className="py-2">
                 <Link href={provisionHref(r.instrument_slug, r.number)} className="font-medium hover:underline">
-                  {r.instrument_title} Â· {r.number}
+                  {r.instrument_title} · {r.number}
                 </Link>
                 <p
                   className="snippet mt-0.5 text-[13px] text-[var(--ink-2)]"
@@ -202,8 +202,8 @@ export default async function FindPage({ searchParams }: { searchParams: Promise
                     {r.title}
                   </Link>
                   <div className="meta num">
-                    {fmtDate(r.date_issued)} {r.number && <>Â· {r.number}</>}
-                    {" Â· "}
+                    {fmtDate(r.date_issued)} {r.number && <>· {r.number}</>}
+                    {" · "}
                     <a
                       href={`/api/jump?doc=${r.id}&q=${encodeURIComponent(q)}`}
                       target="_blank"

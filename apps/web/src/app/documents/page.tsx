@@ -50,7 +50,7 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 border-b border-[var(--rule)] pb-3">
         <div>
           <h1 className="page-title">
-            {subject ? `${subject.name} â€” notifications and circulars` : "Notifications, circulars and gazette copies"}
+            {subject ? `${subject.name} — notifications and circulars` : "Notifications, circulars and gazette copies"}
           </h1>
           <p className="meta mt-1">
             As collected from the regulator&rsquo;s own site. Each entry links to the official source and to the

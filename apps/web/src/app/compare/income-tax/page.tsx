@@ -7,7 +7,7 @@ import { mapCounts, mapEntries, provisionText } from "@/lib/queries";
 // Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
 // root layout said so. Next works that out for itself.
 
-export const metadata = { title: "Income-tax Act 1961 â†” 2025" };
+export const metadata = { title: "Income-tax Act 1961 ↔ 2025" };
 
 type Search = Promise<{ q?: string; entity?: string; old?: string; new?: string; view?: string }>;
 
@@ -135,7 +135,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Sear
             <>
               <div className="flex flex-wrap items-center gap-2 text-[13.5px]">
                 <span className="num font-semibold">
-                  {selected.old_number ?? "â€”"} &rarr; {selected.new_number ?? "â€”"}
+                  {selected.old_number ?? "—"} &rarr; {selected.new_number ?? "—"}
                 </span>
                 <Badge kind={selected.entity_type === "section" ? "amends" : "clarifies"}>{selected.entity_type}</Badge>
                 {!selected.new_number && <Badge kind="cannot_apply">no counterpart in 2025</Badge>}
