@@ -172,17 +172,23 @@ jobs:
               echo "  could not list sites either (exit $lrc):"
               sed -e 's/[A-Za-z0-9_-]\{32,\}/<redacted>/g' sites.err | sed 's/^/    /' || true
             else
+              # Printed twice, to the log and as an annotation.
+              #
+              # Only annotations come back from the GitHub API; plain step output needs an authenticated log
+              # download. When the person debugging this is reading the run through the API rather than the
+              # web UI -- which is the case that matters, because it is the one where nobody has to go and
+              # look -- a list that exists only in the log might as well not exist. %0A is how a single
+              # annotation carries more than one line.
               node -e '
                 const s = JSON.parse(require("fs").readFileSync("sites.json", "utf8"));
                 const list = Array.isArray(s) ? s : [];
-                if (!list.length) {
-                  console.log("  none at all -- this token sees no sites, so it belongs to an account");
-                  console.log("  with no access to this project (wrong team, or a personal account).");
-                }
-                for (const x of list.slice(0, 40)) {
-                  console.log("  " + (x.name || "(unnamed)").padEnd(32) + " " + (x.id || "") + "  " + (x.ssl_url || x.url || ""));
-                }
-                if (list.length > 40) console.log("  ... and " + (list.length - 40) + " more");
+                const lines = list.length
+                  ? list.slice(0, 20).map((x) =>
+                      (x.name || "(unnamed)").padEnd(32) + " " + (x.id || "") + "  " + (x.ssl_url || x.url || ""))
+                  : ["none at all -- this token sees no sites, so it belongs to an account with no access to this project (wrong team, or a personal account)."];
+                if (list.length > 20) lines.push("... and " + (list.length - 20) + " more");
+                for (const l of lines) console.log("  " + l);
+                console.log("::warning::sites this token can see:%0A" + lines.join("%0A"));
               ' || echo "  (could not parse the site list)"
             fi
             echo "--------------------------------"
