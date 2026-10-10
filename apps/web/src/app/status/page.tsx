@@ -109,6 +109,23 @@ export default async function StatusPage() {
         </div>
       </section>
 
+      {/* The other half of "is this collection any good": the jobs table says whether collection ran, and
+          says nothing about whether what it collected reads like law. That distinction is the whole reason
+          150 wrong FEMA provisions were published on a green run. */}
+      <section className="panel">
+        <div className="panel-head">
+          <h2 className="eyebrow">Text that needs a look</h2>
+          <p className="meta mt-0.5 max-w-3xl">
+            Provisions whose stored text does not read like a provision &mdash; a row of a schedule, a
+            heading whose body never arrived, the same words under two numbers.{" "}
+            <Link href="/quality" className="text-[var(--link)] hover:underline">
+              Review them
+            </Link>
+            .
+          </p>
+        </div>
+      </section>
+
       {/* Stated here rather than left as permanent failures in the table above. These are documents the
           regulator has not published; nothing in the pipeline can produce them, and a backlog that cannot
           be cleared is one people stop reading. */}

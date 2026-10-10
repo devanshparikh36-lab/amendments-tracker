@@ -70,6 +70,9 @@ def main(argv: list[str] | None = None) -> int:
     p_rq.add_argument("--type", action="append",
                       help="only this job type, e.g. fetch_document (repeatable); omitted means every failed job")
     sub.add_parser("prune", help="delete stored documents issued before MIN_DOCUMENT_YEAR (keeps base regulation texts)")
+    p_q = sub.add_parser("quality", help="list provisions whose stored text does not look like a provision")
+    p_q.add_argument("--show", type=int, default=12, help="how many examples to print")
+    p_q.add_argument("--flag", help="only this flag (table_row, heading_only, footnote, duplicate_text)")
     p_mp = sub.add_parser("mergepreview", help="report what an AI-free deterministic merge would change (writes nothing)")
     p_mp.add_argument("--limit", type=int, default=500)
     p_mp.add_argument("--show", type=int, default=10, help="how many proposed substitutions to print")
@@ -166,6 +169,33 @@ def main(argv: list[str] | None = None) -> int:
         # Exit non-zero when a limit is filling up, so the CI step fails and GitHub emails the repo owner.
         # That is the only alerting channel here that costs nothing and needs no secret configured.
         return 1 if any(u.level != "ok" for u in usages) else 0
+
+    if args.cmd == "quality":
+        from amendments import db as _db
+
+        with _db.transaction() as conn:
+            where, params = ("WHERE flag = %s", (args.flag,)) if args.flag else ("", ())
+            by_flag = _db.fetch_all(conn, f"SELECT flag, count(*) AS n FROM provision_quality_flag {where} GROUP BY 1 ORDER BY 2 DESC", params)
+            by_inst = _db.fetch_all(conn, f"SELECT instrument_slug, count(*) AS n FROM provision_quality_flag {where} GROUP BY 1 ORDER BY 2 DESC LIMIT 10", params)
+            rows = _db.fetch_all(conn, f"SELECT flag, instrument_slug, number, sample FROM provision_quality_flag {where} ORDER BY instrument_slug, number LIMIT %s", (*params, args.show))
+            total = sum(r["n"] for r in by_flag)
+        if not total:
+            print("no provisions flagged")
+            return 0
+        print(f"{total} flags")
+        for r in by_flag:
+            print(f"  {r['flag']:16} {r['n']:>5}")
+        print()
+        print("most affected instruments")
+        for r in by_inst:
+            print(f"  {r['instrument_slug'][:52]:52} {r['n']:>5}")
+        print()
+        print(f"examples (first {len(rows)})")
+        for r in rows:
+            print(f"  {r['flag']:16} {r['instrument_slug'][:30]:30} {r['number'][:12]:12} {r['sample'][:70]!r}")
+        # Deliberately exit 0. These are findings for a person to read, not a broken build: the free-tier
+        # watch owns the non-zero exit, and red there means one thing.
+        return 0
 
     if args.cmd == "prune":
         print(pipeline.prune_before_cutoff())

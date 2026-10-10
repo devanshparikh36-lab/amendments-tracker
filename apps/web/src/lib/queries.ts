@@ -891,6 +891,58 @@ export async function sourceGaps() {
   );
 }
 
+export type QualityFlag = {
+  provision_id: number;
+  instrument_slug: string;
+  number: string;
+  heading: string | null;
+  flag: string;
+  detail: string;
+  sample: string;
+};
+
+/** Provisions whose stored text does not look like a provision, and a count per flag.
+ *
+ * Reads the `provision_quality_flag` view, which is also what `cli.py quality` reads. The predicates live
+ * in the view (migration 0011) and not in this file on purpose: two definitions of what counts as a defect
+ * would eventually disagree, and a quality check that disagrees with itself is worse than none.
+ */
+export async function qualityFlags(opts: { flag?: string; instrument?: string; limit?: number } = {}) {
+  const where: string[] = [];
+  const params: unknown[] = [];
+  if (opts.flag) {
+    params.push(opts.flag);
+    where.push(`flag = $${params.length}`);
+  }
+  if (opts.instrument) {
+    params.push(opts.instrument);
+    where.push(`instrument_slug = $${params.length}`);
+  }
+  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const [rows, byFlag, byInstrument] = await Promise.all([
+    query<QualityFlag>(
+      `SELECT provision_id, instrument_slug, number, heading, flag, detail, sample
+         FROM provision_quality_flag ${clause}
+        ORDER BY instrument_slug, number LIMIT ${Math.min(opts.limit ?? 300, 1000)}`,
+      params,
+      LIVE_SECONDS,
+    ),
+    query<{ flag: string; n: number; detail: string }>(
+      `SELECT flag, count(*)::int AS n, min(detail) AS detail FROM provision_quality_flag
+        GROUP BY flag ORDER BY n DESC`,
+      [],
+      LIVE_SECONDS,
+    ),
+    query<{ instrument_slug: string; n: number }>(
+      `SELECT instrument_slug, count(*)::int AS n FROM provision_quality_flag
+        GROUP BY instrument_slug ORDER BY n DESC, instrument_slug LIMIT 20`,
+      [],
+      LIVE_SECONDS,
+    ),
+  ]);
+  return { rows, byFlag, byInstrument };
+}
+
 export async function jobStats() {
   return query<{ type: string; status: string; n: number; last_error: string | null }>(
     `SELECT type, status, count(*)::int AS n, max(error) AS last_error FROM job GROUP BY type, status ORDER BY type, status`,
