@@ -1,11 +1,19 @@
 name: Free-tier watch
 
-# Fails on purpose when Cloudflare R2 or Neon passes 60% of its free allowance. A failed scheduled workflow makes
-# GitHub email the repository owner, which is the only alerting channel that costs nothing and needs no secret --
-# the Teams webhook and Resend key are still unset. Red here means one thing only: storage is filling up.
+# Fails on purpose when any watched free allowance passes 60%. A failed scheduled workflow makes GitHub email
+# the repository owner, which is the only alerting channel that costs nothing and needs no secret -- the Teams
+# webhook and Resend key are still unset. Red here means one thing: an allowance is filling up.
 #
-# Neon is the tighter limit: past 500 MB the free plan stops accepting writes and collection halts. R2 just starts
-# charging (~$0.015/GB/month) past 10 GB.
+# Three are watched, and the third was added after the fact:
+#   * Neon storage - the tighter of the two storage limits. Past 500 MB the free plan stops accepting writes
+#     and collection halts.
+#   * Cloudflare R2 - just starts charging (~$0.015/GB/month) past 10 GB.
+#   * Neon compute - 100 CU-hours a month, after which the compute is suspended. This one went unwatched for
+#     as long as it existed, because storage can be measured from inside Postgres and compute cannot: CU-hours
+#     are a billing metric, so reading them needs NEON_API_KEY and NEON_PROJECT_ID. Meanwhile the keep-warm
+#     ping ran every five minutes, timed precisely to stop Neon ever suspending, which spends that allowance
+#     continuously. If either secret is unset the compute line is omitted rather than reported as 0%, so a
+#     green run here does not by itself mean compute is being watched -- check for the "Neon compute" line.
 on:
   schedule:
     - cron: "0 2 * * *"        # daily, 07:30 IST
@@ -30,6 +38,10 @@ jobs:
       R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
       TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
       SITE_URL: ${{ secrets.SITE_URL }}
+      # Read-only use of Neon's API, and the only way to see the compute allowance. Unset is handled: the
+      # compute line is omitted rather than reported as healthy.
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
       PYTHONUNBUFFERED: "1"
     steps:
       - uses: actions/checkout@v4

@@ -1444,7 +1444,11 @@ def retain_documents(*, apply: bool = False, force: bool = False) -> dict[str, A
     from .storage.usage import check as usage_check
 
     usages = usage_check(notify=False)
-    pressure = max((u.fraction for u in usages), default=0.0)
+    # Only the limits that deleting documents would actually relieve. The usage check also reports Neon's
+    # compute allowance, and compute is not storage: being out of CU-hours is not a reason to destroy
+    # documents, because destroying them would not return a single hour. Without this filter, a month of
+    # heavy querying would arm retention and start pruning the library to fix something unrelated.
+    pressure = max((u.fraction for u in usages if u.frees_by_deleting), default=0.0)
     out: dict[str, Any] = {
         "pressure": round(pressure, 4),
         "trigger": RETENTION_TRIGGER,

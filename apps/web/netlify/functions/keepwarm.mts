@@ -1,4 +1,8 @@
-// Keeps the database awake, from Netlify's own infrastructure.
+// Checks that the database answers, from Netlify's own infrastructure.
+//
+// It was named for what it used to do -- ping often enough that Neon never suspended. It no longer runs
+// often enough for that (see the schedule at the foot of this file, and why it changed). The name is kept
+// because the function, its logs and its Netlify schedule are all known by it.
 //
 // Deliberately no `import type { Config } from "@netlify/functions"`: that package is not a dependency here,
 // and Netlify reads the exported `config` object regardless of whether it carries a type annotation. Adding a
@@ -11,7 +15,11 @@
 //
 // A local scheduled task used to do this every four minutes. It was disabled when collection moved off the
 // laptop, which removed the only thing preventing the suspend -- so the crash appeared hours later, with
-// nothing in the code having changed. This does the same job with no machine of ours involved.
+// nothing in the code having changed. This replaced it with no machine of ours involved.
+//
+// That crash is no longer what this guards against. A visitor can now land on a suspended database, and the
+// reason that is survivable is the caching fix: the heavy pages are served from the CDN, so the three slow
+// things no longer stack on one request. What remains is a wake on an uncached request after a quiet spell.
 //
 // It connects to Neon directly rather than fetching this site's own /api/health, and that halves what it
 // costs. Going over HTTP meant two invocations every tick -- this function, and the health route it called --
@@ -79,5 +87,19 @@ export default async () => {
   }
 };
 
-// Every five minutes, which is the window Neon suspends in. Any slower and the suspend happens between pings.
-export const config = { schedule: "*/5 * * * *" };
+// Every thirty minutes: 48 runs a day, down from 288.
+//
+// Five minutes was chosen to sit exactly inside Neon's idle-suspend window, so the compute never slept. That
+// worked, and the cost of it was never counted: Neon's free plan allows 100 CU-hours a month, and a compute
+// that never sleeps spends roughly 182 in a 730-hour month at the 0.25 CU floor. Nothing measured compute at
+// all -- the storage watch counts megabytes -- so the one limit being spent continuously was the one nobody
+// could see. `storage/usage.py` now reads it from Neon's API, which is the other half of this change.
+//
+// Be clear about what is given up: at any interval beyond five minutes the suspend happens between pings, so
+// this no longer keeps the database warm. It is a liveness check that also warms things incidentally -- a
+// visitor arriving on a sleeping database still pays Neon's ~1.9s wake. That is an acceptable trade now and
+// was not before, because the caching fix means the pages worth warming are served from the CDN and never
+// reach a function: what is left is the occasional slow first load after a quiet spell.
+//
+// Thirty minutes rather than hourly so that a database which has died is still noticed within half an hour.
+export const config = { schedule: "*/30 * * * *" };

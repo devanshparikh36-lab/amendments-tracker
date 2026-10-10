@@ -54,6 +54,13 @@ class Settings:
     # A mailto: or https: target, per RFC 8058. Matters when the digest goes to anyone but its owner.
     digest_unsubscribe: str | None = field(default_factory=lambda: _env("DIGEST_UNSUBSCRIBE"))
 
+    # Neon's own API, read only to see how much of the free compute allowance has been spent. Storage can be
+    # measured from inside Postgres; compute cannot -- CU-hours are a billing metric the database does not
+    # know about -- so watching it needs a key. Both unset means the compute watch reports nothing rather
+    # than guessing; see storage/usage.py.
+    neon_api_key: str | None = field(default_factory=lambda: _env("NEON_API_KEY"))
+    neon_project_id: str | None = field(default_factory=lambda: _env("NEON_PROJECT_ID"))
+
     # Public site URL used in alerts
     site_url: str = field(default_factory=lambda: (_env("SITE_URL") or "http://localhost:3000").rstrip("/"))
 

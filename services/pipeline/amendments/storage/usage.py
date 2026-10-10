@@ -1,10 +1,13 @@
-"""Watch how much of the free tiers we are using, and warn before either runs out.
+"""Watch how much of the free tiers we are using, and warn before any of them runs out.
 
-Two limits matter:
+Three limits matter:
   * Cloudflare R2  - 10 GB stored free, then about $0.015 per GB per month.
-  * Neon Postgres  - 500 MB on the free plan; past that, writes stop until the plan is upgraded.
+  * Neon storage   - 500 MB on the free plan; past that, writes stop until the plan is upgraded.
+  * Neon compute   - 100 CU-hours a month on the free plan; past that, the compute is suspended.
 
-Neon is the tighter of the two because it holds the extracted text of every document and file.
+Compute was added late, and its absence was the more dangerous gap. Storage fills slowly and visibly; compute
+was being spent continuously by a keep-warm ping timed to defeat Neon's five-minute idle suspend, and nothing
+here measured it. Two of the three are bytes and one is hours, which is why `Usage` carries a unit.
 """
 from __future__ import annotations
 
@@ -12,7 +15,7 @@ import logging
 import os as _os
 from dataclasses import dataclass
 
-from .. import db
+from .. import db, http
 from ..config import settings
 from .files import storage
 
@@ -20,6 +23,10 @@ log = logging.getLogger(__name__)
 
 R2_FREE_BYTES = 10 * 1024**3          # 10 GB
 NEON_FREE_BYTES = 500 * 1024**2       # 500 MB
+# Neon's free plan allows 100 CU-hours per project per month. A CU-hour is one compute unit running for an
+# hour; the floor is 0.25 CU, so an instance that never sleeps spends about 182 CU-hours in a 730-hour month
+# -- nearly twice the allowance. That arithmetic is the whole reason this metric is now watched.
+NEON_FREE_CU_HOURS = float(_os.environ.get("NEON_FREE_CU_HOURS") or 100)
 # Warn at 60% rather than 75%. Getting back under a limit means reclaiming space and redeploying, which takes a
 # session; by 75% of Neon there is little room left to be calm about it, and past 100% the free plan stops
 # accepting writes and collection halts outright.
@@ -30,13 +37,21 @@ CRITICAL_AT = float(_os.environ.get("STORAGE_CRITICAL_AT") or 0.90)
 @dataclass
 class Usage:
     label: str
-    used_bytes: int
-    limit_bytes: int
+    used: float
+    limit: float
     detail: str = ""
+    # Bytes unless stated otherwise. Compute is measured in CU-hours, which must not be formatted as though
+    # they were bytes -- "0.00 MB of 0 MB" is what that looks like, and it reads as healthy.
+    unit: str = "bytes"
+    # Retention reclaims room by deleting documents (`prune_before_cutoff`), and it arms itself off the
+    # largest fraction reported here. Deleting documents frees bytes; it does nothing at all for compute
+    # hours. So compute must be excluded from that decision, or running low on compute would start
+    # destroying the library to fix something deletion cannot fix. See pipeline.retain_documents.
+    frees_by_deleting: bool = True
 
     @property
     def fraction(self) -> float:
-        return self.used_bytes / self.limit_bytes if self.limit_bytes else 0.0
+        return self.used / self.limit if self.limit else 0.0
 
     @property
     def level(self) -> str:
@@ -45,11 +60,13 @@ class Usage:
         return "warning" if self.fraction >= WARN_AT else "ok"
 
     def human(self) -> str:
-        used = self.used_bytes / 1024**3
-        limit = self.limit_bytes / 1024**3
+        if self.unit != "bytes":
+            return f"{self.label}: {self.used:.1f} of {self.limit:.0f} {self.unit} ({self.fraction * 100:.0f}%)"
+        used = self.used / 1024**3
+        limit = self.limit / 1024**3
         unit = "GB"
         if limit < 1:
-            used, limit, unit = self.used_bytes / 1024**2, self.limit_bytes / 1024**2, "MB"
+            used, limit, unit = self.used / 1024**2, self.limit / 1024**2, "MB"
         return f"{self.label}: {used:.2f} {unit} of {limit:.0f} {unit} ({self.fraction * 100:.0f}%)"
 
 
@@ -96,13 +113,57 @@ def database_usage() -> Usage:
     with db.transaction() as conn:
         row = db.fetch_one(conn, "SELECT pg_database_size(current_database())::bigint AS n")
         docs = db.fetch_one(conn, "SELECT count(*) AS n FROM document")
-    return Usage("Neon database", int(row["n"]), NEON_FREE_BYTES, f"{docs['n']} documents")
+    return Usage("Neon storage", int(row["n"]), NEON_FREE_BYTES, f"{docs['n']} documents")
+
+
+def compute_usage() -> Usage | None:
+    """CU-hours spent this billing period, read from Neon's own API.
+
+    This is the limit that was being approached while nothing watched it. Storage can be measured from inside
+    Postgres, so it always was; compute cannot, because CU-hours are a billing metric the database knows
+    nothing about. Measuring it needs a key, so it was simply left unmeasured -- and `keepwarm` was pinging
+    every five minutes, the exact interval that defeats Neon's five-minute idle suspend, which keeps the
+    compute up more or less continuously. The first sign would have been writes stopping.
+
+    `compute_time_seconds` is CU-seconds for the current billing period: running time weighted by compute
+    size, which is what the plan is counted against. Divided by 3600 those are CU-hours.
+    (`active_time_seconds` is the same clock unweighted, so it undercounts anything running above 1 CU; it is
+    reported alongside only because "how many hours was it actually awake" is the number that explains the
+    first one.)
+
+    Returns None when no key is configured, rather than zero. A watch that cannot see has to say so: zero
+    would render as "0.0 of 100 CU-hours (0%)", which reads as healthy and is the failure this exists to end.
+    """
+    key, project = settings.neon_api_key, settings.neon_project_id
+    if not (key and project):
+        log.info("NEON_API_KEY / NEON_PROJECT_ID are not set, so compute is not being watched")
+        return None
+    try:
+        resp = http.get(
+            f"https://console.neon.tech/api/v2/projects/{project}",
+            headers={"Authorization": f"Bearer {key}", "Accept": "application/json"},
+        )
+        row = (resp.json() or {}).get("project") or {}
+        cu_hours = float(row.get("compute_time_seconds") or 0) / 3600
+        awake_hours = float(row.get("active_time_seconds") or 0) / 3600
+    except Exception as exc:
+        # Never fatal. This runs beside the storage checks, and Neon's console being unreachable must not
+        # stop them reporting -- nor turn the workflow red, which would say "storage is filling up".
+        log.warning("could not read Neon compute usage (%s)", str(exc)[:160])
+        return None
+    detail = f"{awake_hours:.0f} h awake this period" if awake_hours else "nothing recorded yet"
+    return Usage(
+        "Neon compute", cu_hours, NEON_FREE_CU_HOURS, detail,
+        unit="CU-hours", frees_by_deleting=False,
+    )
 
 
 WHY_IT_MATTERS = (
     "Cloudflare R2 costs about $0.015 per GB per month beyond the free 10 GB. Neon's free plan stops "
-    "accepting writes at 500 MB; the next plan is $19 a month. Raising either is a paid change, so this "
-    "is a heads-up rather than something the pipeline will do on its own."
+    "accepting writes at 500 MB of storage, and suspends the compute after 100 CU-hours in a month; the "
+    "next plan is $19 a month. Raising any of them is a paid change, so this is a heads-up rather than "
+    "something the pipeline will do on its own. Storage is relieved by holding fewer documents; compute is "
+    "relieved by querying less often, which is a matter of what is scheduled, not of what is stored."
 )
 
 
@@ -114,7 +175,12 @@ def check(*, notify: bool = True) -> list[Usage]:
     this today -- cannot run while the Actions allowance is exhausted. An alarm nobody receives is the failure
     mode this whole check exists to prevent, so it takes every path it has.
     """
+    # Compute is appended only when it could be read, so an unconfigured key leaves the list exactly as it
+    # was rather than adding a line that always says 0%.
     usages = [object_storage_usage(), database_usage()]
+    compute = compute_usage()
+    if compute is not None:
+        usages.append(compute)
     for u in usages:
         log.info("%s - %s", u.human(), u.detail)
     at_risk = [u for u in usages if u.level != "ok"]
