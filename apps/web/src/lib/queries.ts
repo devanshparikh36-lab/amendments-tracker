@@ -600,6 +600,8 @@ export async function provisionHistory(instrumentId: number, provisionNumber: st
 
 export async function listDocuments(opts: {
   regulator?: string; regulators?: string[]; docType?: string; instrument?: string; q?: string; from?: string; to?: string; limit?: number; offset?: number;
+  /** Restrict to documents carrying one of these `document_tag.relation` values. Empty means all. */
+  relations?: string[];
 }) {
   const where: string[] = [];
   const params: unknown[] = [];
@@ -611,7 +613,28 @@ export async function listDocuments(opts: {
   if (opts.docType) add("d.doc_type = ?", opts.docType);
   if (opts.from) add("d.date_issued >= ?::date", opts.from);
   if (opts.to) add("d.date_issued <= ?::date", opts.to);
-  if (opts.instrument) add("EXISTS (SELECT 1 FROM document_tag t JOIN instrument i ON i.id = t.instrument_id WHERE t.document_id = d.id AND i.slug = ?)", opts.instrument);
+  /* Instrument and relation, and when both are given they must describe the *same* tag.
+   *
+   * `document_tag.relation` is one of amends, supersedes, clarifies, references, and the difference matters
+   * more than it looks. Browsing an instrument's documents should show all of them -- a circular that
+   * merely cites section 195 is still worth finding. A feed should not: it answers "what changed", and the
+   * Income-tax Act, 1961 carries 2,011 `references`, mostly RBI circulars mentioning it in passing.
+   *
+   * The first attempt put the relation in an EXISTS of its own, which is subtly useless: a document that
+   * `clarifies` some FEMA regulation and merely `references` the Income-tax Act satisfies both clauses
+   * independently and comes back anyway. Eleven RBI circulars arrived in the Act's feed that way. One
+   * EXISTS, both conditions on the same `t`, is the only form that means what it says. */
+  if (opts.instrument && opts.relations?.length) {
+    params.push(opts.instrument, opts.relations);
+    where.push(
+      `EXISTS (SELECT 1 FROM document_tag t JOIN instrument i ON i.id = t.instrument_id
+                WHERE t.document_id = d.id AND i.slug = $${params.length - 1} AND t.relation = ANY($${params.length}))`,
+    );
+  } else if (opts.instrument) {
+    add("EXISTS (SELECT 1 FROM document_tag t JOIN instrument i ON i.id = t.instrument_id WHERE t.document_id = d.id AND i.slug = ?)", opts.instrument);
+  } else if (opts.relations?.length) {
+    add("EXISTS (SELECT 1 FROM document_tag t WHERE t.document_id = d.id AND t.relation = ANY(?))", opts.relations);
+  }
   if (opts.q) add("(d.title ILIKE '%' || ? || '%' OR d.number ILIKE '%' || ? || '%')".replace("?", `$${params.length + 1}`).replace("?", `$${params.length + 1}`), opts.q);
   const limit = Math.min(opts.limit ?? 100, 1000);
   const offset = opts.offset ?? 0;

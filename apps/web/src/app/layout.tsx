@@ -28,6 +28,14 @@ export const metadata: Metadata = {
   },
   description:
     "Indian tax and corporate law in the regulator's own words, with the amendment trail beside it: which notification changed which provision, and when, linked to the official document.",
+  // So a feed reader, Outlook or Teams finds the feed from any page without being told its address. The
+  // route also accepts ?regulator= and ?instrument= for a narrower subscription; this advertises the whole
+  // thing, which is the right default for discovery.
+  alternates: {
+    types: {
+      "application/atom+xml": [{ url: "/feed.xml", title: "As Amended — every notification and circular" }],
+    },
+  },
 };
 
 // Its own export, not a key inside `metadata`. Next 15 ignores it there — silently, apart from a build

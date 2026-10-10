@@ -21,6 +21,20 @@ type Search = Promise<{
   page?: string;
 }>;
 
+/* The parts of the current filter a subscription can honour.
+ *
+ * Only regulator and instrument. A feed is a standing question -- "what is new here" -- and the other
+ * filters answer different kinds of question: a date range would go quiet the moment it fell behind the
+ * present, and a title search would turn a subscription into a saved query whose results nobody revisits.
+ * Those belong in the CSV export beside it, which is a snapshot and is meant to be.
+ */
+function feedQuery(sp: { regulator?: string; instrument?: string }): string {
+  const p = new URLSearchParams();
+  if (sp.regulator) p.set("regulator", sp.regulator);
+  if (sp.instrument) p.set("instrument", sp.instrument);
+  return p.toString();
+}
+
 
 export default async function DocumentsPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
@@ -130,6 +144,16 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Se
         <button className="btn btn-primary">Filter</button>
         <a href={`/api/export/documents?${qs.toString()}`} className="ml-auto text-[13px] text-[var(--link)] hover:underline">
           Export CSV
+        </a>
+        {/* The feed carries the filter you are looking at, so "subscribe" means this list and not a
+            different one. Only regulator and instrument are passed on: the feed answers "what is new",
+            and a date range in a subscription would quietly stop producing anything. */}
+        <a
+          href={`/feed.xml${feedQuery(sp) ? `?${feedQuery(sp)}` : ""}`}
+          className="text-[13px] text-[var(--link)] hover:underline"
+          title="An Atom feed Outlook, Teams or any feed reader can follow"
+        >
+          Subscribe
         </a>
       </form>
 
