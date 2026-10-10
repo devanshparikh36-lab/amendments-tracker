@@ -34,6 +34,11 @@ export async function GET(req: NextRequest) {
     headers: {
       "content-type": "text/csv; charset=utf-8",
       "content-disposition": 'attachment; filename="income-tax-1961-vs-2025-mapping.csv"',
+      // CBDT's own 1961-to-2025 concordance, which changes when the department republishes it and not
+      // otherwise -- so a day at the edge, and uncached it was a full table scan per call with nothing
+      // stopping anyone from asking repeatedly. No Netlify-Vary: this endpoint takes no parameters, so
+      // every caller gets the same file and the path is the whole cache key.
+      "Cache-Control": "public, s-maxage=86400, stale-while-revalidate=604800",
     },
   });
 }
