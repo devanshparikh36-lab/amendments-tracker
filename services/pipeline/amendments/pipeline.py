@@ -17,7 +17,7 @@ import psycopg
 
 from . import browser, db, rules
 from .adapters import registry, official_text_for
-from .adapters.base import DiscoveredDocument, SeedResult
+from .adapters.base import DiscoveredDocument, SeedResult, as_seed_result
 from .ai import tasks as ai
 from .config import settings
 from .http import get_bytes, sha256
@@ -122,7 +122,12 @@ def _store_official_pdf(inst: dict, data: bytes, pdf_url: str, parsed: list) -> 
         # Index every page so a search can land on the right page of the official document.
         with db.transaction() as conn:
             db.execute(conn, "DELETE FROM instrument_page WHERE instrument_id = %s", (inst["id"],))
-            for n, page_text in enumerate(index.flat, start=1):
+            # `index.pages` is the whitespace-collapsed text of each page, which is what `index.flat` used to
+            # be: the rewritten pdfmap keeps one representation instead of two, and the collapsed one is the
+            # right thing here. A phrase the PDF breaks across lines -- "capital account\ntransaction" --
+            # cannot be found in text that preserves the break, and finding phrases is the only reason this
+            # index exists.
+            for n, page_text in enumerate(index.pages, start=1):
                 if page_text.strip():
                     db.execute(
                         conn,
@@ -974,14 +979,12 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
             f"{cfg.get('adapter', '?')} from {inst.get('official_url') or '(no official_url)'}: "
             f"{type(exc).__name__}: {exc}"
         ) from exc
-    # Seeders return either a SeedResult (with the regulator's own PDF) or the older 3-tuple.
-    if isinstance(official, SeedResult):
-        text = official.provisions if official.provisions is not None else official.text
-        updated_as_on, source_url = official.updated_as_on, official.source_url
-        pdf_bytes, pdf_url = official.pdf_bytes, official.pdf_url
-    else:
-        text, updated_as_on, source_url = official
-        pdf_bytes, pdf_url = None, None
+    # Seeders return either a SeedResult (with the regulator's own PDF) or the older 3-tuple. Normalised in
+    # one place rather than unpacked by shape here, so the contract is stated somewhere a test can reach it.
+    result = as_seed_result(official)
+    text = result.provisions if result.provisions is not None else result.text
+    updated_as_on, source_url = result.updated_as_on, result.source_url
+    pdf_bytes, pdf_url = result.pdf_bytes, result.pdf_url
     if isinstance(text, list):
         # Source already supplies the text section by section (e.g. the Income Tax portal's section API).
         parsed = [p for p in text if p.text.strip()]

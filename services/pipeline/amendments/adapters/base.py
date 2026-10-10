@@ -59,6 +59,27 @@ class SeedResult:
     pdf_url: str | None = None              # where that PDF lives on the regulator's site
 
 
+def as_seed_result(official: "SeedResult | tuple") -> "SeedResult":
+    """Whatever a seeder returned, as a SeedResult.
+
+    Seeders predate this class and most still return the original 3-tuple `(text, updated_as_on,
+    source_url)`; the ones that fetch the regulator's own PDF return a SeedResult. The caller was unpacking
+    both shapes inline, which works and leaves the contract stated nowhere -- so the two-shaped return value
+    was the one piece of the seeding path with no test, and `text` versus `provisions` is exactly the kind of
+    distinction that is got wrong quietly.
+
+    `provisions` wins over `text` when both are set: a source that already supplies its sections separately
+    (the income-tax portal's per-section API) has no need to be re-split, and re-splitting it would be the
+    bug.
+    """
+    if isinstance(official, SeedResult):
+        return official
+    text, updated_as_on, source_url = official
+    if isinstance(text, list):
+        return SeedResult(provisions=text, updated_as_on=updated_as_on, source_url=source_url)
+    return SeedResult(text=text, updated_as_on=updated_as_on, source_url=source_url)
+
+
 class Adapter(ABC):
     name: str                       # matches document.source_adapter
     regulator_code: str
