@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
+import { CiteThis } from "@/components/CiteThis";
 import { ProvisionBody, Provenance } from "@/components/LegalText";
 import { InstrumentTabs } from "@/components/InstrumentTabs";
 import type { RefContext } from "@/lib/crossref";
@@ -316,6 +317,19 @@ function ProvisionView({
             <Link href={`/browse/${slug}/${slugifyNumber(p.number)}/history`} className="btn">
               Amendment history{p.effect_count ? ` (${p.effect_count})` : ""}
             </Link>
+            {/* Everything needed to cite this correctly is already on this page and all of it had to be
+                retyped, which is where file-note errors come from -- the "as on" date most of all, because
+                "as amended" says nothing without it. The official address goes in ahead of ours, so the
+                note stands up without this site. */}
+            <CiteThis
+              unit={unit}
+              number={p.number}
+              heading={p.heading}
+              instrument={inst.title}
+              asOn={asOn ?? inst.official_updated_as_on}
+              officialUrl={source?.href ?? null}
+              path={`/browse/${slug}/text?p=${encodeURIComponent(p.number)}`}
+            />
           </div>
         </header>
         <SectionStep slug={slug} suffix={suffix} prev={prev} next={next} unit={unit} />
@@ -537,6 +551,20 @@ async function PdfReader({
               {inst.regulator_code}&rsquo;s page for this document
             </a>
           )}
+          {/* Instrument-level, with no number: 108 of the 195 instruments here are served as one
+              consolidated PDF and have no provision pages, so there is no section to cite separately.
+              Naming one anyway -- when the link can only ever reach the whole file -- would be a citation
+              that does not check out.
+              The regulator's page goes ahead of our mirror: `pdfUrl` resolves to the copy in R2, which is
+              the right thing for a reader to open and the wrong thing to put in a file note. A citation
+              should lead to SEBI, not to our bucket; the mirror stands in only when the regulator
+              publishes no page we can name. */}
+          <CiteThis
+            instrument={inst.title}
+            asOn={inst.official_updated_as_on}
+            officialUrl={regulatorPageUrl(inst) || pdfUrl}
+            path={`/browse/${slug}/text`}
+          />
         </div>
       </div>
 
