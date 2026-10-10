@@ -39,7 +39,11 @@ const READER_PAGES: { when: (i: InstrumentRow) => boolean; url: string }[] = [
 
 /** True when a URL is something a machine reads rather than something a person opens. */
 function isMachineEndpoint(url: string): boolean {
-  return /\/api\/|\/content\/(html|pdf)\/|format=json/i.test(url);
+  // `/o/headless-delivery/` is Liferay's REST layer, which is how CBDT's portal is read. It was missing
+  // here, and that omission was doing real damage: every one of CBDT's 2,234 documents -- 28% of all 8,030
+  // tracked -- stores a source_url of that shape, and the site offered it as "the regulator's page". A
+  // practitioner clicking it got a wall of JSON.
+  return /\/api\/|\/content\/(html|pdf)\/|format=json|\/o\/headless-delivery\//i.test(url);
 }
 
 /** Where "the regulator's page" should actually send a reader. Null when there is nowhere honest to send them. */
@@ -47,6 +51,39 @@ export function regulatorPageUrl(inst: InstrumentRow): string | null {
   const stored = inst.official_url;
   if (stored && !isMachineEndpoint(stored)) return stored;
   return READER_PAGES.find((r) => r.when(inst))?.url ?? null;
+}
+
+/** A document, as far as this module needs to know it. */
+type LinkableDocument = {
+  source_url: string;
+  reader_url?: string | null;
+  regulator_code?: string | null;
+  doc_type?: string | null;
+};
+
+/** Where "the regulator's page" should send a reader for one document, or null when nowhere honest exists.
+ *
+ * Three steps, in this order, and the order is the point:
+ *
+ *  1. `reader_url`, when the collector recorded one. Only CBDT needs it -- its portal is a JSON API behind a
+ *     Liferay site, so the URL the seeder reads is an endpoint and the page is a separate `/w/<slug>`
+ *     address the listing hands out (migration 0009).
+ *  2. `source_url`, when it is something a person can open. For CBIC, RBI, SEBI and MCA it always is: their
+ *     detail page is both what the seeder reads and what a reader wants.
+ *  3. The regulator's own listing, as a last resort. Not an answer -- it is a page of search results the
+ *     reader then has to work through -- but it is honest, which raw JSON was not.
+ *
+ * Null rather than a guess when none of those holds. A link that lands somewhere useless is worse than an
+ * absent one, because it looks like help.
+ */
+export function documentPageUrl(doc: LinkableDocument): string | null {
+  if (doc.reader_url) return doc.reader_url;
+  if (doc.source_url && !isMachineEndpoint(doc.source_url)) return doc.source_url;
+  const code = doc.regulator_code ?? null;
+  if (!code) return null;
+  // Reuses the curated reader pages above, matched on regulator alone: a document is not an instrument, so
+  // the `kind`-based rules do not apply to it and the Acts-versus-Rules split is meaningless here.
+  return READER_PAGES.find((r) => r.when({ regulator_code: code, kind: "" } as InstrumentRow))?.url ?? null;
 }
 
 export type OfficialSource =

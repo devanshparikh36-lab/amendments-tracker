@@ -8,6 +8,8 @@ export type DocumentRow = {
   date_issued: string | null;
   date_effective: string | null;
   source_url: string;
+  /** The page a reader should open, when the seeder's URL is not one. Null for most regulators. */
+  reader_url?: string | null;
   source_adapter: string;
   regulator_code: string;
   is_amending: boolean | null;
@@ -508,6 +510,7 @@ export async function instrumentIndex(): Promise<InstrumentRow[]> {
 export type ProvisionDocument = {
   id: number; title: string; number: string | null; date_issued: string | null; change_type: string | null;
   verification_status: string | null; relation: string | null; source_url: string; doc_type: string;
+  reader_url: string | null;
 } & OfficialFile;
 
 /** The stored official file for a document, so a notification number can link straight to the PDF it was
@@ -540,7 +543,7 @@ const OFFICIAL_FILE_COLS = `af.storage_key AS pdf_storage_key, af.source_url AS 
 
 export async function provisionDocuments(provisionId: number): Promise<ProvisionDocument[]> {
   return query<ProvisionDocument>(
-    `SELECT DISTINCT d.id, d.title, d.number, d.date_issued, d.source_url, d.doc_type,
+    `SELECT DISTINCT d.id, d.title, d.number, d.date_issued, d.source_url, d.reader_url, d.doc_type,
             e.change_type, e.verification_status, t.relation, ${OFFICIAL_FILE_COLS}
      FROM document d
      LEFT JOIN amendment_effect e ON e.document_id = d.id AND e.provision_id = $1
@@ -562,7 +565,7 @@ export function lastAmendment(docs: ProvisionDocument[]): ProvisionDocument | nu
 
 export async function instrumentDocuments(instrumentId: number) {
   return query<DocumentRow & { relation: string }>(
-    `SELECT d.id, d.title, d.number, d.doc_type, d.date_issued, d.date_effective, d.source_url, d.source_adapter,
+    `SELECT d.id, d.title, d.number, d.doc_type, d.date_issued, d.date_effective, d.source_url, d.reader_url, d.source_adapter,
             r.code AS regulator_code, d.is_amending, d.tag_status, d.first_seen_at, min(t.relation) AS relation,
             ${OFFICIAL_FILE_COLS}
      FROM document_tag t JOIN document d ON d.id = t.document_id JOIN regulator r ON r.id = d.regulator_id${OFFICIAL_FILE_JOIN}
@@ -613,7 +616,7 @@ export async function listDocuments(opts: {
   const limit = Math.min(opts.limit ?? 100, 1000);
   const offset = opts.offset ?? 0;
   const rows = await query<DocumentRow>(
-    `SELECT d.id, d.title, d.number, d.doc_type, d.date_issued, d.date_effective, d.source_url, d.source_adapter,
+    `SELECT d.id, d.title, d.number, d.doc_type, d.date_issued, d.date_effective, d.source_url, d.reader_url, d.source_adapter,
             r.code AS regulator_code, d.is_amending, d.tag_status, d.first_seen_at,
             (SELECT string_agg(DISTINCT i.short_code, ', ') FROM document_tag t JOIN instrument i ON i.id = t.instrument_id
                WHERE t.document_id = d.id AND t.relation IN ('amends','supersedes')) AS affects,

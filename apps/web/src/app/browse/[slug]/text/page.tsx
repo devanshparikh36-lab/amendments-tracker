@@ -24,7 +24,7 @@ import {
   type PageHit,
   type ProvisionRow,
 } from "@/lib/queries";
-import { officialSource, type OfficialSource, regulatorPageUrl } from "@/lib/source";
+import { documentPageUrl, officialSource, type OfficialSource, regulatorPageUrl } from "@/lib/source";
 
 // Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
 // root layout said so. Next works that out for itself.
@@ -338,9 +338,12 @@ function ProvisionView({
                   page about it. Practitioners cite the number, so the number reaches the source document. */}
               <OfficialNumber doc={last} number={last.number} />
               {last.date_issued && <span className="num text-[var(--ink-3)]">dated {fmtDate(last.date_issued)}</span>}
-              {last.source_url && (
+              {/* The amending notification's own page. Was `last.source_url`, which for CBDT is a JSON
+                  endpoint -- so on an income-tax section, the one link offered beside the amendment that
+                  changed it served raw API output. */}
+              {documentPageUrl({ ...last, regulator_code: inst.regulator_code }) && (
                 <a
-                  href={last.source_url}
+                  href={documentPageUrl({ ...last, regulator_code: inst.regulator_code })!}
                   target="_blank"
                   rel="noreferrer"
                   className="text-[var(--link)] hover:underline"

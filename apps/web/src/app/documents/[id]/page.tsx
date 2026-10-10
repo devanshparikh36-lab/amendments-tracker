@@ -8,6 +8,7 @@ import { DOC_TYPE_LABEL, fmtBytes, fmtDate } from "@/lib/format";
 import { query } from "@/db";
 import { provisionHref } from "@/lib/lookup";
 import { getDocument } from "@/lib/queries";
+import { documentPageUrl } from "@/lib/source";
 
 // A notification does not change after it is published. What can change is our tagging of it, which happens
 // during collection, so an hour is generous and still far fresher than the document itself will ever be.
@@ -71,14 +72,19 @@ export default async function DocumentPage({ params }: { params: Promise<{ id: s
           <Badge kind={doc.tag_status} />
           {doc.is_amending === true && <Badge kind="amends">amending</Badge>}
           {doc.is_amending === false && <Badge kind="references">not amending</Badge>}
-          <a
-            href={doc.source_url}
-            target="_blank"
-            rel="noreferrer"
-            className="ml-auto text-[var(--link)] hover:underline"
-          >
-            Official source page &rarr;
-          </a>
+          {/* Not `doc.source_url`: for CBDT that is a JSON endpoint, and this link was handing a reader
+              2,234 documents' worth of raw API output. documentPageUrl picks the page, and returns null
+              rather than linking somewhere useless. */}
+          {documentPageUrl(doc) && (
+            <a
+              href={documentPageUrl(doc)!}
+              target="_blank"
+              rel="noreferrer"
+              className="ml-auto text-[var(--link)] hover:underline"
+            >
+              Official source page &rarr;
+            </a>
+          )}
         </div>
       </header>
 

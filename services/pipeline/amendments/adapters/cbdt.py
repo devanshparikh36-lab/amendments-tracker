@@ -128,9 +128,16 @@ class _CbdtBase(Adapter):
                 number, _, subject = (f.get("circularNotificationNumber") or item.get("title") or "").partition(" : ")
                 title = (subject or "").strip() or (item.get("title") or "").strip()
                 pdf = f.get("reportFile__url")
+                # `itemURL` above is the headless-delivery endpoint the seeder reads, and it is the unique
+                # key, so it stays. This is the page the portal itself links a reader to: the same
+                # `/w/<friendlyUrlPath>` mechanism the Act sections use. The path is the title slugified by
+                # Liferay and contains literal slashes, which must be sent raw -- percent-encoding them
+                # returns 400, the raw form returns the notification's own page. Checked, not assumed.
+                friendly = ((item.get("embedded") or {}).get("friendlyUrlPath") or "").strip().strip("/")
                 out.append(
                     DiscoveredDocument(
                         source_url=url,
+                        reader_url=f"{BASE}/w/{friendly}" if friendly else None,
                         title=re.sub(r"\s+", " ", title)[:500] or number.strip(),
                         doc_type=self.doc_type,
                         number=number.strip() or None,

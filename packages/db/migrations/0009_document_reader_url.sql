@@ -1,0 +1,29 @@
+-- Somewhere to put the page a *reader* should open, as opposed to the endpoint the seeder read.
+--
+-- `document.source_url` is the unique key: it is how a document is recognised across runs, which means it
+-- cannot be repointed without breaking identity and risking duplicates of all 8,030 rows. For most
+-- regulators that is harmless, because what the seeder reads is also a page a person can open -- CBIC's
+-- `/content-page/explore-notification/<id>`, RBI's `BS_CircularIndexDisplay.aspx?Id=<id>`.
+--
+-- CBDT is the exception, and it is not a small one. Its portal is a Liferay app read through a JSON API, so
+-- every one of its 2,234 documents carries a source_url like
+--
+--   https://www.incometaxindia.gov.in/o/headless-delivery/v1.0/structured-contents/27376773
+--
+-- and the site was offering exactly that as "the regulator's page". Clicking it hands a practitioner a wall
+-- of JSON. That is 28% of every document tracked here.
+--
+-- The portal does publish a page per notification -- the same `/w/<friendlyUrlPath>` mechanism the Act
+-- sections use. It cannot be derived from anything already stored: the path is the title slugified by
+-- Liferay, and it contains literal slashes
+--
+--   /w/notification-no.-85/2026-f.no.370149/112/2026-tpl-/-so-3889-e-cost-inflation-index-...
+--
+-- which must be sent raw. Percent-encoding them returns 400; the raw form returns the notification's own
+-- page, which was checked rather than assumed.
+--
+-- So it is stored rather than computed, and in its own column rather than over the top of source_url.
+-- Nullable on purpose: a regulator whose seeding endpoint is already reader-facing has nothing to put here,
+-- and the display layer falls back to source_url for those. Null means "no better page is known", never
+-- "this document has no page".
+ALTER TABLE document ADD COLUMN IF NOT EXISTS reader_url TEXT;

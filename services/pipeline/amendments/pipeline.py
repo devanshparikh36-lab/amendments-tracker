@@ -535,7 +535,15 @@ def _upsert_discovered(conn: psycopg.Connection, reg_id: int, adapter: str, d: D
         _ensure_md_instrument(conn, reg_id, d)
     existing = db.fetch_one(conn, "SELECT id, title FROM document WHERE source_url = %s", (d.source_url,))
     if existing:
-        db.execute(conn, "UPDATE document SET last_seen_at = now() WHERE id = %s", (existing["id"],))
+        # `reader_url` is refreshed on every sighting, not only at insert. It is a slug of the title, so the
+        # regulator can change it by re-titling a notification -- and it is the whole point of the column
+        # that it keeps pointing at a page rather than going stale. COALESCE so an adapter that stops
+        # supplying one never erases a good value.
+        db.execute(
+            conn,
+            "UPDATE document SET last_seen_at = now(), reader_url = COALESCE(%s, reader_url) WHERE id = %s",
+            (d.reader_url, existing["id"]),
+        )
         # A Master Direction whose listing now shows a newer "Updated as on" date than the text we hold is a
         # republication: re-fetch it, which re-runs the self-check against the new official text.
         if d.doc_type in MASTER_DIRECTION_TYPES and d.extra.get("updated_as_on"):
@@ -547,9 +555,10 @@ def _upsert_discovered(conn: psycopg.Connection, reg_id: int, adapter: str, d: D
         return False
     row = db.fetch_one(
         conn,
-        """INSERT INTO document (regulator_id, source_adapter, doc_type, number, title, date_issued, source_url)
-           VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
-        (reg_id, adapter, d.doc_type, d.number, d.title, d.date_issued, d.source_url),
+        """INSERT INTO document (regulator_id, source_adapter, doc_type, number, title, date_issued, source_url,
+                                 reader_url)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+        (reg_id, adapter, d.doc_type, d.number, d.title, d.date_issued, d.source_url, d.reader_url),
     )
     for url in d.pdf_urls:
         db.execute(

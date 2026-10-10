@@ -16,6 +16,11 @@ class DiscoveredDocument:
     number: str | None = None
     date_issued: date | None = None
     pdf_urls: list[str] = field(default_factory=list)   # PDFs already visible on the listing page
+    # The page a reader should open, when that is not the URL the seeder read. Most regulators need nothing
+    # here: their detail page is both. CBDT's portal is a JSON API behind a Liferay site, so `source_url` is
+    # an endpoint and this is the page -- see migration 0009. Left None unless an adapter knows better, and
+    # the display layer falls back to `source_url`.
+    reader_url: str | None = None
     extra: dict = field(default_factory=dict)           # adapter specific (e.g. updated_as_on, rbi_id)
 
 

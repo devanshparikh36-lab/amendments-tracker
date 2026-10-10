@@ -72,6 +72,8 @@ export const document = pgTable("document", {
   dateIssued: date("date_issued"),
   dateEffective: date("date_effective"),
   sourceUrl: text("source_url").notNull(),
+  // The page a reader should open, where that differs from the URL the seeder read. See migration 0009.
+  readerUrl: text("reader_url"),
   rawHtml: text("raw_html"),
   extractedText: text("extracted_text"),
   checksum: text("checksum"),

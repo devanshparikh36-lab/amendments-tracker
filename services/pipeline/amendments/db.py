@@ -54,6 +54,22 @@ def execute(conn: psycopg.Connection, sql: str, params: tuple | dict = ()) -> in
         return cur.rowcount
 
 
+def execute_script(conn: psycopg.Connection, sql: str) -> None:
+    """Run SQL exactly as written, with no placeholder parsing at all.
+
+    `execute` passes a params tuple, and psycopg then treats every `%` in the statement as the start of a
+    placeholder. For a migration that is wrong twice: it takes no parameters, and its comments are prose.
+    The first migration to contain a per-cent sign failed to apply with "incomplete placeholder: '%'" --
+    nothing to do with its SQL, which was a single ALTER TABLE. Six migrations happened not to use the
+    character, so this waited a year to appear.
+
+    Passing None rather than a tuple tells psycopg there is nothing to interpolate, so the text is sent
+    verbatim. Only for static SQL from disk; anything with a value in it still belongs in `execute`.
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, None)
+
+
 def migrate() -> list[str]:
     """Apply every SQL file in packages/db/migrations in name order, tracking them in schema_migrations."""
     applied: list[str] = []
@@ -67,7 +83,7 @@ def migrate() -> list[str]:
             if path.name in done:
                 continue
             log.info("applying migration %s", path.name)
-            execute(conn, path.read_text(encoding="utf-8"))
+            execute_script(conn, path.read_text(encoding="utf-8"))
             execute(conn, "INSERT INTO schema_migrations (name) VALUES (%s)", (path.name,))
             applied.append(path.name)
     return applied
