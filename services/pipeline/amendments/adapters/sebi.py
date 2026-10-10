@@ -27,7 +27,7 @@ from urllib.parse import parse_qs, urljoin, urlparse
 from bs4 import BeautifulSoup
 
 from .. import http
-from .base import Adapter, DiscoveredDocument, FetchedAttachment, FetchedDocument, SeedResult
+from .base import Adapter, DiscoveredDocument, FetchedAttachment, FetchedDocument, SeedResult, SourceHasNoText
 from .rbi_common import parse_rbi_date as parse_date  # generic "Aug 24, 2026" / "24-08-2026" parser
 
 log = logging.getLogger(__name__)
@@ -472,6 +472,10 @@ def official_text(instrument: dict, cfg: dict) -> SeedResult:
     text = d.text
     pdf_bytes: bytes | None = None
     pdf_url: str | None = None
+    # Whether *fetching* broke, as opposed to there being nothing worth fetching. The difference decides
+    # whether this instrument is retried for ever or recorded as a gap in the regulator's own publishing,
+    # so it is tracked rather than inferred afterwards.
+    pdf_fetch_failed = False
     if d.pdf_urls:
         try:
             data, _ = http.get_bytes(d.pdf_urls[0])
@@ -481,9 +485,39 @@ def official_text(instrument: dict, cfg: dict) -> SeedResult:
                 # The PDF is the authoritative layout; prefer it when the page text is thin.
                 if len(pdf_text) > len(text):
                     text = pdf_text
+            else:
+                # Served something that is not a PDF. Not a fetch failure: retrying returns the same bytes.
+                log.warning(
+                    "%s: %s returned %d bytes that are not a PDF (starts %r)",
+                    instrument.get("slug"), d.pdf_urls[0], len(data), data[:8],
+                )
         except Exception as exc:
+            pdf_fetch_failed = True
             log.warning("%s: could not fetch the official PDF: %s", instrument.get("slug"), str(exc)[:120])
     if len(text) < 2000:
+        # A page that loaded, was read, and holds a title and a date is not a failure to be retried -- it is
+        # a document SEBI has not published. Three master circulars are in that state: 184 to 271
+        # characters, no attachment of any kind, and no amount of retrying will add one. Distinguished from
+        # a thin page that *does* offer a file, which is a real failure to fetch it and must keep retrying.
+        # What makes retrying pointless is that nothing broke: the page loaded, its attachment was fetched
+        # and read, and the total is this short. Tomorrow it will be the same length. Only a fetch that
+        # actually errored is worth another attempt.
+        #
+        # What these three master circulars hold, checked by downloading them: a real PDF of 51 to 103 KB,
+        # one or two pages, with a text layer -- and that text is the covering circular and nothing else.
+        # "MASTER CIRCULAR / CIR/MRD/DP/17/2014 / May 20, 2014 / To, All Stock Exchanges" and then it ends.
+        # The consolidated text the title promises was never attached.
+        #
+        # So the gap is real, and it is SEBI's, not a parsing failure -- which is the distinction worth
+        # recording. The alternative, serving that covering letter as the Master Circular, would put a
+        # one-page transmittal under a title promising a consolidated text.
+        if not pdf_fetch_failed:
+            raise SourceHasNoText(
+                f"{instrument.get('slug')}: SEBI publishes only {len(text)} characters here"
+                + (f", including the attached {d.pdf_urls[0].rsplit('/', 1)[-1]}" if d.pdf_urls else "")
+                + " -- a covering circular with no consolidated text behind it. Nothing to collect until "
+                f"SEBI attaches one. {url}"
+            )
         raise RuntimeError(f"{instrument.get('slug')}: SEBI page {url} yielded only {len(text)} characters")
     stamp = updated_as_on(d.title or "") or updated_as_on(instrument.get("title") or "") or d.date_issued
     log.info(

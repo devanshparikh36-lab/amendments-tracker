@@ -851,6 +851,25 @@ export async function sourceRuns() {
   );
 }
 
+/** Instruments the regulator itself publishes nothing for — a gap in the source, not a collection failure.
+ *
+ * Worth its own panel on /status rather than leaving three permanent failures in the jobs table. A backlog
+ * nobody can clear teaches people to stop reading the backlog, and then the entries that *are* actionable go
+ * unread with it. Here the gap is stated once, with the date it was last confirmed and the regulator's own
+ * page, so it can be checked rather than merely tolerated.
+ */
+export async function sourceGaps() {
+  return query<{ slug: string; title: string; short_code: string; regulator_code: string; source_state: string; source_state_at: string | null; official_url: string | null }>(
+    `SELECT i.slug, i.title, i.short_code, r.code AS regulator_code, i.source_state, i.source_state_at,
+            i.official_url
+       FROM instrument i JOIN regulator r ON r.id = i.regulator_id
+      WHERE i.source_state IS NOT NULL
+      ORDER BY r.code, i.title`,
+    [],
+    LIVE_SECONDS,
+  );
+}
+
 export async function jobStats() {
   return query<{ type: string; status: string; n: number; last_error: string | null }>(
     `SELECT type, status, count(*)::int AS n, max(error) AS last_error FROM job GROUP BY type, status ORDER BY type, status`,

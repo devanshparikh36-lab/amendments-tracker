@@ -1,9 +1,9 @@
 ﻿import Link from "next/link";
 import { Breadcrumbs } from "@/components/PageHeader";
 import { Badge } from "@/components/Badge";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDate, fmtDateTime } from "@/lib/format";
 import { provisionHref } from "@/lib/lookup";
-import { jobStats, recentEffects, sourceRuns } from "@/lib/queries";
+import { jobStats, recentEffects, sourceGaps, sourceRuns } from "@/lib/queries";
 
 // Deliberately dynamic: this page answers "is collection alive right now", and a cached answer to that
 // question is worse than a slow one.
@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Collection status" };
 
 export default async function StatusPage() {
-  const [runs, jobs, effects] = await Promise.all([sourceRuns(), jobStats(), recentEffects(100)]);
+  const [runs, jobs, effects, gaps] = await Promise.all([sourceRuns(), jobStats(), recentEffects(100), sourceGaps()]);
   const problems = effects.filter(
     (e) => e.change_type === "cannot_apply" || e.verification_status === "differs_from_official",
   );
@@ -108,6 +108,54 @@ export default async function StatusPage() {
           </table>
         </div>
       </section>
+
+      {/* Stated here rather than left as permanent failures in the table above. These are documents the
+          regulator has not published; nothing in the pipeline can produce them, and a backlog that cannot
+          be cleared is one people stop reading. */}
+      {gaps.length > 0 && (
+        <section className="panel">
+          <div className="panel-head">
+            <h2 className="eyebrow">Published by nobody ({gaps.length})</h2>
+            <p className="meta mt-0.5 max-w-3xl">
+              The regulator&rsquo;s own page for these carries no text to collect &mdash; in each case a
+              covering circular with no consolidated document attached. Re-checked on the usual schedule, so
+              this clears itself if the document ever appears.
+            </p>
+          </div>
+          <div className="scroll-x">
+            <table className="dtable">
+              <thead>
+                <tr>
+                  <th>Instrument</th>
+                  <th>Regulator</th>
+                  <th>Confirmed</th>
+                  <th>Regulator&rsquo;s page</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gaps.map((g) => (
+                  <tr key={g.slug}>
+                    <td>
+                      <Link href={`/browse/${g.slug}`} className="hover:underline">
+                        {g.title}
+                      </Link>
+                    </td>
+                    <td>{g.regulator_code}</td>
+                    <td className="num">{fmtDate(g.source_state_at)}</td>
+                    <td className="text-[12px]">
+                      {g.official_url && (
+                        <a href={g.official_url} target="_blank" rel="noreferrer" className="text-[var(--link)] hover:underline">
+                          open
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
 
       <section>
         <div className="mb-2">

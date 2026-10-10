@@ -59,6 +59,20 @@ class SeedResult:
     pdf_url: str | None = None              # where that PDF lives on the regulator's site
 
 
+class SourceHasNoText(RuntimeError):
+    """The regulator's page offers no text and no file, and that is a fact about the source, not a failure.
+
+    Raised only when there is nothing to retry *for*: the page loaded, it was read, and it contains a title
+    and a date. Three of SEBI's master circulars are in exactly that state -- 184 to 271 characters, zero
+    attachments -- and treating them as failures cost three attempts and a red workflow every day, which on
+    10 October was 88 of 160 failed self-check rows. An alarm that cannot be cleared stops being read, and
+    takes the real ones with it.
+
+    Distinct from an unreachable source, which is transient and *should* be retried. The test is whether
+    reading succeeded and came back empty, never whether reading failed.
+    """
+
+
 def as_seed_result(official: "SeedResult | tuple") -> "SeedResult":
     """Whatever a seeder returned, as a SeedResult.
 

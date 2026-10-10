@@ -17,7 +17,7 @@ import psycopg
 
 from . import browser, db, rules
 from .adapters import registry, official_text_for
-from .adapters.base import DiscoveredDocument, SeedResult, as_seed_result
+from .adapters.base import DiscoveredDocument, SeedResult, SourceHasNoText, as_seed_result
 from .ai import tasks as ai
 from .config import settings
 from .http import get_bytes, sha256
@@ -970,6 +970,11 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
         raise RuntimeError(f"no seed source configured for {slug}")
     try:
         official = official_text_for(inst, cfg)
+    except SourceHasNoText:
+        # Deliberately not wrapped. The wrapper below turns everything into a RuntimeError naming the
+        # adapter and URL, which is right for a failure and wrong for this: the type is the whole point, and
+        # `process_jobs` reads it to decide not to retry. Re-raised unchanged, message and all.
+        raise
     except Exception as exc:
         # Say which instrument, which source and which adapter. Without this the job table filled with 397
         # rows reading only "timed out" -- true, useless, and indistinguishable from one another, so the
@@ -1152,8 +1157,12 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
                 stats["updated_official"] += 1
         db.execute(
             conn,
+            # `source_state = NULL` on every success, so the finding expires the moment it stops being true.
+            # SEBI uploading one of those three master circulars should clear the gap on /status by itself:
+            # a recorded absence that outlives the absence is just a stale claim about the regulator.
             "UPDATE instrument SET official_updated_as_on = %s, seeded_at = COALESCE(seeded_at, now()),"
-            " last_checked_at = now(), official_url = COALESCE(%s, official_url) WHERE id = %s",
+            " last_checked_at = now(), official_url = COALESCE(%s, official_url),"
+            " source_state = NULL, source_state_at = NULL WHERE id = %s",
             (updated_as_on, source_url, inst["id"]),
         )
     log.info("seed/selfcheck %s: %s", slug, stats)
@@ -2000,6 +2009,31 @@ def process_jobs(
             HANDLERS[job["type"]](job["payload"])
             with db.transaction() as conn:
                 db.execute(conn, "UPDATE job SET status = 'done', updated_at = now() WHERE id = %s", (job["id"],))
+        except SourceHasNoText as exc:
+            # Not a failure: the source was read and holds nothing to collect. Recorded on the instrument
+            # and the job closed as done, so it neither retries three times nor turns the workflow red.
+            #
+            # `done` rather than a status of its own because a job is a unit of work and this one is
+            # finished -- there is no action left in it. What is worth keeping is the finding, and that
+            # belongs on the instrument, where /status can show it with the date it was last confirmed
+            # instead of leaving three permanent failures in a backlog nobody can clear.
+            log.warning("job %s (%s): %s", job["id"], job["type"], exc)
+            with db.transaction() as conn:
+                db.execute(
+                    conn,
+                    "UPDATE job SET status = 'done', error = %s, updated_at = now() WHERE id = %s",
+                    (f"{exc}"[:4000], job["id"]),
+                )
+                slug = (job["payload"] or {}).get("slug")
+                if slug:
+                    db.execute(
+                        conn,
+                        """UPDATE instrument
+                              SET source_state = 'no_text_at_source', source_state_at = now(),
+                                  last_checked_at = now()
+                            WHERE slug = %s""",
+                        (slug,),
+                    )
         except Exception as exc:
             log.exception("job %s (%s) failed", job["id"], job["type"])
             status = "queued" if job["attempts"] < MAX_ATTEMPTS else "failed"
