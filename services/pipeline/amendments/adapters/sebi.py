@@ -61,6 +61,12 @@ _LAST_AMENDED = re.compile(
     r"\[?\s*[Ll]ast amended (?:on|as on)?\s*(?:on\s*)?(?P<d>[A-Z][a-z]+ \d{1,2},? \d{4}|\d{1,2}[./-]\d{1,2}[./-]\d{4})",
 )
 _CIRCULAR_NO = re.compile(r"(?:Circular|Notification)\s*No\.?\s*:?\s*(?P<num>\S.{0,120}?)\s*$", re.I)
+# A PDF under one of SEBI's own document directories, wherever it appears in the markup. Used only as a last
+# resort in `parse_detail`; the directory names are what keep it from matching a PDF hosted anywhere else.
+_SEBI_DOC_URL = re.compile(
+    r"(?:https?://(?:www\.)?sebi\.gov\.in)?/(?:cms/)?sebi_data/(?:commondocs|attachdocs|docfiles)/[^\s\"'<>]+?\.pdf",
+    re.I,
+)
 _EFFECTIVE = re.compile(
     r"(?:shall come into force|come into force|shall be effective|with effect from|w\.e\.f\.)\s*"
     r"(?:on|from|the)?\s*(?P<d>[A-Z][a-z]+ \d{1,2},? \d{4}|\d{1,2}(?:st|nd|rd|th)? [A-Z][a-z]+,? \d{4})",
@@ -287,6 +293,22 @@ def parse_detail(html: str, page_url: str) -> Detail:
         url = pdf_from_viewer(a["href"], page_url)
         if url and re.search(r"\.pdf(\?|$)", url, re.I) and url not in pdf_urls:
             pdf_urls.append(url)
+    # Last resort: a document SEBI names in the page but not as a link.
+    #
+    # The AML and CFT master circular is the case. SEBI put raw anchor markup inside the *title* field of
+    # their CMS -- the page's own URL ends
+    # "...-a-href-http-www-sebi-gov-in-cms-sebi-data-commondocs-isdcir0108-p-pdf-target-blank-pdf-a-_6847.html"
+    # -- so the attachment survives in the HTML as a bare URL that is neither an href nor an iframe. The
+    # file is real (83 KB, a valid PDF); only the link to it is not a link.
+    #
+    # Bounded two ways so it cannot invent an attachment: only when nothing else was found, and only for
+    # SEBI's own document directories. A PDF merely mentioned in the body of a circular lives somewhere
+    # else and is not picked up.
+    if not pdf_urls:
+        for found in dict.fromkeys(_SEBI_DOC_URL.findall(html)):
+            url = found if found.startswith("http") else urljoin(page_url, found)
+            # http:// in SEBI's older markup; their site redirects, but ask for https directly.
+            pdf_urls.append(re.sub(r"^http://", "https://", url))
 
     # Body text: only present when SEBI published the document as HTML rather than (as usual) a PDF.
     for junk in section.select(".date_value, .id_area, .rel_art, .social-share-btn"):
@@ -467,6 +489,24 @@ def official_text(instrument: dict, cfg: dict) -> SeedResult:
     from ..parsers.pdf import extract_pdf_text  # local import keeps the adapter importable without PyMuPDF
 
     url = _resolve_url(instrument, cfg)
+    # This parser only understands SEBI's own pages, and it will happily read anything.
+    #
+    # `sebi-foreign-institutional-investors-1995` was registered with an RBI circular-index URL -- the page
+    # of the RBI circular that cited the regulation, not SEBI's page for it -- and nobody noticed, because
+    # the parser dutifully returned 347,286 characters titled "Index To RBI Circulars" and then failed on
+    # something further downstream ("configured as PDF-only but no official PDF was returned"), which named
+    # neither the real problem nor the page it had actually read.
+    #
+    # The regulation itself was repealed: SEBI's live listing carries the Foreign Portfolio Investors
+    # Regulations 2019 and no FII 1995 at all, so there is no SEBI page to point at. Checked across every
+    # instrument, this is the only such mismatch -- but a guard that names it beats one more day of an error
+    # describing a symptom.
+    if "sebi.gov.in" not in urlparse(url).netloc:
+        raise SourceHasNoText(
+            f"{instrument.get('slug')}: this instrument's official_url is {url}, which is not a SEBI page, "
+            "so there is no SEBI text to read. Either the instrument was registered from a document that "
+            "merely cites it, or SEBI has stopped publishing it."
+        )
     html = http.get_text(url)
     d = parse_detail(html, url)
     text = d.text

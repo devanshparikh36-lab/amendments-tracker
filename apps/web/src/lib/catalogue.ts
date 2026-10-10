@@ -119,6 +119,17 @@ export const SUPERSEDED_BY: Record<string, string> = {
   "fem-export-of-goods-services-regulations-2015": "fem-export-and-import-of-goods-and-services-regulations-2026",
   "fem-borrowing-or-lending-in-foreign-exchange-regulations-2000": "fem-borrowing-and-lending-regulations-2018",
   "fem-manner-of-receipt-payment-regulations-2000": "fem-manner-of-receipt-and-payment-regulations-2023",
+
+  // Not inferred either, but established from SEBI's own listing rather than from the titles: a full pass
+  // over SEBI's Legal > Regulations listing (1,138 entries) carries the Foreign Portfolio Investors
+  // Regulations 2019 and no Foreign Institutional Investors Regulations 1995 at all. The 1995 regulations
+  // were repealed and recast -- FII 1995 to FPI 2014 to FPI 2019 -- so there is no SEBI page left to read,
+  // which is also why that instrument's self-check could never succeed.
+  //
+  // Pointed at `sebi-foreign-portfolio-investors-regulations-2019` and not `sebi-fpi-2019`: both exist, and
+  // the former is the one that holds anything (SEBI's official PDF, 37 pages). The latter is an empty
+  // duplicate registered from the listing and is worth cleaning up separately.
+  "sebi-foreign-institutional-investors-1995": "sebi-foreign-portfolio-investors-regulations-2019",
 };
 
 export function supersededBy(slug: string): string | null {

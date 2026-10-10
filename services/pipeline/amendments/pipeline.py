@@ -1016,6 +1016,28 @@ def seed_or_selfcheck_instrument(slug: str, *, document_id: int | None = None) -
             log.warning("%s: %d of %d provisions parsed empty and no official PDF is available", slug, empty, len(body))
 
     if not pdf_only and len(parsed) < 3:
+        # Refusing to overwrite is the right outcome, so stop reporting it as a failure.
+        #
+        # `fem-export-of-goods-and-services-regulations-2000` hit this every run: the regulation was
+        # superseded by the 2026 one, RBI's old notification page no longer parses into sections, and the
+        # nine provisions already held are better than the two a re-parse produces. The gate kept the good
+        # text -- exactly as intended -- and then raised, which cost three attempts and a red workflow for
+        # having made the correct decision.
+        #
+        # When there is nothing held to protect, it is still a failure: a first seed that yields two
+        # provisions has produced nothing worth keeping and somebody should look at it.
+        with db.transaction() as conn:
+            held = db.fetch_one(
+                conn, "SELECT count(*) AS n FROM provision WHERE instrument_id = %s", (inst["id"],)
+            )
+        if held and held["n"] >= 3:
+            log.warning(
+                "%s: the source now parses into only %d provisions; keeping the %d already held",
+                slug, len(parsed), held["n"],
+            )
+            with db.transaction() as conn:
+                db.execute(conn, "UPDATE instrument SET last_checked_at = now() WHERE id = %s", (inst["id"],))
+            return {"provisions": held["n"], "mode": "kept what was already held", "parsed_now": len(parsed)}
         raise RuntimeError(f"official text for {slug} parsed into only {len(parsed)} provisions; refusing to overwrite")
 
     if pdf_only:
