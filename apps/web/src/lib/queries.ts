@@ -170,6 +170,27 @@ export async function getProvision(instrumentId: number, number: string, asOn?: 
   return rows[0] ?? null;
 }
 
+/** Every dated text held for one provision, oldest first.
+ *
+ * Point-in-time reading was reachable but not navigable: a bare date picker, and no way to know which dates
+ * mean anything. Asking for 2019 returned "No text recorded for this date" -- true, and indistinguishable
+ * from a bug, because nothing said that this archive begins when the tracker started watching rather than
+ * when the provision was enacted.
+ *
+ * So the dates it actually holds are listed. For most provisions that is one entry, which is itself the
+ * honest answer: 751 of 5,254 have more than one, and 4,049 of 6,014 versions are dated 2026 because that
+ * is when each instrument was first read. The archive deepens forward and cannot be backfilled.
+ */
+export async function provisionVersionDates(provisionId: number) {
+  return query<{ effective_from: string | null; effective_to: string | null; chars: number }>(
+    `SELECT effective_from, effective_to, length(coalesce(text, ''))::int AS chars
+       FROM provision_version
+      WHERE provision_id = $1
+      ORDER BY effective_from NULLS FIRST, id`,
+    [provisionId],
+  );
+}
+
 export type LookupProvision = {
   id: number;
   number: string;

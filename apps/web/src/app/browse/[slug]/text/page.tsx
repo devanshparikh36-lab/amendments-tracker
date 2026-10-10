@@ -3,6 +3,7 @@ import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { CiteThis } from "@/components/CiteThis";
+import { VersionsHeld, type HeldVersion } from "@/components/VersionsHeld";
 import { ProvisionBody, Provenance } from "@/components/LegalText";
 import { InstrumentTabs } from "@/components/InstrumentTabs";
 import type { RefContext } from "@/lib/crossref";
@@ -20,6 +21,7 @@ import {
   listProvisions,
   lastAmendment,
   provisionDocuments,
+  provisionVersionDates,
   searchInstrumentPages,
   type InstrumentRow,
   type PageHit,
@@ -71,7 +73,9 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
     sp.p ? getProvision(inst.id, sp.p, sp.asOn) : Promise.resolve(null),
     fullText ? listProvisions(inst.id, sp.asOn) : Promise.resolve([]),
   ]);
-  const selectedDocs = selected ? await provisionDocuments(selected.id) : [];
+  const [selectedDocs, heldVersions] = selected
+    ? await Promise.all([provisionDocuments(selected.id), provisionVersionDates(selected.id)])
+    : [[], []];
   const source = officialSource(inst, selected, unit);
   const sections = index.filter((i) => i.level !== "chapter");
   // Neighbours of the section being read, in the instrument's own order, so it can be read straight through
@@ -171,6 +175,7 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
               unit={unit}
               source={source}
               docs={selectedDocs}
+              held={heldVersions}
               asOn={sp.asOn}
               prev={prevSection}
               next={nextSection}
@@ -260,6 +265,7 @@ function ProvisionView({
   unit,
   source,
   docs,
+  held,
   asOn,
   prev,
   next,
@@ -272,6 +278,7 @@ function ProvisionView({
   unit: string;
   source: OfficialSource;
   docs: Awaited<ReturnType<typeof provisionDocuments>>;
+  held: HeldVersion[];
   asOn?: string;
   prev: Neighbour;
   next: Neighbour;
@@ -332,6 +339,18 @@ function ProvisionView({
             />
           </div>
         </header>
+        {/* Which dated texts exist for this provision, and -- when a date was asked for that predates
+            them -- why there is nothing to show. Placed above the amendment banner because it governs
+            which text the banner is describing. */}
+        <VersionsHeld
+          versions={held}
+          asOn={asOn}
+          unit={unit}
+          foundText={Boolean(p.text || p.html)}
+          href={(on) =>
+            `/browse/${slug}/text?p=${encodeURIComponent(p.number)}${on ? `&asOn=${on}` : ""}`
+          }
+        />
         <SectionStep slug={slug} suffix={suffix} prev={prev} next={next} unit={unit} />
         {last && (
           <div className="border-b border-[var(--rule)] bg-[var(--amend-bg)] px-5 py-2.5 text-[13px]">
