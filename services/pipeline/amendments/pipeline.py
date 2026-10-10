@@ -178,6 +178,16 @@ def _seed_config(slug: str) -> dict | None:
 
 # ----------------------------------------------------------------------------- discovery
 
+class CollapsedDiscovery(RuntimeError):
+    """An adapter listed far less than it recently has, without listing nothing.
+
+    `EmptyDiscovery` below covers the cliff edge -- zero against a productive history. This covers the rest of
+    the cliff, which was open: the check was `found == 0`, so a listing that fell from hundreds to a handful
+    passed as healthy. Nothing in the system could then distinguish "the regulator published little" from
+    "the source stopped listing most of it", and the second looks exactly like the first from here.
+    """
+
+
 class EmptyDiscovery(RuntimeError):
     """An adapter listed nothing although it has listed documents recently.
 
@@ -210,6 +220,119 @@ def _recent_peak(conn: psycopg.Connection, adapter_name: str, days: int = 30) ->
         (adapter_name, days),
     )
     return int(row["peak"]) if row else 0
+
+
+# A listing that falls to this fraction of its own recent normal is treated as broken rather than quiet.
+# 0.4 is deliberately generous: real listings move about, and the failure this catches is a cliff, not a dip.
+COLLAPSE_FRACTION = 0.4
+# Below this, proportions stop meaning anything -- an adapter that normally lists 4 documents and lists 1 is
+# not evidence of anything. Those are left to the zero check, which still covers them.
+COLLAPSE_MIN_MEDIAN = 10
+
+
+def _listing_median(conn: psycopg.Connection, adapter_name: str, days: int = 30) -> tuple[float, int]:
+    """The median listing size of this adapter's recent successful runs, and how many runs that is.
+
+    The median, not the maximum, and this is the whole point. `_recent_peak` answers "what is the most this
+    has ever listed", which is the wrong question twice over: a one-off backfill run (`--since-year 2014`)
+    lists every year at once and sets a peak no daily run will ever approach, and -- worse -- it is a maximum
+    over *successful* runs in a rolling window, so a collapse that persists for a month becomes the new
+    normal and the alarm can never fire again. The median is unmoved by the occasional backfill outlier and,
+    because collapsed runs are now recorded as failures, they stop feeding it at all.
+    """
+    row = db.fetch_one(
+        conn,
+        """SELECT count(*) AS n,
+                  percentile_cont(0.5) WITHIN GROUP (ORDER BY docs_found) AS median
+             FROM source_run
+            WHERE adapter = %s AND ok IS TRUE AND docs_found IS NOT NULL
+              AND started_at > now() - (%s || ' days')::interval""",
+        (adapter_name, days),
+    )
+    if not row or not row["n"]:
+        return 0.0, 0
+    return float(row["median"] or 0), int(row["n"])
+
+
+def _previous_listing(conn: psycopg.Connection, adapter_name: str) -> int | None:
+    """What this adapter listed on its last successful run, or None if it has none.
+
+    Today's row is already open but not yet marked `ok`, so it is excluded without needing to say so.
+    """
+    row = db.fetch_one(
+        conn,
+        """SELECT docs_found FROM source_run
+            WHERE adapter = %s AND ok IS TRUE AND docs_found IS NOT NULL
+            ORDER BY started_at DESC LIMIT 1""",
+        (adapter_name,),
+    )
+    return int(row["docs_found"]) if row else None
+
+
+def collapse_reason(
+    *,
+    found: int,
+    median: float,
+    samples: int,
+    previous: int | None,
+    day_of_year: int,
+    days: int = 30,
+) -> str | None:
+    """Why this listing should be treated as broken, or None if it looks normal.
+
+    Pure, and separated from the queries that feed it so that every rule below can be tested without a
+    database -- the rules are the part that will be wrong, not the SQL.
+
+    The gap this closes: the only check was `found == 0`. CBIC's GST notifications listing holds 1,283
+    documents and its daily run lists 5 -- which is correct, because the daily run asks for the current year
+    only -- but had it dropped to 5 from a genuine 1,283, nothing would have said so, because 5 is not 0.
+    Establishing which of those it was took an afternoon of running adapters by hand; meanwhile a reader
+    would have seen a thinner library and every run green.
+    """
+    # Skipped while the comparison window straddles New Year. Several adapters scope their daily listing to
+    # the current year (`_years(None)` returns `[this_year]`), so in early January they legitimately list
+    # almost nothing while the median still describes December. A known blind spot stated out loud beats an
+    # alarm everyone learns to dismiss every January -- and the zero check still covers the worst case.
+    if day_of_year <= days:
+        return None
+    # Four runs is the fewest from which "normal" means anything; a newly added adapter has no normal yet.
+    if samples < 4 or median < COLLAPSE_MIN_MEDIAN:
+        return None
+    floor = median * COLLAPSE_FRACTION
+    if found >= floor:
+        return None
+    # Two consecutive collapsed runs are required. A single bad day is usually the source, not us: these
+    # sites rate-limit, time out and occasionally serve a half-built page. Failing on one dip would train
+    # everyone to ignore the alarm, which is the same outcome as having no alarm, reached more expensively.
+    if previous is None or previous >= floor:
+        return None
+    return (
+        f"listed {found} documents, and {previous} on the run before, against a median of {median:.0f} "
+        f"across {samples} successful runs in the last {days} days. Two runs under {COLLAPSE_FRACTION:.0%} "
+        "of normal is a listing that has lost most of itself, not a quiet source: check whether the site "
+        "changed its listing API, or whether a category or year now returns nothing. The per-unit warnings "
+        "are above this line."
+    )
+
+
+def _collapse_reason(conn: psycopg.Connection, adapter_name: str, found: int, *, days: int = 30) -> str | None:
+    """`collapse_reason` with this adapter's own history read from the database."""
+    median, samples = _listing_median(conn, adapter_name, days)
+    reason = collapse_reason(
+        found=found,
+        median=median,
+        samples=samples,
+        previous=_previous_listing(conn, adapter_name),
+        day_of_year=date.today().timetuple().tm_yday,
+        days=days,
+    )
+    # Said once on the way down, so the first collapsed run leaves a trace even though it does not fail.
+    if reason is None and samples >= 4 and median >= COLLAPSE_MIN_MEDIAN and found < median * COLLAPSE_FRACTION:
+        log.warning(
+            "%s listed %d against a recent median of %.0f; watching, and will fail if the next run agrees",
+            adapter_name, found, median,
+        )
+    return reason
 
 
 def adapters_failed_since(when: datetime) -> list[str]:
@@ -302,6 +425,20 @@ def run_discovery(adapter_names: list[str] | None = None, *, since_year: int | N
                         "30 days. Every unit of work inside the adapter failed, on a fresh browser as well as "
                         "the first one; the per-unit warnings are above this line."
                     )
+            # A listing can lose most of itself without losing all of it, and that passed as healthy. Checked
+            # only on a non-empty result: zero is the case above, which retries on a fresh browser first.
+            # Deliberately before the upsert -- whatever did arrive is still worth keeping, but the run has to
+            # be recorded as a failure so it stops feeding the baseline and the workflow goes red.
+            if found:
+                with db.transaction() as conn:
+                    collapse = _collapse_reason(conn, name, found)
+                if collapse:
+                    with db.transaction() as conn:
+                        reg_id = db.regulator_id(conn, adapter.regulator_code)
+                        for d in docs:
+                            if _upsert_discovered(conn, reg_id, name, d):
+                                new += 1
+                    raise CollapsedDiscovery(collapse)
             with db.transaction() as conn:
                 reg_id = db.regulator_id(conn, adapter.regulator_code)
                 for d in docs:
