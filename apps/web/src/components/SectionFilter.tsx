@@ -152,8 +152,8 @@ export function SectionFilter({
             >
               <span className="num font-medium">{i.number}</span>
               {i.heading ? <span className="text-[var(--ink-3)]"> {i.heading.replace(/[.\-\s]+$/, "")}</span> : null}
-              {i.machine && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-amber-500 align-middle" />}
-              {i.differs > 0 && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-red-500 align-middle" />}
+              {i.machine && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-[var(--flag-machine)] align-middle" />}
+              {i.differs > 0 && <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-[var(--flag-alert)] align-middle" />}
             </Link>
           ),
         )}

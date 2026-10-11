@@ -167,7 +167,7 @@ export default async function FindPage({
               <li key={p.id}>
                 <Link
                   href={provisionHref(p.instrument_slug, p.number)}
-                  className="block px-4 py-2 hover:bg-[#faf9f6]"
+                  className="block px-4 py-2 hover:bg-[var(--tint)]"
                 >
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <span className="font-semibold capitalize">
@@ -192,7 +192,7 @@ export default async function FindPage({
           <ul className="feed">
             {instruments.map((i) => (
               <li key={i.id}>
-                <Link href={`/browse/${i.slug}`} className="flex items-baseline gap-3 px-4 py-2 hover:bg-[#faf9f6]">
+                <Link href={`/browse/${i.slug}`} className="flex items-baseline gap-3 px-4 py-2 hover:bg-[var(--tint)]">
                   <span className="min-w-0 flex-1 text-[13.5px]">{i.title}</span>
                   <span className="meta num whitespace-nowrap">
                     {KIND_LABEL[i.kind] ?? i.kind}

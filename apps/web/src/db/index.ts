@@ -73,7 +73,18 @@ const readThrough = cache(async (text: string, paramsJson: string, ttlSeconds: n
     revalidate: ttlSeconds,
     tags: ["db"],
   });
-  return cached();
+  try {
+    return await cached();
+  } catch (err) {
+    // A cache that cannot store the answer must not stop the page showing it.
+    //
+    // Next refuses a single data-cache entry over 2MB and throws, which is how a query returning a whole
+    // Act's text took a page down rather than merely failing to cache. The query itself was the bug and is
+    // fixed, but the shape of the failure is worth defending against: any future query that grows past the
+    // ceiling should get slower, not broken.
+    if (process.env.LOG_DB_HITS) console.log(`[db] cache bypassed: ${(err as Error).message}`);
+    return runQuery<unknown>(text, params);
+  }
 });
 
 export async function query<T = Record<string, unknown>>(

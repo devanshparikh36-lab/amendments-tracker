@@ -7,7 +7,7 @@ import { OfficialNumber } from "@/components/OfficialNumber";
 import { unitFor } from "@/lib/catalogue";
 import { fmtDate, fmtDateTime, slugifyNumber } from "@/lib/format";
 import { provisionHref } from "@/lib/lookup";
-import { getInstrument, listProvisions, provisionHistory } from "@/lib/queries";
+import { getInstrument, listProvisionIndex, provisionHistory } from "@/lib/queries";
 
 // An amendment history only changes when a new version of the provision is recorded, which happens during
 // collection at 07:00 if at all. Rendered once and reused for an hour, rather than rebuilt for every reader.
@@ -34,7 +34,15 @@ export default async function HistoryPage({ params }: { params: Promise<{ slug: 
   const inst = await getInstrument(slug);
   if (!inst) notFound();
   // provision numbers are slugified in the URL; resolve back by matching slugified numbers
-  const all = await listProvisions(inst.id);
+  // `listProvisionIndex`, not `listProvisions`. Both answer "which provisions does this instrument have",
+  // and only one of them carries every provision's full text -- which is all this needs to do is match a
+  // slug against a number.
+  //
+  // On the Income-tax Rules that difference was 2.87 MB of statutory text fetched to find one row. It was
+  // also over Next's 2 MB ceiling for a single data-cache entry, so the result could not be cached at all:
+  // the cache write failed, raised an unhandled rejection on the server, and every visit to a history page
+  // went back to Neon for the whole Act. Found in the browser console while checking something else.
+  const all = await listProvisionIndex(inst.id);
   const match = all.find((p) => slugifyNumber(p.number) === prov);
   if (!match) notFound();
   const history = await provisionHistory(inst.id, match.number);

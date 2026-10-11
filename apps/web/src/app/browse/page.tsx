@@ -178,7 +178,7 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
                           {i.title}
                         </Link>
                         {supersededBy(i.slug) && (
-                          <span className="ml-2 rounded bg-stone-100 px-1.5 py-px text-[11px] font-medium text-stone-700 ring-1 ring-inset ring-stone-200">
+                          <span className="badge badge-neutral ml-2">
                             superseded
                           </span>
                         )}

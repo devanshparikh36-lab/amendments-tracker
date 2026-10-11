@@ -1,23 +1,52 @@
-const styles: Record<string, string> = {
-  official: "bg-emerald-50 text-emerald-800 ring-emerald-200",
-  machine_merged: "bg-amber-50 text-amber-800 ring-amber-200",
-  differs_from_official: "bg-red-50 text-red-800 ring-red-200",
-  matches_official: "bg-emerald-50 text-emerald-800 ring-emerald-200",
-  unchecked: "bg-stone-100 text-stone-700 ring-stone-200",
-  cannot_apply: "bg-red-50 text-red-800 ring-red-200",
-  insert: "bg-sky-50 text-sky-800 ring-sky-200",
-  substitute: "bg-violet-50 text-violet-800 ring-violet-200",
-  omit: "bg-stone-100 text-stone-700 ring-stone-200",
-  renumber: "bg-stone-100 text-stone-700 ring-stone-200",
-  amends: "bg-violet-50 text-violet-800 ring-violet-200",
-  supersedes: "bg-violet-50 text-violet-800 ring-violet-200",
-  clarifies: "bg-sky-50 text-sky-800 ring-sky-200",
-  references: "bg-stone-100 text-stone-700 ring-stone-200",
-  pending: "bg-stone-100 text-stone-700 ring-stone-200",
-  tagged: "bg-sky-50 text-sky-800 ring-sky-200",
-  merged: "bg-emerald-50 text-emerald-800 ring-emerald-200",
-  failed: "bg-red-50 text-red-800 ring-red-200",
-  skipped: "bg-stone-100 text-stone-700 ring-stone-200",
+/* Status labels: whose text this is, whether a change could be applied, what a document does to a
+ * provision, how a job ended.
+ *
+ * The styling used to live here as Tailwind palette classes -- bg-emerald-50, text-red-800,
+ * ring-stone-200 and seventeen more. Every one was a fixed light colour, so when the dark theme arrived
+ * the badges stayed pale chips with dark text on a dark page. They were also invisible to anyone auditing
+ * the stylesheet for exactly that problem, because the colours were spelled in a component rather than in
+ * CSS.
+ *
+ * So this file now maps meaning to a family name and nothing else. The six families are defined once in
+ * globals.css, where both themes can see them.
+ */
+
+type Family = "ok" | "warn" | "bad" | "neutral" | "info" | "alt";
+
+/* What each family means, which is the only thing worth arguing about here:
+ *
+ *   ok       this is the regulator's own text, or the step succeeded
+ *   warn     a machine was involved, so read it with that in mind
+ *   bad      it disagrees with the official text, or it failed
+ *   info     something was added or explained
+ *   alt      something was replaced or superseded -- a change of substance, not an addition
+ *   neutral  states that carry no judgement: unchecked, omitted, renumbered, pending, skipped
+ */
+const FAMILY: Record<string, Family> = {
+  official: "ok",
+  matches_official: "ok",
+  merged: "ok",
+
+  machine_merged: "warn",
+
+  differs_from_official: "bad",
+  cannot_apply: "bad",
+  failed: "bad",
+
+  insert: "info",
+  clarifies: "info",
+  tagged: "info",
+
+  substitute: "alt",
+  amends: "alt",
+  supersedes: "alt",
+
+  unchecked: "neutral",
+  omit: "neutral",
+  renumber: "neutral",
+  references: "neutral",
+  pending: "neutral",
+  skipped: "neutral",
 };
 
 const labels: Record<string, string> = {
@@ -30,11 +59,11 @@ const labels: Record<string, string> = {
 };
 
 export function Badge({ kind, children }: { kind: string; children?: React.ReactNode }) {
-  const cls = styles[kind] ?? "bg-stone-100 text-stone-700 ring-stone-200";
+  // An unknown kind reads as neutral rather than as nothing: a badge with no styling looks like a bug,
+  // and a new job state should not be able to produce one.
+  const family = FAMILY[kind] ?? "neutral";
   return (
-    <span
-      className={`inline-flex items-center whitespace-nowrap rounded px-1.5 py-px text-[11.5px] font-medium ring-1 ring-inset ${cls}`}
-    >
+    <span className={`badge badge-${family}`}>
       {children ?? labels[kind] ?? kind.replace(/_/g, " ")}
     </span>
   );

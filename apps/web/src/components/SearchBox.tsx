@@ -210,7 +210,7 @@ export function SearchBox({
         <ul
           id={listId}
           role="listbox"
-          className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 max-h-[min(70vh,26rem)] overflow-y-auto rounded border border-[var(--rule)] bg-white py-1 shadow-lg"
+          className="absolute left-0 right-0 top-[calc(100%+4px)] z-50 max-h-[min(70vh,26rem)] overflow-y-auto rounded border border-[var(--rule)] bg-[var(--paper)] py-1 shadow-lg"
         >
           {visible.map((it, i) => (
             <li
@@ -230,7 +230,7 @@ export function SearchBox({
               <div className="flex items-baseline gap-2">
                 <span className="num truncate text-[13px] font-medium text-[var(--ink-2)]">{it.label}</span>
                 {it.context && (
-                  <span className="shrink-0 rounded-sm bg-stone-100 px-1 text-[10px] font-semibold uppercase tracking-wide text-stone-600">
+                  <span className="shrink-0 rounded-sm bg-[var(--numchip-bg)] px-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--numchip-ink)]">
                     {it.context}
                   </span>
                 )}

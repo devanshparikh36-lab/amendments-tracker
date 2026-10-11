@@ -153,7 +153,7 @@ export function CommandPalette({ hideTrigger = false }: { hideTrigger?: boolean 
 
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center bg-black/25 px-4 pt-[12vh]"
+          className="fixed inset-0 z-50 flex items-start justify-center bg-[var(--scrim)] px-4 pt-[12vh]"
           onMouseDown={close}
           role="presentation"
         >
@@ -183,7 +183,7 @@ export function CommandPalette({ hideTrigger = false }: { hideTrigger?: boolean 
                       onMouseEnter={() => setActive(i)}
                       onClick={() => go(it.href)}
                       className={`flex w-full items-baseline gap-2 px-4 py-2 text-left ${
-                        i === active ? "bg-[#faf9f6]" : ""
+                        i === active ? "bg-[var(--tint)]" : ""
                       }`}
                     >
                       <span className="font-medium">{it.label}</span>

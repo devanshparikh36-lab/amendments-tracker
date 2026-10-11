@@ -64,6 +64,30 @@
   /* Inter for the interface, Source Serif 4 for the statutory text. Both are self-hosted by next/font, which
    * defines --font-ui and --font-serif on <html>; the stacks behind them are what renders if a font file
    * ever fails to arrive, so the site degrades to what it looked like before rather than to Times. */
+  /* --- surfaces and states that were literals until the dark theme found them -----------------------
+     Every one of these was a hard-coded light colour sitting somewhere a token could not be seen from:
+     inside a gradient, inside an rgba(), or spelled as a Tailwind palette class in a component. They all
+     stayed light when the theme went dark. Listed together so the next one is easier to spot. */
+  --panel-wash: #fbfaf8;        /* foot of the .panel-head gradient */
+  --rule-faint: #f0eeea;        /* the lighter hairline between table rows and feed items */
+  --focus-ring: rgb(29 64 48 / 0.12);
+  --scrim: rgb(0 0 0 / 0.25);   /* behind the command palette */
+
+  /* The small uppercase tag inside a citation chip (.numchip-tag). */
+  --numchip-bg: rgb(214 211 209 / 0.7);
+  --numchip-bg-hover: rgb(168 162 158 / 0.6);
+  --numchip-ink: #44403c;
+
+  /* Badges (.badge-*, see below). Note .chip is something else entirely -- the pill-shaped
+     subject filter -- so these are deliberately not named for it. One ink per family; the fill and the ring are mixed from it against --paper, so a family needs
+     one value per theme rather than three and can never drift out of step with the surface under it. */
+  --badge-ok: #065f46;
+  --badge-warn: #92400e;
+  --badge-bad: #991b1b;
+  --badge-neutral: #44403c;
+  --badge-info: #075985;
+  --badge-alt: #5b21b6;
+
   --ui: var(--font-ui), ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --serif: var(--font-serif), "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
 }
@@ -114,6 +138,25 @@
   --sub-fema: #4fb8ac;
   --sub-sebi: #b292f5;
   --sub-companies: #f1869d;
+
+  /* The dark halves of the tokens introduced above. */
+  --panel-wash: #211f1b;
+  --rule-faint: #272520;
+  --focus-ring: rgb(78 168 124 / 0.3);
+  /* Heavier than the light one: a 25% black veil over an already dark page does not separate the dialog
+     from what is behind it. */
+  --scrim: rgb(0 0 0 / 0.55);
+
+  --numchip-bg: rgb(66 63 56 / 0.85);
+  --numchip-bg-hover: rgb(92 88 79 / 0.85);
+  --numchip-ink: #c4c0b7;
+
+  --badge-ok: #5cba8c;
+  --badge-warn: #d8a441;
+  --badge-bad: #e8807b;
+  --badge-neutral: #b4afa4;
+  --badge-info: #7da2ff;
+  --badge-alt: #b292f5;
 }
 
 /* No automatic switching. The theme is whatever the reader last chose, and light until they choose --
@@ -166,7 +209,7 @@ summary:focus-visible,
   gap: 0.5rem 0.75rem;
   padding: 0.5rem 0.9rem;
   border-bottom: 1px solid var(--rule);
-  background: linear-gradient(var(--paper), #fbfaf8);
+  background: linear-gradient(var(--paper), var(--panel-wash));
 }
 
 .panel-body {
@@ -309,7 +352,7 @@ summary:focus-visible,
 .field:focus {
   border-color: var(--accent);
   outline: none;
-  box-shadow: 0 0 0 2px rgb(29 64 48 / 0.12);
+  box-shadow: 0 0 0 2px var(--focus-ring);
 }
 
 .field-lg {
@@ -366,7 +409,7 @@ summary:focus-visible,
 
 .dtable td {
   padding: 0.4rem 0.7rem;
-  border-top: 1px solid #f0eeea;
+  border-top: 1px solid var(--rule-faint);
   vertical-align: top;
 }
 
@@ -393,7 +436,7 @@ summary:focus-visible,
 
 /* Dated feed rows (what's new, amending documents). */
 .feed li {
-  border-top: 1px solid #f0eeea;
+  border-top: 1px solid var(--rule-faint);
 }
 
 .feed li:first-child {
@@ -745,17 +788,17 @@ summary:focus-visible,
 .numchip > .numchip-tag {
   flex-shrink: 0;
   border-radius: 2px;
-  background: rgba(214, 211, 209, 0.7);
+  background: var(--numchip-bg);
   padding: 0 0.25rem;
   font-size: 10px;
   font-weight: 600;
   line-height: 1.5;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #44403c;
+  color: var(--numchip-ink);
 }
 .numchip:hover > .numchip-tag {
-  background: rgba(168, 162, 158, 0.6);
+  background: var(--numchip-bg-hover);
 }
 /* No stored file: the citation still reads as a citation, it just does not go anywhere. */
 .numchip-plain {
@@ -863,4 +906,84 @@ a {
   a {
     transition-duration: 0ms;
   }
+}
+
+/* --- badges -------------------------------------------------------------- */
+
+/* The small status labels: "Official text", "Machine-consolidated", "Differs from official", the change
+ * types, the job states.
+ *
+ * These were twenty Tailwind palette classes inside Badge.tsx -- bg-emerald-50, text-red-800,
+ * ring-stone-200 and so on. Every one of them is a fixed light colour, so in the dark theme the badges
+ * stayed pale chips with dark text: the single most visible thing left stuck in the wrong theme, and
+ * invisible from the stylesheet because the colours were spelled in a component.
+ *
+ * Note the name. `.chip` is already taken, and means the pill-shaped subject filter on the home page.
+ *
+ * One ink per family, and the fill and ring are mixed from it against --paper. That is why a family costs
+ * one token per theme instead of three, and why the fill can never drift out of step with the surface it
+ * sits on -- change --paper and every badge follows. The base rule below carries a plain fallback, so a
+ * browser without color-mix() renders every badge legibly in the neutral style rather than unstyled.
+ */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  border-radius: 3px;
+  padding: 1px 0.375rem;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.45;
+  /* The fallback, overridden below wherever color-mix is understood. */
+  color: var(--ink-2);
+  background: var(--tint);
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+
+.badge-ok,
+.badge-warn,
+.badge-bad,
+.badge-neutral,
+.badge-info,
+.badge-alt {
+  color: var(--badge-ink);
+  background: color-mix(in srgb, var(--badge-ink) 14%, var(--paper));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--badge-ink) 34%, var(--paper));
+}
+
+.badge-ok      { --badge-ink: var(--badge-ok); }
+.badge-warn    { --badge-ink: var(--badge-warn); }
+.badge-bad     { --badge-ink: var(--badge-bad); }
+.badge-neutral { --badge-ink: var(--badge-neutral); }
+.badge-info    { --badge-ink: var(--badge-info); }
+.badge-alt     { --badge-ink: var(--badge-alt); }
+
+/* --- inserted and deleted wording in a comparison ------------------------ */
+
+/* Was bg-red-100/text-red-800 and bg-emerald-100/text-emerald-900 in Diff.tsx: two more fixed light
+ * colours, and the ones that matter most to get right, because this is where a reader is being shown what
+ * actually changed in a provision. Mixed against --paper on the same principle as the badges. */
+.diff-del,
+.diff-ins {
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.diff-del {
+  color: var(--badge-bad);
+  background: color-mix(in srgb, var(--badge-bad) 20%, var(--paper));
+  text-decoration-color: color-mix(in srgb, var(--badge-bad) 60%, var(--paper));
+}
+
+.diff-ins {
+  color: var(--badge-ok);
+  background: color-mix(in srgb, var(--badge-ok) 20%, var(--paper));
+  text-decoration: none;
+}
+
+/* Printing is always the light theme (see @media print above), and these two carry meaning that a
+ * greyscale printer would flatten, so they keep an underline and a strikethrough on paper. */
+@media print {
+  .diff-ins { text-decoration: underline; }
+  .diff-del { text-decoration: line-through; }
 }

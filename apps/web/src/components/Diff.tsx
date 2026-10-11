@@ -42,9 +42,9 @@ export function Diff({ before, after }: { before: string; after: string }) {
         op.type === "eq" ? (
           <span key={idx}>{op.text}</span>
         ) : op.type === "del" ? (
-          <del key={idx} className="rounded bg-red-100 text-red-800 decoration-red-400">{op.text}</del>
+          <del key={idx} className="diff-del">{op.text}</del>
         ) : (
-          <ins key={idx} className="rounded bg-emerald-100 text-emerald-900 no-underline">{op.text}</ins>
+          <ins key={idx} className="diff-ins">{op.text}</ins>
         ),
       )}
     </pre>
