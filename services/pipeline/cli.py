@@ -193,6 +193,33 @@ def main(argv: list[str] | None = None) -> int:
         print(f"examples (first {len(rows)})")
         for r in rows:
             print(f"  {r['flag']:16} {r['instrument_slug'][:30]:30} {r['number'][:12]:12} {r['sample'][:70]!r}")
+        # What readers looked for and did not find. Printed here rather than shown on /quality: that page
+        # is public, this site has no sign-in, and the wording is kept only for searches that failed --
+        # which are the ones carrying unusual terms. In a tax practice a query can name a live matter, so
+        # it is read where the database credentials already are.
+        with _db.transaction() as conn:
+            missing = _db.fetch_all(
+                conn,
+                """SELECT min(query) AS query, count(*) AS times, max(at)::date AS last_at
+                     FROM search_log
+                    WHERE found IS FALSE AND at > now() - interval '90 days'
+                    GROUP BY query_key ORDER BY times DESC, last_at DESC LIMIT 25""",
+            )
+            volume = _db.fetch_one(
+                conn,
+                """SELECT count(*) AS n, count(*) FILTER (WHERE found) AS hit
+                     FROM search_log WHERE at > now() - interval '90 days'""",
+            )
+        print()
+        if volume and volume["n"]:
+            pct = round(100 * (volume["hit"] or 0) / volume["n"])
+            print(f"searches in the last 90 days: {volume['n']}, of which {volume['hit']} found something ({pct}%)")
+        else:
+            print("no searches recorded in the last 90 days")
+        if missing:
+            print("looked for, not found")
+            for m in missing:
+                print(f"  {m['times']:>4}x  {str(m['last_at'])}  {m['query'][:64]!r}")
         # Deliberately exit 0. These are findings for a person to read, not a broken build: the free-tier
         # watch owns the non-zero exit, and red there means one thing.
         return 0
