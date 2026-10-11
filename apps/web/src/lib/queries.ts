@@ -891,6 +891,71 @@ export async function sourceGaps() {
   );
 }
 
+/** Record the outcome of one search. Never throws, never blocks the page.
+ *
+ * Fire-and-forget on purpose. This is instrumentation: a reader who searched for something should get their
+ * results whether or not we managed to write a row about it, and a logging failure that produced a 500
+ * would be the instrument breaking the thing it measures.
+ *
+ * The query text is kept only when nothing was found -- see migration 0012. A search that succeeded has
+ * already told us what we needed, and in a tax practice its wording may name a live matter.
+ */
+export async function logSearch(o: {
+  query: string;
+  found: boolean;
+  scope?: string | null;
+  provisions?: number;
+  documents?: number;
+  pages?: number;
+  instruments?: number;
+}): Promise<void> {
+  const key = o.found ? null : o.query.toLowerCase().replace(/\s+/g, " ").trim().slice(0, 200);
+  try {
+    await query(
+      `INSERT INTO search_log (query, query_key, found, scope, provisions, documents, pages, instruments)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        o.found ? null : o.query.slice(0, 500),
+        key,
+        o.found,
+        o.scope ?? null,
+        o.provisions ?? 0,
+        o.documents ?? 0,
+        o.pages ?? 0,
+        o.instruments ?? 0,
+      ],
+    );
+  } catch {
+    /* instrumentation must never be the reason a search fails */
+  }
+}
+
+/** What readers looked for and did not find, most asked first. */
+export async function searchesWithNoResults(days = 90, limit = 60) {
+  return query<{ query: string; query_key: string; times: number; last_at: string }>(
+    `SELECT min(query) AS query, query_key, count(*)::int AS times, max(at) AS last_at
+       FROM search_log
+      WHERE found IS FALSE AND at > now() - ($1 || ' days')::interval
+      GROUP BY query_key ORDER BY times DESC, last_at DESC LIMIT $2`,
+    [days, limit],
+    LIVE_SECONDS,
+  );
+}
+
+/** Volume and hit rate by day. No query text involved. */
+export async function searchVolume(days = 30) {
+  return query<{ day: string; searches: number; found: number }>(
+    `SELECT to_char(at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS day,
+            count(*)::int AS searches,
+            count(*) FILTER (WHERE found)::int AS found
+       FROM search_log
+      WHERE at > now() - ($1 || ' days')::interval
+      GROUP BY 1 ORDER BY 1 DESC`,
+    [days],
+    LIVE_SECONDS,
+  );
+}
+
 export type QualityFlag = {
   provision_id: number;
   instrument_slug: string;

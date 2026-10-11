@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/PageHeader";
-import { qualityFlags } from "@/lib/queries";
+import { qualityFlags, searchesWithNoResults } from "@/lib/queries";
+import { fmtDate } from "@/lib/format";
 
 /* Provisions whose stored text does not look like a provision.
  *
@@ -27,7 +28,10 @@ export const metadata = { title: "Text that needs a look" };
 
 export default async function QualityPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
-  const { rows, byFlag, byInstrument } = await qualityFlags({ flag: sp.flag, instrument: sp.instrument });
+  const [{ rows, byFlag, byInstrument }, missing] = await Promise.all([
+    qualityFlags({ flag: sp.flag, instrument: sp.instrument }),
+    searchesWithNoResults(),
+  ]);
   const total = byFlag.reduce((n, f) => n + f.n, 0);
   const chip = (href: string, label: string, on: boolean, n?: number) => (
     <Link key={label} href={href} className={`chip ${on ? "chip-on" : ""}`}>
@@ -107,6 +111,50 @@ export default async function QualityPage({ searchParams }: { searchParams: Sear
             </tbody>
           </table>
         </div>
+      </section>
+
+      {/* The other direction of the same question. Everything above measures what we hold against what it
+          ought to look like; this measures it against what people came here for and did not get. One is
+          our opinion of the library, the other is its readers'. */}
+      <section className="panel">
+        <div className="panel-head">
+          <h2 className="eyebrow">Looked for, not found ({missing.length})</h2>
+          <p className="meta mt-0.5 max-w-3xl">
+            Searches from the last 90 days that returned nothing, most asked first. The wording of searches
+            that <em>succeeded</em> is deliberately not kept &mdash; in this practice a query can name a
+            live matter, and a search the library answered has already told us what we needed.
+          </p>
+        </div>
+        {missing.length === 0 ? (
+          <p className="px-5 py-3 text-[13px] text-[var(--ink-3)]">
+            Nothing recorded yet. This fills in as the site is used.
+          </p>
+        ) : (
+          <div className="scroll-x">
+            <table className="dtable">
+              <thead>
+                <tr>
+                  <th>Searched for</th>
+                  <th className="text-right">Times</th>
+                  <th>Last</th>
+                </tr>
+              </thead>
+              <tbody>
+                {missing.map((m) => (
+                  <tr key={m.query_key}>
+                    <td>
+                      <Link href={`/find?q=${encodeURIComponent(m.query)}&all=1`} className="hover:underline">
+                        {m.query}
+                      </Link>
+                    </td>
+                    <td className="num text-right">{m.times}</td>
+                    <td className="num text-[12px] text-[var(--ink-3)]">{fmtDate(m.last_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="panel">

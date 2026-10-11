@@ -5,7 +5,7 @@ import { KIND_LABEL, unitPlural } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
 import { fmtDate } from "@/lib/format";
 import { pdfPageHref, provisionHref, resolveLookup } from "@/lib/lookup";
-import { getInstrument, search, searchAllPages } from "@/lib/queries";
+import { getInstrument, search, searchAllPages, logSearch } from "@/lib/queries";
 
 // Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
 // root layout said so. Next works that out for itself.
@@ -54,6 +54,19 @@ export default async function FindPage({
     !instruments.length &&
     !text.provisions.length &&
     !text.documents.length;
+
+  // Recorded after the results are known, and not awaited: a reader gets their answer whether or not the
+  // row was written. What a search found nothing for is the only measure of coverage on this site that
+  // comes from its readers rather than from us -- every other one counts what we happen to hold.
+  void logSearch({
+    query: q,
+    found: !nothing,
+    scope: within,
+    provisions: numbered.length + text.provisions.length,
+    documents: text.documents.length,
+    pages: pages.length,
+    instruments: instruments.length,
+  });
 
   // Where the block of PDF pages belongs depends on what was asked.
   //
