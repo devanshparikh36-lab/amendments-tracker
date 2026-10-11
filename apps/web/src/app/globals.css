@@ -2,8 +2,9 @@
 
 /* ---------------------------------------------------------------------------
    As Amended — a reading room for Indian tax and corporate law.
-   One light theme: this is read on laptops and printed. Paper-white panels on a
-   warm ground, hairline rules instead of shadows, serif for anything statutory.
+   Paper-white panels on a warm ground, hairline rules instead of shadows, serif for anything statutory.
+   Two themes, both warm: every colour is a token on :root and the dark theme redefines the same names, so
+   nothing in the components knows which one is on. Printing always uses the light values — see @media print.
 --------------------------------------------------------------------------- */
 
 :root {
@@ -25,6 +26,21 @@
 
   --accent: #1d4030; /* deep green — primary actions, the masthead rule */
   --accent-hover: #16311f;
+  /* Surfaces that are a faint wash rather than a panel: table headers and row hovers, the provenance
+     strips, the search highlight. Hard-coded light hexes until dark mode arrived, at which point every one
+     of them stayed light and put pale text on a pale ground. */
+  --tint: #faf9f6;
+  --tint-official: #f7f9f7;
+  --tint-official-rule: #dfe8e0;
+  --tint-machine: #fdf8ef;
+  --tint-machine-rule: #ecdcbd;
+  --tint-pdf: #f8f8f6;
+  --mark: #fdf3c8;
+  --mark-ink: inherit;
+
+  /* Text drawn on top of --accent. A token because the dark theme's accent is light, and white on it is
+     unreadable; the one thing a colour swap cannot fix is a hard-coded #fff. */
+  --on-accent: #ffffff;
   --link: #14532d;
 
   --flag-official: #1a6b4a;
@@ -42,6 +58,99 @@
    * ever fails to arrive, so the site degrades to what it looked like before rather than to Times. */
   --ui: var(--font-ui), ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --serif: var(--font-serif), "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+}
+
+/* --- the dark theme ------------------------------------------------------- */
+/* Warm-dark rather than black: this is for reading long statutory text, and pure #000 under white serif
+   produces the halation that makes a long page tiring. Panels sit *above* the ground, as they do in the
+   light theme, so the structure reads the same way round.
+   The accent inverts in lightness -- a deep green is invisible on a dark ground -- which is why text drawn
+   on it goes through --on-accent. */
+:root[data-theme="dark"] {
+  --amend-bg: #241f14;
+  color-scheme: dark;
+
+  --paper: #1c1b18;
+  --ground: #141412;
+  --ground-sunk: #100f0e;
+
+  --ink: #ece9e3;
+  --ink-2: #c4c0b7;
+  --ink-3: #9b968b;
+  --ink-4: #7a756a;
+
+  --rule: #2e2c27;
+  --rule-strong: #423f38;
+
+  --accent: #4ea87c;
+  --accent-hover: #63bd90;
+  --on-accent: #0e1a14;
+  --link: #85d2a7;
+
+  --tint: #201f1b;
+  --tint-official: #18231d;
+  --tint-official-rule: #26382d;
+  --tint-machine: #241f16;
+  --tint-machine-rule: #3a3020;
+  --tint-pdf: #1d1c19;
+  --mark: #4a3f12;
+  --mark-ink: #f6edcb;
+
+  --flag-official: #5cba8c;
+  --flag-machine: #d8a441;
+  --flag-alert: #e8807b;
+
+  --sub-income-tax: #7da2ff;
+  --sub-gst: #e0a356;
+  --sub-fema: #4fb8ac;
+  --sub-sebi: #b292f5;
+  --sub-companies: #f1869d;
+}
+
+/* The system preference, but only while no explicit choice has been stored. `:not([data-theme="light"])`
+   is what makes "I chose light on a dark-set laptop" stick -- without it the media query would win and the
+   toggle would appear not to work. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --amend-bg: #241f14;
+    color-scheme: dark;
+
+    --paper: #1c1b18;
+    --ground: #141412;
+    --ground-sunk: #100f0e;
+
+    --ink: #ece9e3;
+    --ink-2: #c4c0b7;
+    --ink-3: #9b968b;
+    --ink-4: #7a756a;
+
+    --rule: #2e2c27;
+    --rule-strong: #423f38;
+
+    --accent: #4ea87c;
+    --accent-hover: #63bd90;
+    --on-accent: #0e1a14;
+    --link: #85d2a7;
+
+    --tint: #201f1b;
+    --tint-official: #18231d;
+    --tint-official-rule: #26382d;
+    --tint-machine: #241f16;
+    --tint-machine-rule: #3a3020;
+    --tint-pdf: #1d1c19;
+    --mark: #4a3f12;
+    --mark-ink: #f6edcb;
+
+    --flag-official: #5cba8c;
+    --flag-machine: #d8a441;
+    --flag-alert: #e8807b;
+
+    --sub-income-tax: #7da2ff;
+    --sub-gst: #e0a356;
+    --sub-fema: #4fb8ac;
+    --sub-sebi: #b292f5;
+    --sub-companies: #f1869d;
+  }
 }
 
 @theme inline {
@@ -205,13 +314,13 @@ summary:focus-visible,
 .btn-primary {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 500;
 }
 
 .btn-primary:hover {
   background: var(--accent-hover);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .field {
@@ -260,7 +369,9 @@ summary:focus-visible,
 .chip-on:hover {
   background: var(--ink);
   border-color: var(--ink);
-  color: #fff;
+  /* The background here *is* the text colour, so the foreground is the panel colour by definition --
+     which keeps it correct in both themes without a second rule. */
+  color: var(--paper);
 }
 
 /* --- data tables --------------------------------------------------------- */
@@ -278,7 +389,7 @@ summary:focus-visible,
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--ink-3);
-  background: #faf9f6;
+  background: var(--tint);
   padding: 0.4rem 0.7rem;
   border-bottom: 1px solid var(--rule);
   white-space: nowrap;
@@ -291,7 +402,7 @@ summary:focus-visible,
 }
 
 .dtable tbody tr:hover {
-  background: #faf9f6;
+  background: var(--tint);
 }
 
 /* Key/value block used on the instrument landing page. */
@@ -355,21 +466,21 @@ summary:focus-visible,
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--ink-2);
-  background: #f7f9f7;
-  border: 1px solid #dfe8e0;
+  background: var(--tint-official);
+  border: 1px solid var(--tint-official-rule);
   border-left: 3px solid var(--flag-official);
   border-radius: 3px;
   padding: 0.5rem 0.7rem;
 }
 
 .provenance-machine {
-  background: #fdf8ef;
-  border-color: #ecdcbd;
+  background: var(--tint-machine);
+  border-color: var(--tint-machine-rule);
   border-left-color: var(--flag-machine);
 }
 
 .provenance-pdf {
-  background: #f8f8f6;
+  background: var(--tint-pdf);
   border-color: var(--rule);
   border-left-color: var(--ink-3);
 }
@@ -458,7 +569,7 @@ summary:focus-visible,
 }
 
 .legal thead th {
-  background: #faf9f6;
+  background: var(--tint);
   font-weight: 600;
 }
 
@@ -517,7 +628,8 @@ summary:focus-visible,
 
 /* Search snippets produced by our own SQL (ts_headline marks hits with <b>). */
 .snippet b {
-  background: #fdf3c8;
+  background: var(--mark);
+  color: var(--mark-ink);
   font-weight: 600;
 }
 
@@ -534,6 +646,33 @@ summary:focus-visible,
 }
 
 @media print {
+  /* Whichever theme is on screen, paper is white. Without this, printing in dark mode sends #ece9e3 ink to
+     a #fff page -- a blank sheet with a faint ghost of the Act on it. The page forces its own background,
+     so the tokens have to be forced back with it. */
+  :root {
+    --paper: #ffffff;
+    --ground: #ffffff;
+    --ground-sunk: #f4f3ef;
+    --amend-bg: #fbf7ec;
+    --ink: #1b1a17;
+    --ink-2: #46443f;
+    --ink-3: #6d6a62;
+    --ink-4: #8d897f;
+    --rule: #d8d5ce;
+    --rule-strong: #b9b5ab;
+    --tint: #faf9f6;
+    --tint-official: #f7f9f7;
+    --tint-official-rule: #dfe8e0;
+    --tint-machine: #fdf8ef;
+    --tint-machine-rule: #ecdcbd;
+    --tint-pdf: #f8f8f6;
+    --mark: #fdf3c8;
+    --mark-ink: inherit;
+    --accent: #1d4030;
+    --on-accent: #ffffff;
+    --link: #14532d;
+    color-scheme: light;
+  }
   .no-print {
     display: none !important;
   }
@@ -623,7 +762,7 @@ summary:focus-visible,
 }
 .numchip:hover {
   border-color: var(--link);
-  background: #fff;
+  background: var(--paper);
 }
 .numchip > .numchip-n {
   font-variant-numeric: tabular-nums;

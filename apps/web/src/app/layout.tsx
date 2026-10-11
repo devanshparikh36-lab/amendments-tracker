@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
 import Link from "next/link";
 import { CommandPalette } from "@/components/CommandPalette";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { SiteNav } from "@/components/SiteNav";
 import { fmtDateTime } from "@/lib/format";
 import { lastRevised } from "@/lib/queries";
@@ -72,6 +73,25 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   }
   return (
     <html lang="en" className={`${sans.variable} ${serif.variable}`}>
+      <head>
+        {/* Runs before the first paint, which is the only moment it is any use.
+            
+            The server has no way to know a reader's theme -- it is in their browser, not in the request --
+            so it always renders the light one. Without this the browser paints that, then the stored dark
+            theme arrives a frame later: a white flash on every single navigation, which is more annoying
+            than having no dark theme at all.
+            
+            Deliberately not a module: a script that has to run before paint cannot be one that is fetched.
+            It is four lines, it touches only `data-theme`, and it swallows its own errors because
+            localStorage throws outright in some privacy modes. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var t=localStorage.getItem('as-amended-theme');" +
+              "if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t);}catch(e){}",
+          }}
+        />
+      </head>
       <body className="min-h-screen antialiased">
         <a
           href="#main"
@@ -112,7 +132,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   better-scoped one, and it answered about the whole site even while you were reading a
                   single Act. Search is now the palette below -- one keystroke from anywhere -- plus a real
                   box on the pages where searching is the point. */}
-              <CommandPalette />
+              {/* The corner the "Look up" button used to occupy, and the right home for this: a theme is a
+                  property of the whole page, so it belongs with the other thing that qualifies the whole
+                  page rather than inside any one panel. */}
+              <div className="flex items-center gap-2">
+                <CommandPalette />
+                <ThemeToggle />
+              </div>
             </div>
           </div>
           <div className="mx-auto max-w-[1360px] px-3.5 pt-1">
