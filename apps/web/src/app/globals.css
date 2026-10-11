@@ -19,7 +19,12 @@
   --ink: #1b1a17;
   --ink-2: #46443f;
   --ink-3: #6d6a62;
-  --ink-4: #8d897f;
+  /* Measured, not picked. The warm greys above all clear WCAG AA (4.5:1) against both --paper and --tint;
+     this one did not -- #8d897f was 3.49:1 on paper and 3.31:1 on the tints, which is large-text-only, and
+     it is used at 10.5-12px in 23 places: the strapline, "Last checked", "not stated by the regulator",
+     the confidence figures. Same hue and saturation, lightness moved until the ratio cleared on the worse
+     of the two grounds. Light now 4.55:1 on tint and 4.79:1 on paper; dark 4.55:1 and 4.75:1. */
+  --ink-4: #767269;
 
   --rule: #e2dfd8;
   --rule-strong: #cbc7bd;
@@ -80,7 +85,7 @@
   --ink: #ece9e3;
   --ink-2: #c4c0b7;
   --ink-3: #9b968b;
-  --ink-4: #7a756a;
+  --ink-4: #8b867a;
 
   --rule: #2e2c27;
   --rule-strong: #423f38;
@@ -621,7 +626,7 @@ summary:focus-visible,
     --ink: #1b1a17;
     --ink-2: #46443f;
     --ink-3: #6d6a62;
-    --ink-4: #8d897f;
+    --ink-4: #767269;
     --rule: #d8d5ce;
     --rule-strong: #b9b5ab;
     --tint: #faf9f6;
@@ -777,4 +782,85 @@ summary:focus-visible,
   color: var(--link);
   text-decoration-style: solid;
   text-decoration-color: currentColor;
+}
+
+/* --- waiting ------------------------------------------------------------- */
+
+/* The shape of a page that has not arrived yet.
+ *
+ * Why a skeleton and not a spinner: a spinner says "something is happening" and nothing else. Every page
+ * here is a known shape -- a heading, a row of controls, a column of provisions -- so the wait can show
+ * that shape instead, and the content lands into the outline rather than replacing it. The page also stops
+ * jumping, because the space was already reserved.
+ *
+ * Why this matters more here than on most sites: the database suspends itself after five minutes idle on
+ * the free plan, and waking it costs about 1.9 seconds before the first query even runs. That wait was
+ * previously a blank screen under a masthead, which reads as a broken site rather than a slow one.
+ *
+ * The sweep is a moving highlight over a flat block, done as a background-position animation so it runs on
+ * one property and never reflows. `prefers-reduced-motion` stops the sweep and leaves the blocks, which is
+ * the whole point of the skeleton anyway -- the animation was never carrying the information.
+ */
+@keyframes skeleton-sweep {
+  from { background-position: 180% 0; }
+  to   { background-position: -80% 0; }
+}
+
+.skeleton {
+  background-color: var(--ground-sunk);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    color-mix(in srgb, var(--paper) 65%, transparent) 50%,
+    transparent 100%
+  );
+  background-size: 60% 100%;
+  background-repeat: no-repeat;
+  border-radius: 3px;
+  animation: skeleton-sweep 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    background-image: none;
+  }
+}
+
+/* A skeleton is scaffolding, never content. Printing one would put grey bars on paper. */
+@media print {
+  .skeleton { display: none; }
+}
+
+/* --- hover, settled ------------------------------------------------------ */
+
+/* The hover states were already here -- 98 of them -- and every one of them snapped.
+ *
+ * Deliberately narrow. A blanket `* { transition: all }` is the usual shortcut and it animates things that
+ * should never animate: a theme switch becomes a half-second fade of the entire page, and layout properties
+ * get caught up in it and reflow on every frame. So: named properties, on the few elements a pointer
+ * actually lands on.
+ *
+ * 110ms, which is under the ~150ms at which a response stops feeling immediate. The point is to take the
+ * edge off the change, not to put on a show -- this is a reading room, and anything slower reads as lag on
+ * the controls rather than polish.
+ */
+.btn,
+.field,
+.xref,
+a {
+  transition-property: color, background-color, border-color, text-decoration-color, box-shadow;
+  transition-duration: 110ms;
+  transition-timing-function: ease-out;
+}
+
+/* Honour the request. Someone who has asked for less motion has usually asked because movement on screen
+   makes them unwell, and a colour transition is still a change they did not ask for. */
+@media (prefers-reduced-motion: reduce) {
+  .btn,
+  .field,
+  .xref,
+  a {
+    transition-duration: 0ms;
+  }
 }

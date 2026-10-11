@@ -2068,3 +2068,36 @@ def process_jobs(
                 if status == "failed" and job["type"] in ("fetch_document", "tag_document", "merge_document"):
                     db.execute(conn, "UPDATE document SET tag_status = 'failed' WHERE id = %s", (job["payload"].get("document_id"),))
     return processed
+
+
+# How long the text of a failed search is kept. The privacy page states this number, so changing it here
+# changes a published promise -- which is the point of having one place for it.
+SEARCH_TEXT_DAYS = 90
+
+
+def forget_old_search_text(days: int = SEARCH_TEXT_DAYS) -> dict[str, Any]:
+    """Erase the wording of searches older than the stated window, keeping the outcome.
+
+    `search_log` keeps a query's text only when the search found nothing, because a list of what the
+    library failed to answer is the best coverage signal it produces. That reasoning has a shelf life. A
+    query naming a live matter -- "section 68 cash credits <client>" is the example the table's own comment
+    gives -- stops being a content roadmap long before it stops being a disclosure, and a log nobody has
+    read for a year is a liability rather than a tool.
+
+    So the text is nulled and the row is left. The counts, the scope and the timestamp are what the volume
+    and hit-rate charts are built from, and they identify nobody; deleting whole rows would put a hole in
+    the history to no benefit.
+
+    Page counts are untouched. `page_view_day` is aggregated at write time and holds no text, no address and
+    no identifier, so there is nothing in it that ages into a risk.
+    """
+    with db.transaction() as conn:
+        cleared = db.execute(
+            conn,
+            """UPDATE search_log
+                  SET query = NULL, query_key = NULL
+                WHERE at < now() - make_interval(days => %s)
+                  AND (query IS NOT NULL OR query_key IS NOT NULL)""",
+            (days,),
+        )
+    return {"cleared": cleared, "days": days}

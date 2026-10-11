@@ -119,6 +119,14 @@ jobs:
         continue-on-error: true
         run: python cli.py ocr --minutes 20
 
+      # The privacy page promises that the wording of a failed search is erased after 90 days. This is the
+      # step that makes that true, so it is not optional furniture -- if it stops running, a published
+      # statement quietly becomes false. Outcomes and counts stay; they identify nobody.
+      - name: Erase the wording of searches older than the stated window
+        if: always() && (github.event.inputs.command || 'run') == 'run'
+        continue-on-error: true
+        run: python cli.py forget
+
       # Reported last and loudly, because the steps above are allowed to fail quietly and a backlog that
       # never shrinks is the failure this whole block exists to end.
       - name: Report what is still queued

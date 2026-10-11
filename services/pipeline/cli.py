@@ -89,6 +89,8 @@ def main(argv: list[str] | None = None) -> int:
     p_compact.add_argument("--apply", action="store_true", help="actually clear it; without this the command only reports")
     p_compact.add_argument("--full", action="store_true",
                            help="also rewrite the tables so the space returns to the file (locks them; never during a run)")
+    p_forget = sub.add_parser("forget", help="erase the wording of failed searches older than the stated window")
+    p_forget.add_argument("--days", type=int, default=pipeline.SEARCH_TEXT_DAYS)
     sub.add_parser("storage", help="report R2 and database usage against the free limits, warning if either is filling up")
     sub.add_parser("sectionmap", help="load CBDT's official Income-tax Act 1961 <-> 2025 provision mapping")
     p_run = sub.add_parser("run")
@@ -281,6 +283,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"deleted {r['documents']} documents and {r['files']} files")
         else:
             print("dry run - pass --apply to delete")
+        return 0
+
+    if args.cmd == "forget":
+        r = pipeline.forget_old_search_text(days=args.days)
+        print(f"cleared the text of {r['cleared']} searches older than {r['days']} days "
+              f"(outcomes and counts kept; they identify nobody)")
         return 0
 
     if args.cmd == "compact":

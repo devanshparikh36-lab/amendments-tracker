@@ -3,6 +3,7 @@ import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { CiteThis } from "@/components/CiteThis";
+import { CopyText } from "@/components/CopyText";
 import { PrintHeader } from "@/components/PrintHeader";
 import { PrintButton } from "@/components/PrintButton";
 import { VersionsHeld, type HeldVersion } from "@/components/VersionsHeld";
@@ -341,6 +342,21 @@ function ProvisionView({
                 "as amended" says nothing without it. The official address goes in ahead of ours, so the
                 note stands up without this site. */}
             <PrintButton />
+            {/* "Copy text" takes the provision; "Cite this" takes a reference to it. Both are wanted and
+                they are not the same errand -- quoting a section into an opinion needs the words, filing a
+                note about it needs the citation. */}
+            {(p.text || p.html) && (
+              <CopyText
+                targetId="provision-body"
+                title={[
+                  `${unit.charAt(0).toUpperCase()}${unit.slice(1)} ${p.number}, ${inst.title}`,
+                  p.heading?.replace(/[.\-\s]+$/, ""),
+                ]
+                  .filter(Boolean)
+                  .join(" — ")}
+                source={source?.href ?? null}
+              />
+            )}
             <CiteThis
               unit={unit}
               number={p.number}
@@ -409,7 +425,11 @@ function ProvisionView({
           <div className="no-print mb-3">
             <Provenance p={p} regulator={inst.regulator_code} />
           </div>
-          <ProvisionBody p={p} refs={refs} />
+          {/* The id is what "Copy text" reads. It takes `innerText` from here rather than being handed the
+              stored value, because that value is markup for some regulators and plain text for others. */}
+          <div id="provision-body">
+            <ProvisionBody p={p} refs={refs} />
+          </div>
           {p.footnote && (
             <p className="mt-3 border-t border-[var(--rule)] pt-2 text-[12px] leading-relaxed text-[var(--ink-3)]">
               {p.footnote}
@@ -492,9 +512,13 @@ function Contents({
   return (
     <div className="space-y-3">
       <div className="panel panel-body">
+        {/* "the filter box on the left" was wrong on a phone, where the two-column layout collapses and the
+            filter sits above rather than beside. Naming the box instead of its position is right at every
+            width, and survives the next layout change. */}
         <p className="text-[13.5px] text-[var(--ink-2)]">
-          Pick a {unit} below, or type its number in the filter box on the left and press Enter. Every {unit} opens
-          with the regulator&rsquo;s own text and a link to the official document.
+          Pick a {unit} below, or type its number in the <strong className="font-medium">Filter {unit}s</strong> box
+          and press Enter. Every {unit} opens with the regulator&rsquo;s own text and a link to the official
+          document.
         </p>
         {source && (
           <a href={source.href} target="_blank" rel="noreferrer" className="btn mt-2">

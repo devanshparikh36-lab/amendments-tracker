@@ -2,10 +2,13 @@ import type { Metadata, Viewport } from "next";
 import { Inter, Source_Serif_4 } from "next/font/google";
 import Link from "next/link";
 import { CommandPalette } from "@/components/CommandPalette";
+import { ReadingAids } from "@/components/ReadingAids";
+import { PageViews } from "@/components/PageViews";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { SiteNav } from "@/components/SiteNav";
 import { fmtDateTime } from "@/lib/format";
 import { lastRevised } from "@/lib/queries";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 /* Self-hosted at build time, not fetched from Google at run time: the files are served from this origin, so
@@ -22,13 +25,44 @@ import "./globals.css";
 const serif = Source_Serif_4({ subsets: ["latin"], display: "swap", variable: "--font-serif" });
 const sans = Inter({ subsets: ["latin"], display: "swap", variable: "--font-ui" });
 
+const DESCRIPTION =
+  "Indian tax and corporate law in the regulator's own words, with the amendment trail beside it: which notification changed which provision, and when, linked to the official document.";
+
 export const metadata: Metadata = {
+  // Everything below that carries a URL is written relative; this is what makes those absolute. Without it
+  // Next emits a relative og:image, and every scraper there is ignores one — which is indistinguishable
+  // from having no card at all, and only visible once a link is already pasted somewhere public.
+  metadataBase: new URL(SITE_URL),
   title: {
     default: "As Amended — Indian tax and corporate law",
     template: "%s · As Amended",
   },
-  description:
-    "Indian tax and corporate law in the regulator's own words, with the amendment trail beside it: which notification changed which provision, and when, linked to the official document.",
+  description: DESCRIPTION,
+
+  /* The card shown when a link is pasted into Teams, WhatsApp, Slack or an email.
+   *
+   * The image itself is not named here: `opengraph-image.png` sits beside this file and Next finds it by
+   * convention, emitting the tags with the right absolute URL and dimensions. Naming it as well would
+   * produce two og:image tags, and scrapers disagree about which wins.
+   *
+   * en_IN rather than en_GB or en_US. It is the correct locale for the material, and it is the one signal
+   * in here that tells a scraper which English this is.
+   */
+  openGraph: {
+    type: "website",
+    siteName: "As Amended",
+    title: "As Amended — Indian tax and corporate law",
+    description: DESCRIPTION,
+    locale: "en_IN",
+    url: "/",
+  },
+  // summary_large_image, not summary: the card is 1200x630 and the small variant crops it to a square,
+  // which cuts the sentence in half. No `site` or `creator` handle, because there is no account to name.
+  twitter: {
+    card: "summary_large_image",
+    title: "As Amended — Indian tax and corporate law",
+    description: DESCRIPTION,
+  },
   // So a feed reader, Outlook or Teams finds the feed from any page without being told its address. The
   // route also accepts ?regulator= and ?instrument= for a narrower subscription; this advertises the whole
   // thing, which is the right default for discovery.
@@ -155,6 +189,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             all until then, so it costs no space in the masthead it used to sit in. */}
         <CommandPalette hideTrigger />
 
+        {/* The progress bar and the button back to the top. Both measure the page and hide themselves on
+            anything short enough not to need them, so this costs nothing on the home page and earns its
+            place on the Companies Act, which lists 544 sections on one screen. */}
+        <ReadingAids />
+
+        {/* Counts the page, and nothing about whoever is reading it. First-party, no cookie, no identifier
+            -- see /api/beacon for what is stored and the privacy page for the promise it keeps. */}
+        <PageViews />
+
         <main id="main" className="mx-auto max-w-[1360px] px-5 py-6">
           {children}
         </main>
@@ -170,12 +213,31 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               PDF; text read out of those pages, including by OCR, is a finding aid, never the official rendering.
             </p>
             <p className="mt-1.5">
-              A research aid, not legal advice. Always read the official document before relying on anything here.{" "}
-              <Link href="/status" className="text-[var(--link)] hover:underline">
+              A research aid, not legal advice. Always read the official document before relying on anything here.
+            </p>
+            {/* The written pages. Kept out of the main navigation on purpose -- someone looking up a section
+                is not looking for the terms -- but a site that publishes a privacy notice and then hides it
+                has not really published one. */}
+            <nav aria-label="Site information" className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[12px]">
+              <Link href="/about" className="hover:text-[var(--ink-2)] hover:underline">
+                About
+              </Link>
+              <Link href="/privacy" className="hover:text-[var(--ink-2)] hover:underline">
+                Privacy
+              </Link>
+              <Link href="/cookies" className="hover:text-[var(--ink-2)] hover:underline">
+                Cookies
+              </Link>
+              <Link href="/terms" className="hover:text-[var(--ink-2)] hover:underline">
+                Terms
+              </Link>
+              <Link href="/feed.xml" className="hover:text-[var(--ink-2)] hover:underline">
+                Feed
+              </Link>
+              <Link href="/status" className="hover:text-[var(--ink-2)] hover:underline">
                 Collection status
               </Link>
-              .
-            </p>
+            </nav>
           </div>
         </footer>
       </body>

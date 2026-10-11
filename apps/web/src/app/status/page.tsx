@@ -3,7 +3,7 @@ import { Breadcrumbs } from "@/components/PageHeader";
 import { Badge } from "@/components/Badge";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { provisionHref } from "@/lib/lookup";
-import { jobStats, recentEffects, sourceGaps, sourceRuns } from "@/lib/queries";
+import { jobStats, pageViews, recentEffects, sourceGaps, sourceRuns } from "@/lib/queries";
 
 // Deliberately dynamic: this page answers "is collection alive right now", and a cached answer to that
 // question is worse than a slow one.
@@ -12,7 +12,13 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Collection status" };
 
 export default async function StatusPage() {
-  const [runs, jobs, effects, gaps] = await Promise.all([sourceRuns(), jobStats(), recentEffects(100), sourceGaps()]);
+  const [runs, jobs, effects, gaps, views] = await Promise.all([
+    sourceRuns(),
+    jobStats(),
+    recentEffects(100),
+    sourceGaps(),
+    pageViews(30),
+  ]);
   const problems = effects.filter(
     (e) => e.change_type === "cannot_apply" || e.verification_status === "differs_from_official",
   );
@@ -219,6 +225,63 @@ export default async function StatusPage() {
             <li className="panel border-dashed p-6 text-center text-[var(--ink-3)]">Nothing outstanding.</li>
           )}
         </ul>
+      </section>
+
+      {/* What is being read.
+          
+          Here rather than on a page of its own, and here rather than public: this is a maintenance screen,
+          robots.txt disallows it, and these numbers are about the site rather than about the law. They are
+          views and never visitors -- nothing identifying is recorded, so "how many people" is a question
+          this cannot answer and was built not to. */}
+      <section>
+        <div className="panel">
+          <div className="panel-head flex flex-wrap items-center gap-2">
+            <h2 className="eyebrow">Read in the last {views.days} days</h2>
+            <span className="meta num ml-auto">{views.total.toLocaleString("en-IN")} views</span>
+          </div>
+          {views.total === 0 ? (
+            <p className="p-6 text-center text-[13px] text-[var(--ink-3)]">
+              Nothing counted yet. The counter starts with the next deploy.
+            </p>
+          ) : (
+            <div className="grid gap-0 md:grid-cols-2 md:divide-x md:divide-[var(--rule)]">
+              <div className="p-3">
+                <h3 className="eyebrow mb-1.5">By page</h3>
+                <table className="dtable">
+                  <tbody>
+                    {views.byPath.map((r) => (
+                      <tr key={r.path}>
+                        <td className="num">{r.path}</td>
+                        <td className="num text-right">{r.views.toLocaleString("en-IN")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div className="p-3">
+                <h3 className="eyebrow mb-1.5">Most-read instruments</h3>
+                {views.byInstrument.length === 0 ? (
+                  <p className="meta">None yet.</p>
+                ) : (
+                  <table className="dtable">
+                    <tbody>
+                      {views.byInstrument.map((r) => (
+                        <tr key={r.slug}>
+                          <td>
+                            <Link href={`/browse/${r.slug}`} className="hover:underline">
+                              {r.title ?? r.slug}
+                            </Link>
+                          </td>
+                          <td className="num text-right">{r.views.toLocaleString("en-IN")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </section>
     </div>
   );

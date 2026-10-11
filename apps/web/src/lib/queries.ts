@@ -1276,3 +1276,45 @@ const SUGGEST_BRANCH_LIMITS: ReadonlyArray<readonly [number, number]> = [
   [3, BRANCH_INSTRUMENT],
   [4, BRANCH_NOTIFICATION],
 ];
+
+/* What has been read lately, by route and by instrument.
+ *
+ * Reads `page_view_day`, which holds one row per route per day and nothing about any reader -- so these
+ * are views, never visitors. See migration 0014 for why that distinction is a design decision rather than
+ * a shortcoming.
+ */
+export async function pageViews(days = 30) {
+  const [byPath, byInstrument, daily, total] = await Promise.all([
+    query<{ path: string; views: number }>(
+      `SELECT path, SUM(views)::int AS views
+         FROM page_view_day WHERE day > CURRENT_DATE - $1::int
+        GROUP BY path ORDER BY views DESC`,
+      [days],
+      LIVE_SECONDS,
+    ),
+    // The question this table exists to answer: which Acts are actually opened. Joined to `instrument` so a
+    // slug that has since been renamed or withdrawn shows as itself rather than as a dangling row.
+    query<{ slug: string; title: string | null; views: number }>(
+      `SELECT v.slug, i.title, SUM(v.views)::int AS views
+         FROM page_view_day v
+         LEFT JOIN instrument i ON i.slug = v.slug
+        WHERE v.day > CURRENT_DATE - $1::int AND v.slug <> ''
+        GROUP BY v.slug, i.title ORDER BY views DESC LIMIT 15`,
+      [days],
+      LIVE_SECONDS,
+    ),
+    query<{ day: string; views: number }>(
+      `SELECT to_char(day, 'YYYY-MM-DD') AS day, SUM(views)::int AS views
+         FROM page_view_day WHERE day > CURRENT_DATE - $1::int
+        GROUP BY day ORDER BY day`,
+      [days],
+      LIVE_SECONDS,
+    ),
+    query<{ views: number }>(
+      `SELECT COALESCE(SUM(views), 0)::int AS views FROM page_view_day WHERE day > CURRENT_DATE - $1::int`,
+      [days],
+      LIVE_SECONDS,
+    ),
+  ]);
+  return { byPath, byInstrument, daily, total: total[0]?.views ?? 0, days };
+}

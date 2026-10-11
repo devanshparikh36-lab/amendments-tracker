@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="As Amended">
+  <!-- A page of statutory text with one line amended. Deliberately not a section mark: a glyph depends on
+       whatever serif the renderer has, and at 16px that is the difference between a crisp mark and a smear.
+       Three bars and a rounded ground are the same shape at every size. Colours are the light theme's
+       --accent and --ground, with the dark theme's --accent for the line that changed. -->
+  <rect width="32" height="32" rx="7" fill="#1d4030"/>
+  <rect x="7.5" y="8"    width="17" height="3.5" rx="1.75" fill="#f4f3ef"/>
+  <rect x="7.5" y="14.5" width="13" height="3.5" rx="1.75" fill="#4ea87c"/>
+  <rect x="7.5" y="21"   width="17" height="3.5" rx="1.75" fill="#f4f3ef"/>
+</svg>

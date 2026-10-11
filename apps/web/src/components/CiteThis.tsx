@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { copyText } from "@/lib/clipboard";
 
 /* A citation for the provision on screen, ready to paste into a memo.
  *
@@ -76,45 +77,9 @@ export function CiteThis({
   ].filter(Boolean) as string[];
   const citation = lines.join("\n");
 
-  /** The old way. Deprecated, synchronous, and still the only one that works when permission is refused. */
-  function copyByExecCommand(): boolean {
-    try {
-      const el = document.createElement("textarea");
-      el.value = citation;
-      el.style.position = "fixed";
-      el.style.opacity = "0";
-      document.body.appendChild(el);
-      el.select();
-      const ok = document.execCommand("copy");
-      document.body.removeChild(el);
-      return ok;
-    } catch {
-      return false;
-    }
-  }
-
   async function copy() {
-    // Three attempts, in order, and the order was wrong the first time this was written.
-    //
-    // The original tried `navigator.clipboard.writeText` only when it existed and fell back to execCommand
-    // when it did not. That reads sensibly and is useless in the case that actually occurs: the API is
-    // present, so the fallback is skipped, and then it *throws* because `clipboard-write` is denied. Found
-    // by testing rather than by reading -- the browser used to check this page refuses the permission
-    // outright ("writePermission: denied"), and the button went straight to its last-resort state while a
-    // perfectly good synchronous path sat unused behind an `else`.
-    //
-    // So: try the modern API, and if it throws for any reason try the old one before giving up.
-    let ok = false;
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(citation);
-        ok = true;
-      } catch {
-        ok = copyByExecCommand();
-      }
-    } else {
-      ok = copyByExecCommand();
-    }
+    // Both routes and their ordering live in lib/clipboard.ts, which explains why the order is what it is.
+    const ok = await copyText(citation);
     if (ok) {
       setState("copied");
     } else {
