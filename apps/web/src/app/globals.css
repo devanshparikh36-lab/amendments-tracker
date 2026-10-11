@@ -35,6 +35,9 @@
   --tint-machine: #fdf8ef;
   --tint-machine-rule: #ecdcbd;
   --tint-pdf: #f8f8f6;
+  /* The foot of the compare callout's gradient. Hard-coded pale blue until dark mode, where the box then
+     faded from a dark panel to near-white and took its own body text with it. */
+  --compare-wash: #f7f9fd;
   --mark: #fdf3c8;
   --mark-ink: inherit;
 
@@ -93,6 +96,7 @@
   --tint-machine: #241f16;
   --tint-machine-rule: #3a3020;
   --tint-pdf: #1d1c19;
+  --compare-wash: #171b24;
   --mark: #4a3f12;
   --mark-ink: #f6edcb;
 
@@ -107,51 +111,11 @@
   --sub-companies: #f1869d;
 }
 
-/* The system preference, but only while no explicit choice has been stored. `:not([data-theme="light"])`
-   is what makes "I chose light on a dark-set laptop" stick -- without it the media query would win and the
-   toggle would appear not to work. */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --amend-bg: #241f14;
-    color-scheme: dark;
-
-    --paper: #1c1b18;
-    --ground: #141412;
-    --ground-sunk: #100f0e;
-
-    --ink: #ece9e3;
-    --ink-2: #c4c0b7;
-    --ink-3: #9b968b;
-    --ink-4: #7a756a;
-
-    --rule: #2e2c27;
-    --rule-strong: #423f38;
-
-    --accent: #4ea87c;
-    --accent-hover: #63bd90;
-    --on-accent: #0e1a14;
-    --link: #85d2a7;
-
-    --tint: #201f1b;
-    --tint-official: #18231d;
-    --tint-official-rule: #26382d;
-    --tint-machine: #241f16;
-    --tint-machine-rule: #3a3020;
-    --tint-pdf: #1d1c19;
-    --mark: #4a3f12;
-    --mark-ink: #f6edcb;
-
-    --flag-official: #5cba8c;
-    --flag-machine: #d8a441;
-    --flag-alert: #e8807b;
-
-    --sub-income-tax: #7da2ff;
-    --sub-gst: #e0a356;
-    --sub-fema: #4fb8ac;
-    --sub-sebi: #b292f5;
-    --sub-companies: #f1869d;
-  }
-}
+/* No automatic switching. The theme is whatever the reader last chose, and light until they choose --
+   asked for directly, and it is the defensible default for this site anyway: the light theme is the one
+   that matches what comes out of the printer. The `prefers-color-scheme` block that used to sit here is
+   gone with the "Auto" state of the toggle; there is nothing left to resolve at load but a stored string.
+   The only rule is now [data-theme="dark"] above. */
 
 @theme inline {
   --color-background: var(--ground);
@@ -273,7 +237,7 @@ summary:focus-visible,
   border: 1px solid var(--rule-strong);
   border-left: 4px solid var(--sub-income-tax);
   border-radius: 4px;
-  background: linear-gradient(var(--paper), #f7f9fd);
+  background: linear-gradient(var(--paper), var(--compare-wash));
 }
 
 .compare-cta h2 {
@@ -666,6 +630,7 @@ summary:focus-visible,
     --tint-machine: #fdf8ef;
     --tint-machine-rule: #ecdcbd;
     --tint-pdf: #f8f8f6;
+    --compare-wash: #f7f9fd;
     --mark: #fdf3c8;
     --mark-ink: inherit;
     --accent: #1d4030;

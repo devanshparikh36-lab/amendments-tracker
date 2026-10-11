@@ -31,7 +31,7 @@ const SHOW = 10;
  * Degrades honestly: with JavaScript off there is no palette, and the pages that matter -- Home, every
  * instrument -- still carry a plain form that posts to /find without any of this.
  */
-export function CommandPalette() {
+export function CommandPalette({ hideTrigger = false }: { hideTrigger?: boolean } = {}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [value, setValue] = useState("");
@@ -135,16 +135,21 @@ export function CommandPalette() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        aria-haspopup="dialog"
-        className="flex items-center gap-2 rounded border border-[var(--rule)] px-2.5 py-1 text-[12.5px] text-[var(--ink-3)] hover:border-[var(--rule-strong)] hover:text-[var(--ink)]"
-      >
-        <span>Search</span>
-        {/* The shortcut is shown rather than left to be discovered. */}
-        <kbd className="rounded border border-[var(--rule)] px-1 text-[10.5px] text-[var(--ink-4)]">Ctrl K</kbd>
-      </button>
+      {/* The masthead no longer carries a search box -- a box in the header is a box on every screen,
+          including the ones that have their own and better-scoped one. The palette itself stays, because
+          the keyboard shortcut costs no space and is the fastest route from anywhere; `hideTrigger` is how
+          it is mounted without re-introducing the thing that was removed. */}
+      {!hideTrigger && (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          aria-haspopup="dialog"
+          className="flex items-center gap-2 rounded border border-[var(--rule)] px-2.5 py-1 text-[12.5px] text-[var(--ink-3)] hover:border-[var(--rule-strong)] hover:text-[var(--ink)]"
+        >
+          <span>Search</span>
+          <kbd className="rounded border border-[var(--rule)] px-1 text-[10.5px] text-[var(--ink-4)]">Ctrl K</kbd>
+        </button>
+      )}
 
       {open && (
         <div

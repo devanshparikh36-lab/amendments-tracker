@@ -72,7 +72,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     // the header must render even if the database is briefly unreachable
   }
   return (
-    <html lang="en" className={`${sans.variable} ${serif.variable}`}>
+    // `suppressHydrationWarning` only because of the theme script below, and only on this element: it
+    // sets data-theme on <html> before React hydrates, so the server's markup and the live DOM differ by
+    // that one attribute *by design*. Without this React logs a hydration mismatch on every page load --
+    // noise that would eventually hide a real one. It does not suppress anything inside the tree.
+    <html lang="en" suppressHydrationWarning className={`${sans.variable} ${serif.variable}`}>
       <head>
         {/* Runs before the first paint, which is the only moment it is any use.
             
@@ -132,11 +136,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   better-scoped one, and it answered about the whole site even while you were reading a
                   single Act. Search is now the palette below -- one keystroke from anywhere -- plus a real
                   box on the pages where searching is the point. */}
-              {/* The corner the "Look up" button used to occupy, and the right home for this: a theme is a
-                  property of the whole page, so it belongs with the other thing that qualifies the whole
-                  page rather than inside any one panel. */}
+              {/* The corner the "Look up" button used to occupy, and now only the theme. A search box in
+                  the masthead is a search box on every screen, including the ones that have their own and
+                  better-scoped one; the page you are on asks a better question than the header can. The
+                  palette is still mounted -- Ctrl-K and "/" open it from anywhere -- but it no longer
+                  advertises itself with a box of its own up here. */}
               <div className="flex items-center gap-2">
-                <CommandPalette />
                 <ThemeToggle />
               </div>
             </div>
@@ -145,6 +150,10 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             <SiteNav />
           </div>
         </header>
+
+        {/* Mounted for its keyboard shortcut alone. It renders its own overlay when opened and nothing at
+            all until then, so it costs no space in the masthead it used to sit in. */}
+        <CommandPalette hideTrigger />
 
         <main id="main" className="mx-auto max-w-[1360px] px-5 py-6">
           {children}
