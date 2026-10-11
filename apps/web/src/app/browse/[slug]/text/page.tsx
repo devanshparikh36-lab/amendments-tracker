@@ -3,6 +3,8 @@ import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { CiteThis } from "@/components/CiteThis";
+import { PrintHeader } from "@/components/PrintHeader";
+import { PrintButton } from "@/components/PrintButton";
 import { VersionsHeld, type HeldVersion } from "@/components/VersionsHeld";
 import { ProvisionBody, Provenance } from "@/components/LegalText";
 import { InstrumentTabs } from "@/components/InstrumentTabs";
@@ -290,6 +292,16 @@ function ProvisionView({
   return (
     <div className={showEmbed ? "grid gap-4 xl:grid-cols-2" : ""}>
       <article className="panel">
+        {/* Print only. A printed section with no statement of what it is or what date it speaks as
+            of is a paragraph nobody can date once it is in a file. */}
+        <PrintHeader
+          instrument={inst.title}
+          unit={unit}
+          number={p.number}
+          heading={p.heading}
+          asOn={asOn ?? inst.official_updated_as_on}
+          officialUrl={source?.href ?? null}
+        />
         <header className="border-b border-[var(--rule)] px-5 py-3">
           <div className="flex flex-wrap items-baseline gap-x-2">
             <h2 className="serif text-[18px] font-semibold capitalize">
@@ -328,6 +340,7 @@ function ProvisionView({
                 retyped, which is where file-note errors come from -- the "as on" date most of all, because
                 "as amended" says nothing without it. The official address goes in ahead of ours, so the
                 note stands up without this site. */}
+            <PrintButton />
             <CiteThis
               unit={unit}
               number={p.number}

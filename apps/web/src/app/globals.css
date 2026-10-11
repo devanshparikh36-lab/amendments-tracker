@@ -560,6 +560,47 @@ summary:focus-visible,
     font-size: 8pt;
     color: #555;
   }
+
+  /* What a printed provision needs and the screen does not: a statement of what the document is. See
+     components/PrintHeader.tsx. The utility `print:block` only unhides these; the look lives here. */
+  .print-head {
+    margin-bottom: 10pt;
+    padding-bottom: 6pt;
+    border-bottom: 1pt solid #333;
+  }
+  .print-head-rule {
+    font-weight: 600;
+    font-size: 12pt;
+  }
+  .print-head-sub {
+    font-size: 11pt;
+    margin-top: 1pt;
+  }
+  .print-head-meta {
+    font-size: 8.5pt;
+    color: #444;
+    margin-top: 3pt;
+  }
+  .print-foot {
+    margin-top: 10pt;
+    padding-top: 5pt;
+    border-top: 1pt solid #999;
+    font-size: 8pt;
+    color: #444;
+    /* `word-break` because an official URL can be longer than the measure, and a URL that runs off the page
+       is the one thing on this footer that has to survive printing. */
+    word-break: break-all;
+  }
+  .print-foot-note {
+    display: block;
+    margin-top: 2pt;
+    word-break: normal;
+  }
+  /* The heading above the text already names the provision, so the in-page header would print twice. */
+  .print-head ~ * .no-print,
+  .no-print {
+    display: none !important;
+  }
 }
 
 /* A notification number that opens the official file.
