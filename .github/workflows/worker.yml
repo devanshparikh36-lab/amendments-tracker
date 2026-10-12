@@ -1,5 +1,20 @@
 # The collector. Runs once a day at 07:00 IST on GitHub's hosted runners, with no machine of ours involved.
 #
+# 07:00 IST is the intent and the cron below is NOT how it is achieved. GitHub does not honour this schedule:
+# measured over every run from 6 Sept to 12 Oct 2026, the `schedule` event arrived 4.8 to 7.2 hours late, and
+# the lag grew steadily across those five weeks (4.9h average in the first week, 6.8h in the last). The run
+# was created at that late moment -- `created_at` equals `run_started_at` -- so this is GitHub's scheduler
+# delivering late, not a queue waiting for a runner. Collection was starting at ~13:00 IST and the mail that
+# depends on it was going out mid-afternoon.
+#
+# So the real trigger is external: a Cloudflare Worker (infra/trigger/) calls workflow_dispatch at 01:30 UTC.
+# Dispatch events are delivered immediately; only `schedule` is subject to the delay above.
+#
+# The cron is kept as a fallback for the day the external trigger does not fire -- an expired token, a
+# Cloudflare outage, a deleted Worker -- because the alternative is collection stopping silently. It arrives
+# hours late by definition, so the `decide` job below turns it into a no-op whenever the external trigger has
+# already collected today. On a normal day the fallback costs about half a minute.
+#
 # Once a day is both what is wanted and what is affordable. Regulators publish a handful of documents a week --
 # MCA issued four General Circulars in eight months -- so six-hourly polling was buying nothing and costing
 # four times as much. Discovery is about 16 minutes a pass, so once daily is roughly 500 minutes a month
@@ -14,9 +29,18 @@
 # their full counts from a residential connection, and the cause was never established -- the runner-side logs
 # went unread. EmptyDiscovery now fails the run rather than recording a green zero, so if it is still happening
 # this workflow will say so instead of looking healthy.
+
+# Named, and the name matters. Until now this workflow had no `name:` at all, so GitHub called it
+# ".github/workflows/worker.yml" -- which is what `workflow_run` would have had to match on to chain the
+# digest to it. Renaming it here is what lets digest.yml say "Collect from the regulators" and mean it.
+name: Collect from the regulators
+
 on:
   schedule:
-    - cron: "30 1 * * *"        # 01:30 UTC = 07:00 IST, once a day
+    # 01:30 UTC. Nominally 07:00 IST; in practice GitHub delivers this around 13:00 IST (see the header).
+    # This is the fallback path, not the intended one -- the Cloudflare Worker fires the same workflow by
+    # workflow_dispatch at 01:30 UTC and that one actually lands on time.
+    - cron: "30 1 * * *"
   workflow_dispatch:
     inputs:
       command:
@@ -33,7 +57,74 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Whether the collection below is worth running at all.
+  #
+  # This exists only so the fallback cron can be kept without paying for it. It asks the database one
+  # question -- has a collection already succeeded today? -- and nothing else. No checkout, no requirements,
+  # no Playwright: about twenty seconds, against the 75-154 minutes a real run takes.
+  #
+  # Only a scheduled run can be skipped. A workflow_dispatch always proceeds, whether it came from the
+  # Cloudflare Worker or from a person pressing the button, because the point of pressing it is to make it
+  # run now. That also means this guard cannot strand collection: if the external trigger fires, it is a
+  # dispatch and is never second-guessed.
+  decide:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      # A skipped step leaves an empty output, and an empty string is falsey in a GitHub expression, so
+      # `|| 'true'` is what lets a dispatch through without running the check at all. A check that did run
+      # and said "false" leaves the non-empty string "false", which is *truthy* here, so `||` returns that
+      # "false" instead of overriding it. Correct, but by a rule that reads backwards -- hence this note.
+      proceed: ${{ steps.check.outputs.proceed || 'true' }}
+    steps:
+      # setup-python rather than the runner's own python3. The system interpreter on Ubuntu 24.04 is
+      # externally managed (PEP 668) and `pip install` into it fails outright; this gives a clean
+      # interpreter where it just works, for about five seconds.
+      - uses: actions/setup-python@v5
+        if: github.event_name == 'schedule'
+        with:
+          python-version: "3.12"
+
+      - name: Has today's collection already happened?
+        id: check
+        if: github.event_name == 'schedule'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          pip install -q "psycopg[binary]"
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os, sys, psycopg
+
+          # "Today" is decided in IST, not UTC. A UTC date rolls over at 05:30 IST -- an hour and a half
+          # before collection is meant to start -- so a UTC "today" would be the wrong day for exactly the
+          # window this whole arrangement exists to hit.
+          SQL = """
+              SELECT count(*) FROM source_run
+              WHERE ok
+                AND (started_at AT TIME ZONE 'Asia/Kolkata')::date
+                  = (now() AT TIME ZONE 'Asia/Kolkata')::date
+          """
+
+          # A database that will not answer is not a reason to skip collection. Proceeding costs, at worst,
+          # a duplicate run; skipping could cost a day with no collection and no sign that anything was
+          # wrong. This job is the safety net, so it fails towards doing the work.
+          try:
+              with psycopg.connect(os.environ["DATABASE_URL"], connect_timeout=20) as conn:
+                  already = conn.execute(SQL).fetchone()[0] > 0
+          except Exception as exc:
+              print(f"database unreachable ({exc.__class__.__name__}); collecting anyway", file=sys.stderr)
+              already = False
+          else:
+              print("already collected today" if already else "nothing collected yet today", file=sys.stderr)
+
+          # stdout is redirected into $GITHUB_OUTPUT, so this line and nothing else may go there. Every
+          # diagnostic above is deliberately on stderr, which lands in the run log instead.
+          print("proceed=" + ("false" if already else "true"))
+          PY
+
   run:
+    needs: decide
+    if: needs.decide.outputs.proceed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 300
     defaults:

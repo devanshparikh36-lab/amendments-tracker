@@ -61,12 +61,35 @@ any bug. Even at the current once-daily schedule a private repo would be at ~1,8
 margin for the 4h17m outlier that has already happened once. **If this is ever made private again, collection
 will stop mid-month unless the schedule drops well below daily.**
 
-| workflow | what it does | when |
-|---|---|---|
-| `worker.yml` | discover → fetch → tag, then re-fetch → page index → OCR as separate bounded steps | **07:00 IST daily** |
-| `digest.yml` | mails what changed | 08:00 IST daily |
-| `storage.yml` | free-tier alarm, fails past 60% | daily |
-| `keepalive.yml` | keeps schedules alive | monthly |
+| workflow | what it does | when | triggered by |
+|---|---|---|---|
+| `worker.yml` | discover → fetch → tag, then re-fetch → page index → OCR as separate bounded steps | **07:00 IST daily** | Cloudflare Worker (`infra/trigger/`), `workflow_dispatch` |
+| `digest.yml` | mails what changed | when collection finishes, ~08:40 IST | `workflow_run` on `worker.yml` completing |
+| `storage.yml` | free-tier alarm, fails past 60% | nominally 07:30 IST, actually ~13:45 | GitHub `schedule` — still late, see below |
+| `keepalive.yml` | keeps schedules alive | monthly | GitHub `schedule` |
+
+**Do not trust a `cron:` line in this repository as the time something runs.** GitHub does not honour them
+here. Measured across every scheduled run from 6 Sept to 12 Oct 2026, the `schedule` event was delivered 4.8
+to 7.2 hours late, and the lag grew steadily over those five weeks — 4.9h average in the first week, 6.8h in
+the last. `created_at` equals `run_started_at` on every one, so the event itself arrived late; nothing was
+queued waiting for a runner. Collection was starting at ~13:00 IST and the mail at ~14:40 IST.
+
+Only `schedule` behaves this way. `workflow_dispatch` and `workflow_run` are delivered at once, which is why
+collection is now started by a Cloudflare cron trigger that calls `workflow_dispatch` (see
+`infra/trigger/README.md`) and why the digest hangs off the collector finishing instead of a clock.
+
+`worker.yml` keeps its own cron as a fallback for the day the external trigger does not fire. It arrives
+hours late by definition, so the `decide` job skips the run entirely when a collection already succeeded
+that IST day — about 20 seconds on a normal day. The failure mode to recognise: **if the trigger's token
+expires, collection does not stop, it goes back to arriving in the afternoon.**
+
+`storage.yml` was left on `schedule`. A free-tier alarm that fires six hours late is still a free-tier alarm;
+it is not worth a second external trigger.
+
+Before this, `digest.yml` ran on a cron one hour after the collector's. Collection takes 75–154 minutes, so
+an hour was never enough: on 9 of the 29 days to 12 Oct 2026 the mail went out while collection was still
+running, up to 63 minutes early. Those mails described an unfinished run and looked no different from any
+other.
 
 The three Windows scheduled tasks are **disabled**, not deleted, and `scripts/` still holds them. They are the
 way back if GitHub is ever unusable — but re-enabling them reintroduces the failure they were disabled for: the

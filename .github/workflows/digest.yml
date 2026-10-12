@@ -4,14 +4,35 @@ name: Daily email digest
 # from a laptop -- neither half is true any more: collection moved to GitHub runners, nothing depends on that
 # machine being awake, and the Actions allowance is unlimited on a public repository.
 #
-# It reports what collection found, so it has to run after collection, not before.
+# It reports what collection found, so it has to run after collection, not before. It now waits for
+# collection to finish instead of guessing when that will be.
 #
-# It runs daily but only mails when there is something to say: new notifications, applied amendments, or a
-# collector that failed. A quiet day sends nothing and still passes. A digest arriving every morning to say
-# nothing happened is one you stop opening, and then the morning it matters looks like all the others.
+# The guess was a cron an hour after the collector's. Collection takes 75 to 154 minutes, so an hour was
+# never enough, and on 9 of the 29 days to 12 Oct 2026 this ran while collection was still going -- up to 63
+# minutes early on 10 Oct. Those mails were not wrong, they were incomplete: they described an unfinished
+# run, with no sign on the face of them that anything was missing. A `workflow_run` trigger ends that class
+# of bug outright rather than widening the gap and hoping.
+#
+# It fires on completion, not on success. The collector exits non-zero when an adapter returns an empty
+# discovery, and on those days the other eleven sources still collected normally -- withholding the mail
+# would hide a real day's publishing because one regulator's site misbehaved. Collector health is reported
+# by the collector's own red run and on /status; this mail is about what the regulators published. Only a
+# cancelled run is skipped, because a cancelled run is one nobody wants the consequences of.
+#
+# It still only mails when there is something to say: new notifications or applied amendments. A quiet day
+# sends nothing and still passes. A digest arriving every morning to say nothing happened is one you stop
+# opening, and then the morning it matters looks like all the others.
+#
+# That quietness is also what makes the collector's fallback run safe. The watermark advances only when mail
+# went out, so if collection runs twice in a day the second digest finds nothing new and stays silent -- no
+# duplicate mail, no special-casing needed here.
 on:
-  schedule:
-    - cron: "30 2 * * *"        # 08:00 IST daily, an hour after collection starts at 07:00 IST
+  workflow_run:
+    # Matched by name, which is why worker.yml now has one. Until 12 Oct 2026 it had no `name:` at all and
+    # GitHub called it ".github/workflows/worker.yml"; chaining to that would have been matching on a path
+    # dressed up as a title.
+    workflows: ["Collect from the regulators"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       force:
@@ -25,6 +46,10 @@ on:
 
 jobs:
   digest:
+    # Everything except a cancelled collection. On a workflow_dispatch there is no `workflow_run` in the
+    # event payload at all, so the left side is null, null is not the string 'cancelled', and a hand-run
+    # digest goes ahead -- which is what the Force and Look-back buttons are for.
+    if: github.event.workflow_run.conclusion != 'cancelled'
     # Kept off the laptop so that the one thing whose job is to tell you what changed does not depend on that
     # machine being awake, and so its own failure raises a GitHub failure email. Minutes are unlimited here
     # because the repository is public.

@@ -1,0 +1,28 @@
+# The thing that actually makes collection happen at 07:00 IST.
+#
+# GitHub's own cron does not: measured across every scheduled run from 6 Sept to 12 Oct 2026, the `schedule`
+# event arrived 4.8 to 7.2 hours late and the lag was growing by roughly half an hour a week. A Cloudflare
+# cron trigger fires within a minute of its time, and a workflow_dispatch raised from it is delivered at
+# once -- only GitHub's `schedule` event is subject to that delay.
+#
+# Cloudflare and not a third-party cron service because the R2 bucket is already here: no new account, no new
+# company holding a token that can start jobs in the repository. Cron Triggers are included on the Workers
+# free plan, and one invocation a day against 100,000 is not a number worth watching.
+
+name = "as-amended-trigger"
+main = "src/index.js"
+
+# Deliberately conservative. Nothing here depends on a runtime flag -- it is one fetch -- and a date newer
+# than the installed wrangler makes wrangler refuse to publish. Raise it freely if you ever need to.
+compatibility_date = "2025-01-01"
+
+[triggers]
+# 01:30 UTC = 07:00 IST. Cloudflare crons are always UTC; there is no timezone setting to get wrong.
+#
+# Collection takes 75-154 minutes, so the mail that follows it lands between 08:15 and 09:35 IST, and on
+# 2 of the 12 days measured that is after 09:00. If "by 09:00" has to hold every day, move this to
+# "15 0 * * *" (06:15 IST) -- that clears every duration observed so far with room to spare.
+crons = ["30 1 * * *"]
+
+# No KV, no R2 binding, no D1. The only state this Worker needs is the token, and that is a secret:
+#   wrangler secret put GITHUB_TOKEN
