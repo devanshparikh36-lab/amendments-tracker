@@ -157,10 +157,15 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               </span>
             </Link>
 
-            {/* The stamp sits in the top corner, above the search box: it qualifies everything on the page
-                ("as of when?"), so it belongs where the eye lands last on the header rather than inline
-                beside the masthead, where it read as part of the title. */}
-            <div className="ml-auto flex w-full flex-col gap-1 sm:w-auto sm:items-end">
+            {/* The stamp qualifies everything on the page ("as of when?"), so it belongs where the eye lands
+                last on the header rather than inline beside the masthead, where it read as part of the
+                title.
+
+                A row, not a column. Stacked, the toggle was pinned to the top edge of the header with the
+                stamp above it; side by side with items-center, both sit on the masthead's own centre line.
+                It still wraps to its own full-width row on a narrow screen, where there is no room beside
+                the wordmark for either of them. */}
+            <div className="ml-auto flex w-full items-center justify-end gap-x-4 gap-y-1 sm:w-auto">
               {(revised.checked || revised.added) && (
                 <Link
                   href="/status"
@@ -181,9 +186,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                   better-scoped one; the page you are on asks a better question than the header can. The
                   palette is still mounted -- Ctrl-K and "/" open it from anywhere -- but it no longer
                   advertises itself with a box of its own up here. */}
-              <div className="flex items-center gap-2">
-                <ThemeToggle />
-              </div>
+              <ThemeToggle />
             </div>
           </div>
           <div className="mx-auto max-w-[1360px] px-3.5 pt-1">

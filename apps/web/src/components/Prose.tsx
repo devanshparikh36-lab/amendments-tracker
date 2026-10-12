@@ -23,7 +23,7 @@ export function Prose({
       {/* Front-door pages, so the title gets the display treatment and the same textured ground as the
           home page. The measure stays at 68ch; nothing about the prose changes. */}
       <header className="paper-texture -mx-5 rounded-lg border-b border-[var(--rule)] px-5 pb-4 pt-4">
-        <h1 className="display" style={{ fontSize: "clamp(26px, 3.4vw, 38px)" }}>{title}</h1>
+        <h1 className="display">{title}</h1>
         {lede && <p className="mt-2 text-[15px] leading-relaxed text-[var(--ink-2)]">{lede}</p>}
         {dated && <p className="mt-2 text-[12px] text-[var(--ink-4)]">In force from {LEGAL_UPDATED}.</p>}
       </header>

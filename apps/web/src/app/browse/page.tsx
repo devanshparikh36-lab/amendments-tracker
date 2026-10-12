@@ -84,23 +84,6 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
             Every instrument has its own page — what it is, who issued it, and what has amended it.
           </p>
         </div>
-        <p className="meta num">
-          {n(instruments.length)} of {n(all.length)} tracked
-          {!showSuperseded && supersededCount > 0 && (
-            <>
-              {" "}
-              <Link
-                href={{ pathname: "/browse", query: { ...sp, superseded: "1" } }}
-                className="text-[var(--link)] hover:underline"
-              >
-                (+{n(supersededCount)} superseded)
-              </Link>
-            </>
-          )}{" "}
-          ·{" "}
-          {n(instruments.reduce((t, i) => t + (i.pdf_only ? 0 : i.provision_count), 0))} provisions ·{" "}
-          {n(instruments.reduce((t, i) => t + (i.pdf_only ? i.page_count : 0), 0))} official PDF pages
-        </p>
       </div>
 
       <div className="no-print flex flex-wrap items-center gap-1.5">

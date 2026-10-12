@@ -1154,7 +1154,7 @@ a {
  * around it is tokenised, because that does have to sit on whatever surface the masthead is.
  */
 .theme-checkbox {
-  --toggle-size: 7px;
+  --toggle-size: 6px;
 
   -webkit-appearance: none;
   -moz-appearance: none;
@@ -1162,8 +1162,15 @@ a {
   position: relative;
   cursor: pointer;
   font-size: var(--toggle-size);
+  /* content-box on purpose. The transparent border below is there to enlarge what a finger or a mouse can
+     hit without enlarging what is drawn: at 6px the pill is 38x19, and a 19px-tall target is under the 24px
+     WCAG asks for. With the project's border-box default the border would eat the pill instead of extending
+     past it, and background-clip keeps the gradient off the border so nothing is painted out there. */
+  box-sizing: content-box;
   width: 6.25em;
   height: 3.125em;
+  border: 5px solid transparent;
+  background-clip: padding-box;
   border-radius: 99em;
   background: linear-gradient(to right, #efefef 50%, #2a2a2a 50%) no-repeat;
   background-size: 205%;
@@ -1190,6 +1197,37 @@ a {
   transition: left 0.4s, background-position 0.4s;
 }
 
+/* Sun on the knob in the light theme, moon in the dark one.
+ *
+ * The supplied markup is a bare <input>, which cannot hold a child, so the icon is ::after -- ::before is
+ * already the knob. It rides the knob by sharing its geometry and its transition exactly.
+ *
+ * Drawn through `mask` rather than as a background image, so the shape comes from the SVG and the colour
+ * from `background-color`. That matters because the knob changes colour between the two states: the sun has
+ * to be light on a dark knob and the moon dark on a light one, and one masked element does both without a
+ * second asset. The SVGs are inline data URIs -- two small shapes, no request.
+ */
+.theme-checkbox::after {
+  content: "";
+  position: absolute;
+  top: 0.438em;
+  left: 0.438em;
+  width: 2.25em;
+  height: 2.25em;
+  background-color: #efefef;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%225%22/%3E%3Cg stroke=%22%23000%22 stroke-width=%222.4%22 stroke-linecap=%22round%22%3E%3Cpath d=%22M12 1.2v2.4M12 20.4v2.4M1.2 12h2.4M20.4 12h2.4M4.4 4.4l1.7 1.7M17.9 17.9l1.7 1.7M19.6 4.4l-1.7 1.7M6.1 17.9l-1.7 1.7%22/%3E%3C/g%3E%3C/svg%3E") center / 1.3em 1.3em no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%225%22/%3E%3Cg stroke=%22%23000%22 stroke-width=%222.4%22 stroke-linecap=%22round%22%3E%3Cpath d=%22M12 1.2v2.4M12 20.4v2.4M1.2 12h2.4M20.4 12h2.4M4.4 4.4l1.7 1.7M17.9 17.9l1.7 1.7M19.6 4.4l-1.7 1.7M6.1 17.9l-1.7 1.7%22/%3E%3C/g%3E%3C/svg%3E") center / 1.3em 1.3em no-repeat;
+  pointer-events: none;
+  transition: left 0.4s, background-color 0.4s;
+}
+
+.theme-checkbox:checked::after {
+  left: calc(100% - 2.25em - 0.438em);
+  background-color: #2a2a2a;
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Cpath d=%22M21.4 13.1A9.2 9.2 0 1 1 10.9 2.6a7.2 7.2 0 0 0 10.5 10.5Z%22/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Cpath d=%22M21.4 13.1A9.2 9.2 0 1 1 10.9 2.6a7.2 7.2 0 0 0 10.5 10.5Z%22/%3E%3C/svg%3E");
+}
+
 .theme-checkbox:checked {
   background-position: 100%;
 }
@@ -1204,7 +1242,8 @@ a {
    off and the effect then turns it on. That is not a state change the reader made, so it should not be
    animated like one. */
 .theme-checkbox-still,
-.theme-checkbox-still::before {
+.theme-checkbox-still::before,
+.theme-checkbox-still::after {
   transition: none;
 }
 
@@ -1212,7 +1251,8 @@ a {
    itself and announced regardless. Honour the request and let it change instantly. */
 @media (prefers-reduced-motion: reduce) {
   .theme-checkbox,
-  .theme-checkbox::before {
+  .theme-checkbox::before,
+  .theme-checkbox::after {
     transition: none;
   }
 }
@@ -1309,28 +1349,25 @@ a {
 
 /* --- display type -------------------------------------------------------- */
 
-/* The front-door statement: the same serif as every other heading on the site,
- * just larger.
+/* The front-door heading.
  *
- * The first version of this set it in Inter at weight 800, on the reasoning that
- * the variable font was already downloaded so the weight was free. It was free,
- * and it was wrong: it made the home page the only screen on the site with a
- * sans-serif heading, so the front door did not look like the thing behind it.
- * The serif is the identity -- it is what .page-title uses on /browse, on every
- * instrument and on every provision -- and the way to give the home page
- * presence is more of it, not a different one.
+ * It is now the same size as every other page title, not just the same family.
+ * This went through two wrong versions first: Inter at 800, which made the home
+ * page the only sans-serif heading on the site, and then the serif at 46px,
+ * which matched the family but still made the front door shout while every page
+ * behind it spoke normally. A heading that is larger everywhere it appears is
+ * not emphasis, it is inconsistency.
  *
- * Source Serif is also a variable font, so 600 here costs no extra request
- * either. Tracking is lighter than a grotesque would want: a serif at 48px
- * needs far less negative tracking than Inter did, and over-tightening one
- * closes up the joins.
+ * So .display is .page-title with an italic serif label allowed above it. The
+ * class is kept rather than deleted because the written pages and the home page
+ * share it, and naming the intent is worth one rule.
  */
 .display {
   font-family: var(--serif);
+  font-size: 25px;
+  line-height: 1.2;
   font-weight: 600;
-  font-size: clamp(28px, 4.6vw, 46px);
-  line-height: 1.12;
-  letter-spacing: -0.012em;
+  letter-spacing: -0.01em;
   color: var(--ink);
   text-wrap: balance;
 }
