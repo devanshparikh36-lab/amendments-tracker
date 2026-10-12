@@ -5,6 +5,7 @@ import { CommandPalette } from "@/components/CommandPalette";
 import { ReadingAids } from "@/components/ReadingAids";
 import { PageViews } from "@/components/PageViews";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { ThemeSync } from "@/components/ThemeSync";
 import { SiteNav } from "@/components/SiteNav";
 import { fmtDateTime } from "@/lib/format";
 import { lastRevised } from "@/lib/queries";
@@ -125,12 +126,16 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var t=localStorage.getItem('as-amended-theme');" +
-              "if(t==='dark'||t==='light')document.documentElement.setAttribute('data-theme',t);}catch(e){}",
+              "try{var t=localStorage.getItem('as-amended-theme')==='dark'?'dark':'light';" +
+              "var r=document.documentElement;r.setAttribute('data-theme',t);r.style.colorScheme=t;}catch(e){}",
           }}
         />
       </head>
       <body className="min-h-screen antialiased">
+        {/* Re-asserts the theme after hydration. React removes `data-theme` from <html> because the
+            server never rendered it, which made the dark theme fail to survive a page load at all.
+            See ThemeSync for the whole account. */}
+        <ThemeSync />
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:absolute focus:left-3 focus:top-3 focus:z-50 focus:rounded focus:border focus:border-[var(--rule-strong)] focus:bg-[var(--paper)] focus:px-3 focus:py-2 focus:text-[var(--ink)]"

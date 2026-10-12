@@ -1,28 +1,21 @@
-import { SkeletonLine, SkeletonParagraph, SkeletonScreen } from "@/components/Skeleton";
+import { TruckLoader } from "@/components/TruckLoader";
 
 /* The fallback for any route without a loading screen of its own.
  *
- * Deliberately generic -- a title, a row of controls, a panel -- because it stands in for pages of several
- * different shapes. Routes whose shape is distinctive enough to be worth matching have their own file
- * beside them; this is what the rest get, and it is still far better than the blank screen it replaces.
+ * This one stands in for pages of several different shapes -- /definitions, /find, /search, /status,
+ * /quality, an instrument's overview -- so there is no outline worth drawing. That is exactly where a plain
+ * "something is happening" indicator belongs, and it is why the truck lives here rather than everywhere.
+ *
+ * The three routes whose shape *is* known keep their skeletons (/browse, /documents and the reading view).
+ * A skeleton reserves the space the content will occupy, so the page does not jump when it lands, and on
+ * the reading view that is the difference between arriving at a section and being thrown down the page a
+ * second after you started reading. The truck cannot do that, and a skeleton cannot be charming; each is
+ * used where it is the better answer.
  */
 export default function Loading() {
   return (
-    <SkeletonScreen label="Loading">
-      <div className="space-y-6">
-        <div className="border-b border-[var(--rule)] pb-3">
-          <SkeletonLine w="w-40" h="h-3" />
-          <div className="mt-2">
-            <SkeletonLine w="w-2/5" h="h-7" />
-          </div>
-          <div className="mt-2">
-            <SkeletonLine w="w-3/5" h="h-4" />
-          </div>
-        </div>
-        <div className="panel panel-body">
-          <SkeletonParagraph lines={5} />
-        </div>
-      </div>
-    </SkeletonScreen>
+    <div className="flex min-h-[55vh] items-center justify-center">
+      <TruckLoader label="Loading" />
+    </div>
   );
 }

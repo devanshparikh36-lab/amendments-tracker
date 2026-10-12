@@ -994,3 +994,202 @@ a {
   .diff-ins { text-decoration: underline; }
   .diff-del { text-decoration: line-through; }
 }
+
+/* --- the truck loader ---------------------------------------------------- */
+
+/* Drives the markup in TruckLoader.tsx (Uiverse.io, by vinodjangid07). The supplied HTML carried no CSS,
+ * so this is written to it: the truck bounces on the spot while the road and a lamp post travel leftwards
+ * past it, which is what reads as forward motion.
+ *
+ * The one substantive change from the usual version of this loader is the colour of the gaps in the road
+ * markings. They are conventionally `border-left: ... solid white`, which is a white line drawn on whatever
+ * happens to be behind it -- fine on a white page, a bright stripe across a dark panel. They take the
+ * surface colour instead, so a gap is a gap in both themes. This is the same mistake, in the same shape,
+ * as the one that put a white gradient through the panel headers.
+ */
+.loader {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  height: fit-content;
+}
+
+.truckWrapper {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  width: 200px;
+  height: 100px;
+  overflow-x: hidden;
+}
+
+.truckBody {
+  width: 130px;
+  margin-bottom: 6px;
+  animation: truck-bounce 1s linear infinite;
+}
+
+.trucksvg {
+  width: 100%;
+  height: auto;
+}
+
+@keyframes truck-bounce {
+  0%   { transform: translateY(0); }
+  50%  { transform: translateY(3px); }
+  100% { transform: translateY(0); }
+}
+
+.truckTires {
+  position: absolute;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 130px;
+  padding: 0 10px 0 15px;
+}
+
+.tiresvg {
+  width: 24px;
+  height: auto;
+}
+
+/* The road, and the two dashes travelling along it. --paper rather than white: see the note above. */
+/* The road and the lamp post take --ink rather than the near-black they are drawn in.
+ *
+ * The truck itself keeps the colours it came with -- that is the artwork, and its light grey body and red
+ * cab read against either theme. The ground it drives on does not: #282828 on a #141412 page is a line you
+ * cannot see, and the lamp post is pure black, so in the dark theme the truck was floating in a void. --ink
+ * is near-black on the light theme, which is what the original drew, and near-white on the dark one. */
+.road {
+  position: relative;
+  bottom: 0;
+  align-self: flex-end;
+  width: 100%;
+  height: 1.5px;
+  background-color: var(--ink);
+  border-radius: 3px;
+}
+
+.road::before,
+.road::after {
+  content: "";
+  position: absolute;
+  height: 100%;
+  background-color: var(--ink);
+  border-radius: 3px;
+  animation: road-pass 1.4s linear infinite;
+}
+
+.road::before {
+  width: 20px;
+  right: -50%;
+  border-left: 10px solid var(--paper);
+}
+
+.road::after {
+  width: 10px;
+  right: -65%;
+  border-left: 4px solid var(--paper);
+}
+
+.lampPost {
+  position: absolute;
+  bottom: 0;
+  right: -90%;
+  height: 90px;
+  /* Overrides the fill="#000000" on the element itself. */
+  fill: var(--ink);
+  animation: road-pass 1.4s linear infinite;
+}
+
+@keyframes road-pass {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-350px); }
+}
+
+/* Stopped entirely when asked. A vehicle driving on the spot is precisely the looping movement this
+   request exists to switch off, and a stationary truck still reads as "something is happening". */
+@media (prefers-reduced-motion: reduce) {
+  .truckBody,
+  .road::before,
+  .road::after,
+  .lampPost {
+    animation: none;
+  }
+}
+
+/* --- the theme switch ---------------------------------------------------- */
+
+/* The sliding pill in the masthead (Uiverse.io, by cuzpq). The supplied markup is a single
+ * `<input type="checkbox">` with no children, so the whole control is drawn here: the element itself is the
+ * track and its ::before is the knob.
+ *
+ * Both halves carry the same two-stop gradient at 205% width, and sliding the background position rather
+ * than swapping a colour is what makes the track and the knob cross-fade in opposite directions as it moves.
+ *
+ * --toggle-size is the only number worth touching. The original ships at 30px, which renders a control
+ * 187px wide -- fine as a demo on its own page, absurd beside a masthead. 10px puts it at 62x31, which sits
+ * level with the "Last checked" line it shares a corner with.
+ *
+ * The colours are the design's own and are deliberately not tokenised: this control depicts the two themes,
+ * so its light half must look light and its dark half dark whichever theme is currently on. It is the one
+ * place on the site where a fixed pair of colours is the correct answer rather than an oversight. The ring
+ * around it is tokenised, because that does have to sit on whatever surface the masthead is.
+ */
+.theme-checkbox {
+  --toggle-size: 10px;
+
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  position: relative;
+  cursor: pointer;
+  font-size: var(--toggle-size);
+  width: 6.25em;
+  height: 3.125em;
+  border-radius: 99em;
+  background: linear-gradient(to right, #efefef 50%, #2a2a2a 50%) no-repeat;
+  background-size: 205%;
+  background-position: 0;
+  /* Keeps the light half from dissolving into a light masthead. */
+  box-shadow: inset 0 0 0 1px var(--rule-strong);
+  transition: background-position 0.4s, box-shadow 0.4s;
+}
+
+.theme-checkbox::before {
+  content: "";
+  position: absolute;
+  top: 0.438em;
+  left: 0.438em;
+  width: 2.25em;
+  height: 2.25em;
+  border-radius: 50%;
+  /* The knob runs the same gradient from the opposite end, so it is dark while the track is light. */
+  background: linear-gradient(to right, #efefef 50%, #2a2a2a 50%) no-repeat;
+  background-size: 205%;
+  background-position: 100%;
+  transition: left 0.4s, background-position 0.4s;
+}
+
+.theme-checkbox:checked {
+  background-position: 100%;
+}
+
+.theme-checkbox:checked::before {
+  left: calc(100% - 2.25em - 0.438em);
+  background-position: 0;
+}
+
+/* The slide is the whole point of the control, but it is decoration: the state is carried by the checkbox
+   itself and announced regardless. Honour the request and let it change instantly. */
+@media (prefers-reduced-motion: reduce) {
+  .theme-checkbox,
+  .theme-checkbox::before {
+    transition: none;
+  }
+}
