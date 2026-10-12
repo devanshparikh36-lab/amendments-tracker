@@ -1144,8 +1144,9 @@ a {
  * than swapping a colour is what makes the track and the knob cross-fade in opposite directions as it moves.
  *
  * --toggle-size is the only number worth touching. The original ships at 30px, which renders a control
- * 187px wide -- fine as a demo on its own page, absurd beside a masthead. 10px puts it at 62x31, which sits
- * level with the "Last checked" line it shares a corner with.
+ * 187px wide -- fine as a demo on its own page, absurd beside a masthead. 10px brought it to 63x31 and that
+ * still read as large next to an 11px date line, so it is 7px: 44x22, about the height of the text beside
+ * it. Every proportion inside scales with it, so nothing else needed changing.
  *
  * The colours are the design's own and are deliberately not tokenised: this control depicts the two themes,
  * so its light half must look light and its dark half dark whichever theme is currently on. It is the one
@@ -1153,7 +1154,7 @@ a {
  * around it is tokenised, because that does have to sit on whatever surface the masthead is.
  */
 .theme-checkbox {
-  --toggle-size: 10px;
+  --toggle-size: 7px;
 
   -webkit-appearance: none;
   -moz-appearance: none;
@@ -1308,22 +1309,28 @@ a {
 
 /* --- display type -------------------------------------------------------- */
 
-/* The front-door statement. Heavier and tighter than .page-title, which is left
- * exactly as it was because it titles every reading view and is not the place
- * for a flourish.
+/* The front-door statement: the same serif as every other heading on the site,
+ * just larger.
  *
- * Inter carries this at weight 800 for nothing: next/font is loading the
- * variable file (no `weight` is passed in layout.tsx), so the whole axis is
- * already downloaded and asking for 800 costs no second request. That is the
- * only reason this look is affordable -- a separate display family would be
- * ~45 KB on every page to make four headings bigger.
+ * The first version of this set it in Inter at weight 800, on the reasoning that
+ * the variable font was already downloaded so the weight was free. It was free,
+ * and it was wrong: it made the home page the only screen on the site with a
+ * sans-serif heading, so the front door did not look like the thing behind it.
+ * The serif is the identity -- it is what .page-title uses on /browse, on every
+ * instrument and on every provision -- and the way to give the home page
+ * presence is more of it, not a different one.
+ *
+ * Source Serif is also a variable font, so 600 here costs no extra request
+ * either. Tracking is lighter than a grotesque would want: a serif at 48px
+ * needs far less negative tracking than Inter did, and over-tightening one
+ * closes up the joins.
  */
 .display {
-  font-family: var(--ui);
-  font-weight: 800;
-  font-size: clamp(30px, 5.2vw, 52px);
-  line-height: 1.04;
-  letter-spacing: -0.028em;
+  font-family: var(--serif);
+  font-weight: 600;
+  font-size: clamp(28px, 4.6vw, 46px);
+  line-height: 1.12;
+  letter-spacing: -0.012em;
   color: var(--ink);
   text-wrap: balance;
 }
