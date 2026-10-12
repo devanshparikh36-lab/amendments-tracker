@@ -1136,22 +1136,26 @@ a {
 
 /* --- the theme switch ---------------------------------------------------- */
 
-/* The sliding pill in the masthead (Uiverse.io, by cuzpq). The supplied markup is a single
- * `<input type="checkbox">` with no children, so the whole control is drawn here: the element itself is the
- * track and its ::before is the knob.
+/* The sliding pill in the masthead (Uiverse.io, by cuzpq), rebuilt on solid colours.
  *
- * Both halves carry the same two-stop gradient at 205% width, and sliding the background position rather
- * than swapping a colour is what makes the track and the knob cross-fade in opposite directions as it moves.
+ * The supplied version paints track and knob with the same two-stop gradient at 205% width and slides the
+ * background-position, so the two cross-fade in opposite directions as the knob travels. It is a clever
+ * trick and it does not survive being made small. The gradient's colour boundary sits at 50% of 205%, which
+ * is 102.5% of the track -- a margin that scales with the control. At the demo's 30px that is 4.7px of
+ * slack; at 6px it is 0.94px, and sub-pixel rounding brings the dark half of the gradient into view as a
+ * crescent at the right-hand end. That is what was reported, and it is a fragility rather than a
+ * misconfiguration: any size below about 12px shows it.
  *
- * --toggle-size is the only number worth touching. The original ships at 30px, which renders a control
- * 187px wide -- fine as a demo on its own page, absurd beside a masthead. 10px brought it to 63x31 and that
- * still read as large next to an 11px date line, so it is 7px: 44x22, about the height of the text beside
- * it. Every proportion inside scales with it, so nothing else needed changing.
+ * So the gradients are gone. Track and knob each carry one solid colour and swap it on :checked. Same
+ * appearance, same cross-fade, no geometry to get wrong, and it is correct at any --toggle-size.
  *
- * The colours are the design's own and are deliberately not tokenised: this control depicts the two themes,
- * so its light half must look light and its dark half dark whichever theme is currently on. It is the one
- * place on the site where a fixed pair of colours is the correct answer rather than an oversight. The ring
- * around it is tokenised, because that does have to sit on whatever surface the masthead is.
+ * --toggle-size is still the only number worth touching: 6px gives 38x19 drawn. The transparent border
+ * keeps the pointer target at 48x29, above the 24px WCAG 2.5.8 asks for, and needs content-box because this
+ * project's border-box default would have the border eat the pill instead of extending past it.
+ *
+ * The two colours are fixed and not tokenised, deliberately: this control depicts the two themes, so its
+ * light half must look light and its dark half dark whichever theme is on. The edge around it is tokenised,
+ * because that does have to sit on whatever surface the masthead is.
  */
 .theme-checkbox {
   --toggle-size: 6px;
@@ -1162,26 +1166,22 @@ a {
   position: relative;
   cursor: pointer;
   font-size: var(--toggle-size);
-  /* content-box on purpose. The transparent border below is there to enlarge what a finger or a mouse can
-     hit without enlarging what is drawn: at 6px the pill is 38x19, and a 19px-tall target is under the 24px
-     WCAG asks for. With the project's border-box default the border would eat the pill instead of extending
-     past it, and background-clip keeps the gradient off the border so nothing is painted out there. */
   box-sizing: content-box;
   width: 6.25em;
   height: 3.125em;
   border: 5px solid transparent;
   background-clip: padding-box;
   border-radius: 99em;
-  background: linear-gradient(to right, #efefef 50%, #2a2a2a 50%) no-repeat;
-  background-size: 205%;
-  background-position: 0;
-  /* The track is a fixed pair of colours, so in each theme one half of it is all but invisible against
-     the masthead -- #efefef on white, #2a2a2a on near-black, both about 1.2:1. The knob always contrasts
-     and carries the state, but the control still needs an edge. */
+  background-color: #efefef;
   box-shadow: inset 0 0 0 1px var(--control-edge);
-  transition: background-position 0.4s, box-shadow 0.4s;
+  transition: background-color 0.35s ease, box-shadow 0.35s ease;
 }
 
+.theme-checkbox:checked {
+  background-color: #2a2a2a;
+}
+
+/* The knob. */
 .theme-checkbox::before {
   content: "";
   position: absolute;
@@ -1190,22 +1190,28 @@ a {
   width: 2.25em;
   height: 2.25em;
   border-radius: 50%;
-  /* The knob runs the same gradient from the opposite end, so it is dark while the track is light. */
-  background: linear-gradient(to right, #efefef 50%, #2a2a2a 50%) no-repeat;
-  background-size: 205%;
-  background-position: 100%;
-  transition: left 0.4s, background-position 0.4s;
+  background-color: #2a2a2a;
+  /* Lifts the knob off the track at a size where a border would be half the knob. */
+  box-shadow: 0 0.17em 0.33em rgb(0 0 0 / 0.38);
+  transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.35s ease;
 }
 
-/* Sun on the knob in the light theme, moon in the dark one.
+.theme-checkbox:checked::before {
+  left: calc(100% - 2.25em - 0.438em);
+  background-color: #efefef;
+}
+
+/* Sun in the light theme, moon in the dark one, sitting on the knob.
  *
- * The supplied markup is a bare <input>, which cannot hold a child, so the icon is ::after -- ::before is
- * already the knob. It rides the knob by sharing its geometry and its transition exactly.
+ * The supplied markup is a bare <input> and cannot hold a child, so this is ::after -- ::before is already
+ * the knob -- and it rides the knob by sharing its geometry and its easing exactly.
  *
- * Drawn through `mask` rather than as a background image, so the shape comes from the SVG and the colour
- * from `background-color`. That matters because the knob changes colour between the two states: the sun has
- * to be light on a dark knob and the moon dark on a light one, and one masked element does both without a
- * second asset. The SVGs are inline data URIs -- two small shapes, no request.
+ * Drawn through `mask`, so the shape comes from the SVG and the colour from background-color. That is what
+ * lets one element do both states: the knob inverts, so the sun must be light on a dark knob and the moon
+ * dark on a light one. Inline data URIs, so no request for either.
+ *
+ * The sun is drawn fatter than a sun usually is -- r 6.4 of a 24 viewBox, rays at 3.2 stroke -- because it
+ * renders at about 9px. At ordinary proportions the rays fall under a pixel and it reads as a smudge.
  */
 .theme-checkbox::after {
   content: "";
@@ -1215,32 +1221,19 @@ a {
   width: 2.25em;
   height: 2.25em;
   background-color: #efefef;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%225%22/%3E%3Cg stroke=%22%23000%22 stroke-width=%222.4%22 stroke-linecap=%22round%22%3E%3Cpath d=%22M12 1.2v2.4M12 20.4v2.4M1.2 12h2.4M20.4 12h2.4M4.4 4.4l1.7 1.7M17.9 17.9l1.7 1.7M19.6 4.4l-1.7 1.7M6.1 17.9l-1.7 1.7%22/%3E%3C/g%3E%3C/svg%3E") center / 1.3em 1.3em no-repeat;
-  mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%225%22/%3E%3Cg stroke=%22%23000%22 stroke-width=%222.4%22 stroke-linecap=%22round%22%3E%3Cpath d=%22M12 1.2v2.4M12 20.4v2.4M1.2 12h2.4M20.4 12h2.4M4.4 4.4l1.7 1.7M17.9 17.9l1.7 1.7M19.6 4.4l-1.7 1.7M6.1 17.9l-1.7 1.7%22/%3E%3C/g%3E%3C/svg%3E") center / 1.3em 1.3em no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%226.4%22/%3E%3Cg stroke=%22%23000%22 stroke-width=%223.2%22 stroke-linecap=%22round%22%3E%3Cpath d=%22M12 1.4v2M12 20.6v2M1.4 12h2M20.6 12h2M4.3 4.3l1.5 1.5M18.2 18.2l1.5 1.5M19.7 4.3l-1.5 1.5M5.8 18.2l-1.5 1.5%22/%3E%3C/g%3E%3C/svg%3E") center / 1.5em 1.5em no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Ccircle cx=%2212%22 cy=%2212%22 r=%226.4%22/%3E%3Cg stroke=%22%23000%22 stroke-width=%223.2%22 stroke-linecap=%22round%22%3E%3Cpath d=%22M12 1.4v2M12 20.6v2M1.4 12h2M20.6 12h2M4.3 4.3l1.5 1.5M18.2 18.2l1.5 1.5M19.7 4.3l-1.5 1.5M5.8 18.2l-1.5 1.5%22/%3E%3C/g%3E%3C/svg%3E") center / 1.5em 1.5em no-repeat;
   pointer-events: none;
-  transition: left 0.4s, background-color 0.4s;
+  transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.35s ease;
 }
 
 .theme-checkbox:checked::after {
   left: calc(100% - 2.25em - 0.438em);
   background-color: #2a2a2a;
-  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Cpath d=%22M21.4 13.1A9.2 9.2 0 1 1 10.9 2.6a7.2 7.2 0 0 0 10.5 10.5Z%22/%3E%3C/svg%3E");
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Cpath d=%22M21.4 13.1A9.2 9.2 0 1 1 10.9 2.6a7.2 7.2 0 0 0 10.5 10.5Z%22/%3E%3C/svg%3E");
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Cpath d=%22M21.6 13.4A9.4 9.4 0 1 1 10.6 2.4a7.4 7.4 0 0 0 11 11Z%22/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22 fill=%22%23000%22%3E%3Cpath d=%22M21.6 13.4A9.4 9.4 0 1 1 10.6 2.4a7.4 7.4 0 0 0 11 11Z%22/%3E%3C/svg%3E");
 }
 
-.theme-checkbox:checked {
-  background-position: 100%;
-}
-
-.theme-checkbox:checked::before {
-  left: calc(100% - 2.25em - 0.438em);
-  background-position: 0;
-}
-
-/* Set only for the first render, before the stored preference has been read. Without it a reader whose
-   theme is dark sees the knob travel across the track on every page load, because React renders the control
-   off and the effect then turns it on. That is not a state change the reader made, so it should not be
-   animated like one. */
 .theme-checkbox-still,
 .theme-checkbox-still::before,
 .theme-checkbox-still::after {
@@ -1372,10 +1365,13 @@ a {
   text-wrap: balance;
 }
 
-/* The small italic serif label above a display heading. */
+/* The small serif label above a display heading.
+ *
+ * Not italic. It was, borrowed from the reference where italics do the work of a
+ * strapline, and it read as an aside on a page that is not making one. Upright
+ * serif at a quiet weight says the same thing without the lean. */
 .display-eyebrow {
   font-family: var(--serif);
-  font-style: italic;
   font-size: 15px;
   color: var(--ink-3);
 }
