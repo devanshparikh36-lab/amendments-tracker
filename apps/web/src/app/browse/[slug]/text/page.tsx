@@ -12,7 +12,7 @@ import { InstrumentTabs } from "@/components/InstrumentTabs";
 import type { RefContext } from "@/lib/crossref";
 import { OfficialNumber } from "@/components/OfficialNumber";
 import { SectionFilter } from "@/components/SectionFilter";
-import { KIND_LABEL, unitFor } from "@/lib/catalogue";
+import { unitFor } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
 import { fmtDate, slugifyNumber } from "@/lib/format";
 import { parseQuery } from "@/lib/lookup";
@@ -114,16 +114,12 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
             { label: "Text" },
           ]}
         />
-        <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <div className="mt-1">
           <h1 className="page-title">
             <Link href={`/browse/${slug}`} className="hover:underline">
               {inst.title}
             </Link>
           </h1>
-          <span className="meta">
-            {KIND_LABEL[inst.kind] ?? inst.kind} · {sections.length.toLocaleString("en-IN")} {unit}s
-            {inst.official_updated_as_on && <> · text as on {fmtDate(inst.official_updated_as_on)}</>}
-          </span>
         </div>
         <InstrumentTabs slug={slug} current={fullText ? "full" : "text"} documentCount={inst.doc_count} />
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -581,17 +577,12 @@ async function PdfReader({
             { label: "Official PDF" },
           ]}
         />
-        <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <div className="mt-1">
           <h1 className="page-title">
             <Link href={`/browse/${slug}`} className="hover:underline">
               {inst.title}
             </Link>
           </h1>
-          <span className="meta">
-            {KIND_LABEL[inst.kind] ?? inst.kind}
-            {pageCount > 0 && <> · {pageCount} pages</>}
-            {inst.official_updated_as_on && <> · text as on {fmtDate(inst.official_updated_as_on)}</>}
-          </span>
         </div>
         <InstrumentTabs slug={slug} current="text" pdfOnly documentCount={inst.doc_count} />
         <div className="mt-2 flex flex-wrap items-center gap-2">

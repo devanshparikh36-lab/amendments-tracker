@@ -86,7 +86,7 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
           <SearchBox
             id="home-q"
             autoFocus
-            className="field field-lg w-full"
+            className="search-input w-full"
             placeholder="A section number, a regulation name, or any phrase"
           />
           <button className="btn btn-primary px-7 text-[15px]">Search</button>

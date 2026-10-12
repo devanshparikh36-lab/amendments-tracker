@@ -181,8 +181,8 @@ export default async function InstrumentPage({ params, searchParams }: { params:
             id="inst-q"
             placeholder={`Search within ${inst.short_code}`}
             within={inst.slug}
-            className="field min-w-0 flex-1"
-            wrapperClassName="relative min-w-0 flex-1 sm:max-w-md"
+            className="search-input w-full"
+            wrapperClassName="search-group min-w-0 flex-1 sm:max-w-md"
           />
           <button className="btn">Search</button>
         </form>

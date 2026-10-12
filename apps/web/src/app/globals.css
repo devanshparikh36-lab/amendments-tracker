@@ -1193,3 +1193,85 @@ a {
     transition: none;
   }
 }
+
+/* --- the search box ------------------------------------------------------ */
+
+/* The rounded input with an inset magnifier (Uiverse.io, by LightAndy1).
+ *
+ * Renamed from the supplied `.group` and `.input`. `group` is Tailwind's own marker class for
+ * group-hover/group-focus, which this project uses, and a rule of ours on that selector would reach every
+ * one of them. `.input` is too broad to own for the same reason.
+ *
+ * The supplied colours are a dark palette -- #16171d ground, #bdbecb text -- which is a near-black field
+ * sitting on a cream page in the light theme. The shape, the proportions, the ring-as-shadow treatment and
+ * the easing are all kept exactly; only the colours go through tokens, so the box looks the way it was
+ * drawn in the dark theme and belongs to the page in the light one. The toggle keeps its fixed colours
+ * because it depicts the themes; a search field does not.
+ *
+ * Two numbers changed and both because of size. The original is a 190px box: `scale(0.95)` on press reads
+ * as a tap there and as the whole page lurching on a 900px one, so it is 0.99 here. And the font is the
+ * site's own UI stack rather than Montserrat -- pulling in a fourth family for one control would cost a
+ * download on every page to make this box disagree with every other control around it.
+ */
+.search-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  line-height: 28px;
+}
+
+.search-input {
+  height: 45px;
+  padding-left: 2.5rem;
+  padding-right: 0.75rem;
+  border: 0;
+  border-radius: 12px;
+  background-color: var(--paper);
+  color: var(--ink);
+  font-family: var(--ui);
+  font-size: 14px;
+  outline: none;
+  cursor: text;
+  z-index: 0;
+  /* The ring is a shadow, not a border, so it can thicken on hover without moving anything. */
+  box-shadow: 0 0 0 1.5px var(--rule-strong), 0 0 25px -17px rgb(0 0 0 / 0.55);
+  transition: box-shadow 0.25s cubic-bezier(0.19, 1, 0.22, 1),
+    transform 0.25s cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.search-input::placeholder {
+  color: var(--ink-4);
+}
+
+.search-input:hover {
+  box-shadow: 0 0 0 2.5px var(--rule-strong), 0 0 25px -15px rgb(0 0 0 / 0.55);
+}
+
+.search-input:active {
+  transform: scale(0.99);
+}
+
+/* The accent rather than a heavier grey: this is also the focus indicator, and it has to be obvious enough
+   to find by keyboard. The global :focus-visible outline still applies on top for keyboard users. */
+.search-input:focus {
+  box-shadow: 0 0 0 2.5px var(--accent);
+}
+
+.search-icon {
+  position: absolute;
+  left: 1rem;
+  width: 1rem;
+  height: 1rem;
+  fill: var(--ink-4);
+  pointer-events: none;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-input {
+    transition: none;
+  }
+  .search-input:active {
+    transform: none;
+  }
+}

@@ -125,7 +125,7 @@ export default async function FindPage({
             id="find-q"
             defaultValue={q}
             autoFocus
-            className="field field-lg w-full"
+            className="search-input w-full"
             within={scope?.slug ?? null}
           />
           <button className="btn btn-primary px-5">Search</button>

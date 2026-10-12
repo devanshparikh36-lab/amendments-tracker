@@ -208,17 +208,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         </main>
 
         <footer className="no-print mx-auto max-w-[1360px] px-5 pb-10 pt-6">
+          {/* Two paragraphs used to sit here, on every screen: how the statutory text is reproduced, and
+              that this is a research aid rather than advice. Both now live where someone would go to read
+              them -- the first is section "The regulator's document is the authority" in the terms, and the
+              FAQ on /about answers it again in plainer words -- and neither is lost by going.
+              
+              One sentence stays. It is the only part a reader needs in front of them rather than one click
+              away, it is eight words, and the link beside it reaches the full statement. */}
           <div className="border-t border-[var(--rule)] pt-3 text-[12px] leading-relaxed text-[var(--ink-3)]">
             <p>
-              Statutory text is reproduced as the regulator publishes it, in the regulator&rsquo;s own formatting, with
-              a link to the official document on every screen. Amendments are shown as references &mdash; which
-              notification changed which provision, and when &mdash; and are never applied to the text: no wording here
-              has been rewritten by a machine, so what you read is the regulator&rsquo;s own. Follow the amendment link
-              to read the change in the regulator&rsquo;s words. Instruments issued only as a PDF are served as that
-              PDF; text read out of those pages, including by OCR, is a finding aid, never the official rendering.
-            </p>
-            <p className="mt-1.5">
-              A research aid, not legal advice. Always read the official document before relying on anything here.
+              A research aid, not legal advice.{" "}
+              <Link href="/terms" className="hover:text-[var(--ink-2)] hover:underline">
+                Read the terms
+              </Link>
+              .
             </p>
             {/* The written pages. Kept out of the main navigation on purpose -- someone looking up a section
                 is not looking for the terms -- but a site that publishes a privacy notice and then hides it

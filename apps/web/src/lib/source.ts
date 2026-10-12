@@ -119,12 +119,32 @@ export function officialSource(inst: InstrumentRow, p?: ProvisionRow | null, uni
    * more than it is.
    */
   const ownPage =
-    p?.source_url && p.source_url !== inst.official_url && p.source_url !== inst.pdf_source_url
+    p?.source_url &&
+    !isMachineEndpoint(p.source_url) &&
+    p.source_url !== inst.official_url &&
+    p.source_url !== inst.pdf_source_url
       ? p.source_url
       : null;
   if (ownPage && unit) {
     return { kind: "link", href: ownPage, embed: null, label: `This ${unit} on the official site`, page: null };
   }
-  const link = p?.source_url ?? inst.pdf_source_url ?? inst.official_url ?? null;
+
+  /* The last resort, and the place the machine-endpoint test was missing.
+   *
+   * This used to end `?? inst.official_url`, unguarded. For five CBIC instruments -- the CGST, IGST, UTGST
+   * and Compensation Acts and the CGST Rules -- that stored value is
+   * `taxinformation.cbic.gov.in/api/cbic-act-section-msts/findByActId/...`, which is the JSON the seeder
+   * reads. So "Official source" on every section of the CGST Act opened a wall of JSON. The instrument's
+   * own page had been fixed for exactly this and this path had not, because it builds its link itself
+   * rather than calling regulatorPageUrl.
+   *
+   * It calls it now, which is also what supplies the honest fallback: CBIC's own GST acts listing. A
+   * listing is not as good as a section's own address, but every regulator here has one, and it is a page
+   * a person can read.
+   */
+  const link =
+    [p?.source_url, inst.pdf_source_url].find(
+      (u): u is string => typeof u === "string" && u.length > 0 && !isMachineEndpoint(u),
+    ) ?? regulatorPageUrl(inst);
   return link ? { kind: "link", href: link, embed: null, label: "Official source", page: null } : null;
 }

@@ -38,8 +38,8 @@ export function SearchBox({
   placeholder,
   defaultValue = "",
   autoFocus,
-  className = "field min-w-0 flex-1",
-  wrapperClassName = "relative min-w-0 flex-1",
+  className = "search-input w-full",
+  wrapperClassName = "search-group min-w-0 flex-1",
   within = null,
 }: {
   name?: string;
@@ -182,6 +182,12 @@ export function SearchBox({
 
   return (
     <div ref={boxRef} className={wrapperClassName}>
+      {/* Inside the wrapper and before the input, which is what puts it in the padding the input reserves on
+          its left. pointer-events are off in CSS, so clicking the magnifier focuses the field underneath
+          rather than landing on the icon and doing nothing. */}
+      <svg className="search-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <path d="M21.53 20.47l-3.66-3.66C19.195 15.24 20 13.214 20 11c0-4.97-4.03-9-9-9s-9 4.03-9 9 4.03 9 9 9c2.215 0 4.24-.804 5.808-2.13l3.66 3.66c.147.146.34.22.53.22s.385-.073.53-.22c.293-.293.293-.767 0-1.06zM3.5 11c0-4.135 3.365-7.5 7.5-7.5s7.5 3.365 7.5 7.5-3.365 7.5-7.5 7.5-7.5-3.365-7.5-7.5z" />
+      </svg>
       <input
         id={id}
         name={name}
