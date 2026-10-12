@@ -53,7 +53,30 @@ exist. The value is pasted into the prompt, never into a file in this repository
 npx wrangler secret put GITHUB_TOKEN
 ```
 
-## Checking it works, without waiting until tomorrow
+## Testing the token on its own
+
+Worth doing before the token is trusted to a job that runs once a day, because this is the part that
+actually goes wrong -- a missing permission or the wrong repository.
+
+Never put the token in the command text. Type it at a prompt instead, so it is not in the terminal's
+history, not in a file, and not in anything that can be copied into a chat window by accident:
+
+```powershell
+$token = Read-Host "Paste the token"
+$h = @{ Authorization = "Bearer $token"; Accept = "application/vnd.github+json"; "X-GitHub-Api-Version" = "2022-11-28"; "User-Agent" = "as-amended-trigger" }
+$body = @{ ref = "main"; inputs = @{ command = "run"; limit = "500" } } | ConvertTo-Json -Depth 5
+(Invoke-WebRequest -Method Post -Uri "https://api.github.com/repos/devanshparikh36-lab/amendments-tracker/actions/workflows/worker.yml/dispatches" -Headers $h -Body $body).StatusCode
+Remove-Variable token, h
+```
+
+`204` means it worked, and a collection starts immediately. `403` is a token without Actions write,
+`404` a token that cannot see the repository, `401` a token that is wrong or revoked.
+
+The assignment form `$token = "..."` works too, but only *with* the quotes. Without them PowerShell
+treats the token as the name of a command to run, fails, leaves the variable empty, and the request
+goes out as `Bearer ` -- which comes back 401 and looks like a bad token rather than a typo.
+
+## Checking the Worker itself, without waiting until tomorrow
 
 Run the scheduled handler locally and fire it by hand:
 
