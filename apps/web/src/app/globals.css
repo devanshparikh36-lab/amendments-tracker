@@ -35,6 +35,13 @@
 
   --rule: #e2dfd8;
   --rule-strong: #cbc7bd;
+  /* The outline of an interactive control, as opposed to the hairline between rows.
+     --rule-strong is 1.5:1 against the page, which is right for a table rule and not enough for the edge of
+     a control: WCAG asks 3:1 for the visual information that identifies one. It mattered most on the search
+     box, whose white fill is 1.11:1 against the page -- so the ring was the only thing saying where the
+     field was, and it was close to invisible. Solved against every surface a control can sit on: 3.61 on
+     paper, 3.25 on the ground, 3.03 on the sunk ground. */
+  --control-edge: #8f8671;
 
   --accent: #1d4030; /* deep green — primary actions, the masthead rule */
   --accent-hover: #16311f;
@@ -120,6 +127,7 @@
 
   --rule: #2e2c27;
   --rule-strong: #423f38;
+  --control-edge: #6e695d;
 
   --accent: #4ea87c;
   --accent-hover: #63bd90;
@@ -1156,8 +1164,10 @@ a {
   background: linear-gradient(to right, #efefef 50%, #2a2a2a 50%) no-repeat;
   background-size: 205%;
   background-position: 0;
-  /* Keeps the light half from dissolving into a light masthead. */
-  box-shadow: inset 0 0 0 1px var(--rule-strong);
+  /* The track is a fixed pair of colours, so in each theme one half of it is all but invisible against
+     the masthead -- #efefef on white, #2a2a2a on near-black, both about 1.2:1. The knob always contrasts
+     and carries the state, but the control still needs an edge. */
+  box-shadow: inset 0 0 0 1px var(--control-edge);
   transition: background-position 0.4s, box-shadow 0.4s;
 }
 
@@ -1183,6 +1193,15 @@ a {
 .theme-checkbox:checked::before {
   left: calc(100% - 2.25em - 0.438em);
   background-position: 0;
+}
+
+/* Set only for the first render, before the stored preference has been read. Without it a reader whose
+   theme is dark sees the knob travel across the track on every page load, because React renders the control
+   off and the effect then turns it on. That is not a state change the reader made, so it should not be
+   animated like one. */
+.theme-checkbox-still,
+.theme-checkbox-still::before {
+  transition: none;
 }
 
 /* The slide is the whole point of the control, but it is decoration: the state is carried by the checkbox
@@ -1234,7 +1253,7 @@ a {
   cursor: text;
   z-index: 0;
   /* The ring is a shadow, not a border, so it can thicken on hover without moving anything. */
-  box-shadow: 0 0 0 1.5px var(--rule-strong), 0 0 25px -17px rgb(0 0 0 / 0.55);
+  box-shadow: 0 0 0 1.5px var(--control-edge), 0 0 25px -17px rgb(0 0 0 / 0.55);
   transition: box-shadow 0.25s cubic-bezier(0.19, 1, 0.22, 1),
     transform 0.25s cubic-bezier(0.19, 1, 0.22, 1);
 }
@@ -1244,7 +1263,7 @@ a {
 }
 
 .search-input:hover {
-  box-shadow: 0 0 0 2.5px var(--rule-strong), 0 0 25px -15px rgb(0 0 0 / 0.55);
+  box-shadow: 0 0 0 2.5px var(--control-edge), 0 0 25px -15px rgb(0 0 0 / 0.55);
 }
 
 .search-input:active {

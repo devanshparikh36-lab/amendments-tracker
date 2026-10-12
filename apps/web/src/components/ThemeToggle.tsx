@@ -39,6 +39,11 @@ export function ThemeToggle() {
   // Unchecked on the server and on the first client render, which is the markup the server sent. Reading
   // localStorage during render would make the two disagree.
   const [dark, setDark] = useState(false);
+  // False until the stored preference has been read and applied. The control slides when it changes, and
+  // the first change is not a change the reader made -- React renders it off, the effect below turns it on,
+  // and a reader whose theme is dark watched the knob travel across on every single page load. Suppressing
+  // the transition for that one frame makes it arrive in the right place instead of moving into it.
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     try {
@@ -46,6 +51,38 @@ export function ThemeToggle() {
     } catch {
       /* unreadable storage is the same as no preference */
     }
+
+    /* Re-enable the transition once, after the knob has been painted where it belongs.
+     *
+     * Two frames, not one, and not in the same update as setDark above. React batches state set together
+     * into a single commit, so turning the control on and re-enabling its transition at once is exactly the
+     * case the suppression exists to prevent: the browser recomputes style once, sees both the new position
+     * and a live transition, and animates between them. One rAF schedules work before the next paint; a
+     * second waits until after it.
+     *
+     * And a timer behind them, which is not belt and braces but a fix for a real failure. rAF does not fire
+     * in a tab that is not painting -- a background tab, or one the window manager has hidden. Without the
+     * timer, `ready` never became true there, the suppression never lifted, and the control stopped
+     * animating altogether, permanently. Caught by measuring: the class was still on the element and
+     * transition-duration read 0s long after load. Nothing animates in a tab that is not painting anyway,
+     * so firing early there costs nothing.
+     */
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      setReady(true);
+    };
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(finish);
+    });
+    const timer = setTimeout(finish, 100);
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+      clearTimeout(timer);
+    };
   }, []);
 
   function toggle(next: boolean) {
@@ -71,7 +108,7 @@ export function ThemeToggle() {
       // A checkbox announced as a switch: same element, same keyboard behaviour, described as the on/off
       // control it actually is rather than as something you tick.
       role="switch"
-      className="theme-checkbox no-print"
+      className={`theme-checkbox no-print${ready ? "" : " theme-checkbox-still"}`}
       checked={dark}
       onChange={(e) => toggle(e.currentTarget.checked)}
       aria-label={label}
