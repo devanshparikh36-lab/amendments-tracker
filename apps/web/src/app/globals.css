@@ -24,7 +24,14 @@
      it is used at 10.5-12px in 23 places: the strapline, "Last checked", "not stated by the regulator",
      the confidence figures. Same hue and saturation, lightness moved until the ratio cleared on the worse
      of the two grounds. Light now 4.55:1 on tint and 4.79:1 on paper; dark 4.55:1 and 4.75:1. */
-  --ink-4: #767269;
+  /* Measured against all four light surfaces, which is the correction.
+     The first pass checked --paper and --tint only, and the written pages (privacy, terms, about) sit
+     directly on --ground with no panel between: #767269 came to 4.32:1 there and 4.02:1 on --ground-sunk,
+     so "In force from 11 October 2026" shipped below AA. Three tokens were affected; the other two had
+     been under since long before dark mode, because nothing had ever measured them against anything but
+     white. A token does not get to know which surface it will land on, so each is now solved against the
+     darkest one it could meet. */
+  --ink-4: #6e6a62;
 
   --rule: #e2dfd8;
   --rule-strong: #cbc7bd;
@@ -52,11 +59,11 @@
   --link: #14532d;
 
   --flag-official: #1a6b4a;
-  --flag-machine: #9a6207;
+  --flag-machine: #945e07;
   --flag-alert: #a52a2a;
 
   --sub-income-tax: #1d4ed8;
-  --sub-gst: #b45309;
+  --sub-gst: #ac4f09;
   --sub-fema: #0f766e;
   --sub-sebi: #7c3aed;
   --sub-companies: #be123c;
@@ -669,7 +676,7 @@ summary:focus-visible,
     --ink: #1b1a17;
     --ink-2: #46443f;
     --ink-3: #6d6a62;
-    --ink-4: #767269;
+    --ink-4: #6e6a62;
     --rule: #d8d5ce;
     --rule-strong: #b9b5ab;
     --tint: #faf9f6;
