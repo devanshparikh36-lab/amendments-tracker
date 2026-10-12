@@ -204,7 +204,7 @@ export default async function InstrumentPage({ params, searchParams }: { params:
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,20rem)]">
         <div className="min-w-0 space-y-5">
           {/* --- the details of this instrument --------------------------- */}
-          <section className="panel">
+          <section className="panel reveal lift">
             <div className="panel-head">
               <h2 className="eyebrow">Details of this {kindLabel.toLowerCase()}</h2>
             </div>

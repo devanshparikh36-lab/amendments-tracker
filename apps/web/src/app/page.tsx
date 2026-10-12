@@ -73,9 +73,13 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
   return (
     <div className="mx-auto max-w-[76rem] space-y-12">
       {/* --- the one box that answers "where is 80C" ------------------------ */}
-      <section>
-        <h1 className="page-title">Look up any section, rule or regulation</h1>
-        <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-[var(--ink-2)]">
+      {/* The one place on the site that gets to make a statement. `.display` rather than `.page-title`,
+          which is left alone because it titles every reading view. The texture sits behind the heading
+          block only -- grain under a title, noise under statutory text. */}
+      <section className="paper-texture -mx-5 rounded-lg px-5 pb-6 pt-5">
+        <p className="display-eyebrow">Indian tax &amp; corporate law</p>
+        <h1 className="display mt-1">Look up any section, rule or regulation</h1>
+        <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-[var(--ink-2)]">
           Every screen shows the regulator&rsquo;s own text, as the regulator publishes it, with a link to the official
           document it came from.
         </p>
@@ -114,7 +118,7 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
 
       <div className={chosen ? "mx-auto max-w-3xl" : "grid gap-6 md:grid-cols-2 xl:grid-cols-3"}>
         {blocks.map((b) => (
-          <section key={b.subject.key} className={`panel sub-rule ${subjectClass(b.subject.key)} flex flex-col`}>
+          <section key={b.subject.key} className={`panel sub-rule reveal lift ${subjectClass(b.subject.key)} flex flex-col`}>
             <div className="px-5 pt-4">
               <h2 className="card-title">
                 <Link href={`/browse?subject=${b.subject.key}`} className="hover:underline">
@@ -229,7 +233,7 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
       </div>
 
       {!chosen && (
-        <section className="border-t border-[var(--rule)] pt-4 text-[13px]">
+        <section className="reveal border-t border-[var(--rule)] pt-4 text-[13px]">
           <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-[var(--ink-3)]">
             <Link href="/documents" className="hover:text-[var(--link)] hover:underline">
               Every notification and circular

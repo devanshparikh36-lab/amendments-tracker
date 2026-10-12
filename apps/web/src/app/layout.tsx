@@ -4,6 +4,7 @@ import Link from "next/link";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ReadingAids } from "@/components/ReadingAids";
 import { PageViews } from "@/components/PageViews";
+import { Reveal } from "@/components/Reveal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ThemeSync } from "@/components/ThemeSync";
 import { SiteNav } from "@/components/SiteNav";
@@ -202,6 +203,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         {/* Counts the page, and nothing about whoever is reading it. First-party, no cookie, no identifier
             -- see /api/beacon for what is stored and the privacy page for the promise it keeps. */}
         <PageViews />
+
+        {/* Watches for anything carrying .reveal and fades it in as it arrives. One observer for the
+            whole page rather than one per section. It arms the hidden state itself, so nothing is
+            invisible unless this has run -- see Reveal for why that ordering matters here. */}
+        <Reveal />
 
         <main id="main" className="mx-auto max-w-[1360px] px-5 py-6">
           {children}

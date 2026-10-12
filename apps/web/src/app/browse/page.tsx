@@ -155,7 +155,7 @@ export default async function BrowsePage({ searchParams }: { searchParams: Searc
       </div>
 
       {groups.map((g) => (
-        <section key={g.subject.key} className={`panel sub-rule ${subjectClass(g.subject.key)}`}>
+        <section key={g.subject.key} className={`panel sub-rule reveal lift ${subjectClass(g.subject.key)}`}>
           <div className="panel-head">
             <h2 className="card-title">{g.subject.name}</h2>
             <span className="meta num ml-auto">

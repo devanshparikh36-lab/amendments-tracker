@@ -20,8 +20,10 @@ export function Prose({
 }) {
   return (
     <article className="mx-auto max-w-[68ch] py-2">
-      <header className="border-b border-[var(--rule)] pb-3">
-        <h1 className="serif text-[26px] font-semibold leading-tight text-[var(--ink)]">{title}</h1>
+      {/* Front-door pages, so the title gets the display treatment and the same textured ground as the
+          home page. The measure stays at 68ch; nothing about the prose changes. */}
+      <header className="paper-texture -mx-5 rounded-lg border-b border-[var(--rule)] px-5 pb-4 pt-4">
+        <h1 className="display" style={{ fontSize: "clamp(26px, 3.4vw, 38px)" }}>{title}</h1>
         {lede && <p className="mt-2 text-[15px] leading-relaxed text-[var(--ink-2)]">{lede}</p>}
         {dated && <p className="mt-2 text-[12px] text-[var(--ink-4)]">In force from {LEGAL_UPDATED}.</p>}
       </header>
@@ -41,7 +43,7 @@ export function Prose({
 /** A numbered section. The heading is the thing people link to, so it gets an id. */
 export function Section({ id, heading, children }: { id: string; heading: string; children: React.ReactNode }) {
   return (
-    <section id={id} className="scroll-mt-20">
+    <section id={id} className="reveal scroll-mt-20">
       <h2 className="serif text-[18px] font-semibold text-[var(--ink)]">{heading}</h2>
       <div className="mt-2 space-y-3">{children}</div>
     </section>

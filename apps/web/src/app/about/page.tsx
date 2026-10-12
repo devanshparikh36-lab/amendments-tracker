@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Prose, Section } from "@/components/Prose";
 import { Faq, FaqItem } from "@/components/Faq";
+import { CountUp } from "@/components/CountUp";
 import { PUBLISHER } from "@/lib/legal";
 import { homeStats } from "@/lib/queries";
 
@@ -21,7 +22,6 @@ export default async function AboutPage() {
   } catch {
     /* the page is worth serving without its numbers */
   }
-  const n = (v: number | undefined) => (v ?? 0).toLocaleString("en-IN");
 
   return (
     <Prose
@@ -37,12 +37,17 @@ export default async function AboutPage() {
           on trust.
         </p>
         {stats && (
-          <div className="panel panel-body">
+          <div className="panel panel-body reveal lift">
+            {/* The server renders the finished figures; CountUp only animates them once they scroll into
+                view, and only where it can. Without script, with reduced motion, or to a crawler these read
+                as the plain correct numbers -- which on a page whose point is the size of the library is the
+                only acceptable default. */}
             <p className="text-[13.5px]">
-              Currently holding <strong className="font-medium text-[var(--ink)]">{n(stats.instruments)}</strong>{" "}
-              instruments, <strong className="font-medium text-[var(--ink)]">{n(stats.provisions)}</strong>{" "}
-              provisions and <strong className="font-medium text-[var(--ink)]">{n(stats.documents)}</strong>{" "}
-              notifications and circulars.{" "}
+              Currently holding{" "}
+              <CountUp value={stats.instruments} className="num font-medium text-[var(--ink)]" /> instruments,{" "}
+              <CountUp value={stats.provisions} className="num font-medium text-[var(--ink)]" /> provisions and{" "}
+              <CountUp value={stats.documents} className="num font-medium text-[var(--ink)]" /> notifications and
+              circulars.{" "}
               <Link href="/status" className="text-[var(--link)] hover:underline">
                 Collection status
               </Link>
