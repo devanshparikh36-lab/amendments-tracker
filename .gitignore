@@ -14,3 +14,10 @@ services/pipeline/*.log
 
 # Local scheduled-collection logs (run-local.ps1)
 services/pipeline/logs/
+
+# Wrangler's local secret file. This repository is public, and .dev.vars is the documented place to put
+# a token when running `wrangler dev` -- which makes it the single most dangerous untracked file here.
+# Ignored before anyone has a token to put in it.
+.dev.vars
+.dev.vars.*
+.wrangler/
