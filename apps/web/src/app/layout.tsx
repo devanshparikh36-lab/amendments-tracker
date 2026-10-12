@@ -161,10 +161,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 last on the header rather than inline beside the masthead, where it read as part of the
                 title.
 
-                A column with items-center, so the control sits under the stamp and on its centre line
-                rather than flush to either end. It went through a row first, which put the two side by side
-                and left the toggle hard against the right edge; centred beneath reads as deliberate. */}
-            <div className="ml-auto flex w-full flex-col items-center gap-1.5 sm:w-auto">
+                A column with items-end: the control sits under the stamp and against the right edge, in
+                the corner. Two arrangements were tried and rejected on the way -- a row, which put the two
+                side by side, and items-center, which centred the control under the stamp and left it
+                floating short of the corner. */}
+            <div className="ml-auto flex w-full flex-col items-end gap-1.5 sm:w-auto">
               {(revised.checked || revised.added) && (
                 <Link
                   href="/status"
