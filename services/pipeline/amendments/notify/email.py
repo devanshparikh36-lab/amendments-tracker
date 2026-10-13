@@ -111,35 +111,91 @@ def _join_names(names: list[str], limit: int = 4) -> str:
     return ", ".join(names[:-1]) + " and " + names[-1]
 
 
+# The long form each regulator puts at the front of its own instruments. Worth removing from the preview
+# line and nowhere else: "Securities and Exchange Board of India (Certification of Associated Persons in
+# the Securities Markets) (Amendment) Regulations, 2026" spends its first 38 characters on the issuer, and
+# an inbox preview is cut around 120 -- so the boilerplate pushed "Regulations, 2026" off the end and the
+# reader saw a preview that could have been any SEBI instrument ever made. The subject has already named
+# the regulator; the preview's job is the part that differs.
+_ISSUER_PREFIXES = (
+    "Securities and Exchange Board of India",
+    "Reserve Bank of India",
+    "Central Board of Direct Taxes",
+    "Central Board of Indirect Taxes and Customs",
+    "Ministry of Corporate Affairs",
+)
+
+
+def _drop_issuer(title: str) -> str:
+    t = " ".join(str(title or "").split())
+    for prefix in _ISSUER_PREFIXES:
+        if t.startswith(prefix):
+            rest = t[len(prefix):].lstrip(" ,-–—")
+            # Only if something substantial survives. A title that is *only* the issuer's name stays whole.
+            if len(rest) > 12:
+                return rest
+    return t
+
+
+def _trim(text: str, limit: int) -> str:
+    """Cut to a word boundary, with a real ellipsis. Inbox previews are cut by the client anyway; the point
+    is to choose where, so the cut lands between words rather than mid-statute."""
+    t = " ".join(str(text or "").split())
+    if len(t) <= limit:
+        return t
+    cut = t[:limit].rsplit(" ", 1)[0].rstrip(" ,;:-—")
+    return cut + "…"
+
+
 def digest_subject(new_docs: list[dict], day: date, arrivals: list[dict] | None = None) -> str:
     """What the inbox shows before anything is opened.
 
-    A sentence, not a summary line. The regulators are named because whether this is worth opening now
-    usually depends on which of them moved; the per-regulator counts live in the body, where there is room
-    for them and where they do not turn the subject into a log entry. No date either -- the mail carries its
-    own, and the room is better spent on the names.
+    No "As Amended" prefix. The sender name already says it, and on a phone the subject is cut at roughly
+    forty characters -- so a brand repeated there costs a third of everything the reader will see, to tell
+    them something the line above already told them.
+
+    The date goes on the end, and is not decoration. Gmail threads by subject, so two days that both found
+    two CBIC circulars produced one subject, collapsed into a single conversation, and the newer digest
+    arrived hidden underneath the older one. A date makes each day its own thread. On the end rather than
+    the front because trailing characters are the ones the phone drops, and threading reads the whole
+    subject whether or not the reader can see it -- so it does its work from where it costs nothing.
+
+    Codes, not the subject-matter names used in the body. "SEBI, RBI and CBDT" is both shorter and the
+    vocabulary this reader already thinks in; "Securities, FEMA & banking and Income tax" is neither.
 
     A newly tracked regulator takes the front of the line: it is the rarest thing this mail carries, and the
     only one that changes what the tracker covers rather than what it found.
     """
+    stamp = day.strftime("%d %b")
     clauses = []
     if arrivals:
-        clauses.append("now tracking " + _join_names([_arrival_name(a) for a in arrivals], limit=3))
+        # Code here, full name in the preview. "Now tracking Securities and Exchange Board of India" is cut
+        # to "Now tracking Securities and Exchange Boa" on a phone, which says less than "SEBI" does.
+        clauses.append("Now tracking " + _join_names([str(a.get("code") or _arrival_name(a)) for a in arrivals], limit=3))
     if new_docs:
         n = len(new_docs)
         codes = list(_by_regulator(new_docs).keys())
-        clauses.append(f"{n} new notification{'s' if n != 1 else ''} from {_join_names(codes)}")
+        noun = "notification" if n == 1 else "notifications"
+        clauses.append(f"{n} {noun} from {_join_names(codes)}" if not arrivals else f"{n} {noun}")
     if not clauses:
-        clauses.append("no new notifications")
-    return "As Amended — " + "; ".join(clauses)
+        clauses.append("No new notifications")
+    return " · ".join(clauses + [stamp])
 
 
 def _preheader(new_docs: list[dict], arrivals: list[dict] | None = None) -> str:
-    """The grey line the inbox prints beside the subject.
+    """The grey line the inbox prints beside the subject, and the second line of a phone notification.
 
-    Left alone, clients scrape it from the top of the body, which here is the masthead -- so the one piece of
-    inbox real estate that could say something would have repeated the name of the sender. This says what
-    was found instead.
+    It names the day's lead item. The version before this one printed "SEBI 6 · RBI 2 · CBDT 1 · 5 tagged
+    to an Act or Rule" -- counts the subject had already given, in codes and bare numbers, with "tagged"
+    borrowed from the schema rather than from anything a reader thinks. It read like a log line, and it
+    spent the one piece of inbox space that could have said something on saying the subject again.
+
+    So: the most recently issued document, by title, and how many others are behind it. That is the thing a
+    reader wants from a notification they have not opened -- whether today's item is the one they were
+    waiting for.
+
+    Left alone entirely, clients scrape this from the top of the body, which here is the masthead, and the
+    preview becomes the name of the sender for a third time.
 
     The trailing run of zero-width spaces stops the client continuing the preview into the body text after
     this div ends, which is the standard trick and looks like nonsense without knowing why.
@@ -147,15 +203,15 @@ def _preheader(new_docs: list[dict], arrivals: list[dict] | None = None) -> str:
     if arrivals:
         text = "Now tracking " + ", ".join(_arrival_name(a) for a in arrivals)
         if new_docs:
-            text += " · " + " · ".join(f"{code} {len(items)}" for code, items in _by_regulator(new_docs).items())
+            text += f" · and {len(new_docs)} notification{'s' if len(new_docs) != 1 else ''} besides"
     elif new_docs:
-        bits = [f"{code} {len(items)}" for code, items in _by_regulator(new_docs).items()]
-        tagged = sum(1 for d in new_docs if d.get("affects"))
-        text = " · ".join(bits)
-        if tagged:
-            text += f" · {tagged} tagged to an Act or Rule"
+        # Ordered by date issued, so the first row is the most recent thing any regulator published.
+        text = _trim(_drop_issuer(new_docs[0].get("title") or "Untitled"), 120)
+        rest = len(new_docs) - 1
+        if rest:
+            text += f" · and {rest} more"
     else:
-        text = "Nothing published since the last check."
+        text = "Nothing published by any of the five regulators since the last check."
     return (
         f"<div style='display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;"
         f"color:{CARD};opacity:0'>{_esc(text)}"
