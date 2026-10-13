@@ -16,6 +16,17 @@ main = "src/index.js"
 # than the installed wrangler makes wrangler refuse to publish. Raise it freely if you ever need to.
 compatibility_date = "2025-01-01"
 
+# No public URL, and this has to be said rather than merely left out.
+#
+# This Worker has only a `scheduled` handler -- there is no `fetch`, so there is nothing to serve and a
+# public endpoint would be exposure bought for nothing. But wrangler assumes workers.dev is wanted unless
+# told otherwise: deploying without this prompts to register a workers.dev subdomain, and declining the
+# prompt fails the deploy outright ("deploy your worker to one or more routes ... or register a workers.dev
+# subdomain"). Setting it false is how you decline permanently and deploy with no route at all.
+#
+# Cron triggers are unaffected. They do not need a route or a subdomain.
+workers_dev = false
+
 [triggers]
 # 01:30 UTC = 07:00 IST. Cloudflare crons are always UTC; there is no timezone setting to get wrong.
 #
