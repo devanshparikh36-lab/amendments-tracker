@@ -237,3 +237,58 @@ jobs:
               ]:
                   print(f"{label:38} {db.fetch_one(conn, sql)['n']:>7}")
           PY
+
+  # Says so, loudly, when the fallback had to do the work.
+  #
+  # Without this a dead trigger is invisible. The fallback collects, the run is green, the mail arrives in
+  # the afternoon -- which is exactly what the afternoon used to look like, so the one symptom is a symptom
+  # of nothing having been fixed. The most likely cause is the Cloudflare token expiring, which happens on a
+  # date nobody will be thinking about.
+  #
+  # Failing on purpose is how it reaches anyone: a red scheduled workflow makes GitHub email the repository
+  # owner, which is the same channel storage.yml uses and the only one here that costs nothing and needs no
+  # secret.
+  #
+  # The cost is that this run goes red on a day collection actually succeeded. That is deliberate, and the
+  # job is named so the run page says which of the two happened at a glance. It stays red every morning
+  # until the trigger is fixed, which for an alarm is the correct behaviour rather than a flaw.
+  #
+  # It cannot fire spuriously: it runs only on the scheduled path, and only when `decide` found no
+  # collection for today -- that is, only when the 07:00 dispatch demonstrably did not happen. A working
+  # trigger skips this job entirely, as does any workflow_dispatch.
+  trigger-missing:
+    needs: [decide, run]
+    if: always() && github.event_name == 'schedule' && needs.decide.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: The 07:00 trigger did not fire
+        run: |
+          echo "::error title=The 07:00 trigger did not fire::Collection ran from the fallback cron instead, hours late. Today's mail will arrive in the afternoon."
+          cat >&2 <<'TXT'
+
+          Nothing collected today until this scheduled run picked it up, which means the Cloudflare
+          Worker did not dispatch collection at 07:00 IST.
+
+          Collection itself is fine -- it just happened hours late, which is what this whole arrangement
+          exists to stop.
+
+          Most likely, in order:
+
+            1. The GitHub token in the Worker expired.
+               Check https://github.com/settings/personal-access-tokens
+               Fix: make a new fine-grained token (Actions: Read and write, this repo only), then
+                 npx.cmd wrangler secret put GITHUB_TOKEN --config <repo>/infra/trigger/wrangler.toml
+               No redeploy needed.
+
+            2. The Worker was deleted, or its cron trigger was removed.
+               Check Cloudflare -> Workers & Pages -> as-amended-trigger -> Settings -> Trigger Events.
+               It should read: 30 1 * * *
+
+            3. Cloudflare had an outage at 01:30 UTC. Nothing to do; this clears by itself tomorrow.
+
+          Live detail from the Worker itself:
+            npx.cmd wrangler tail --config <repo>/infra/trigger/wrangler.toml
+
+          TXT
+          exit 1

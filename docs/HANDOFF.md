@@ -80,8 +80,15 @@ collection is now started by a Cloudflare cron trigger that calls `workflow_disp
 
 `worker.yml` keeps its own cron as a fallback for the day the external trigger does not fire. It arrives
 hours late by definition, so the `decide` job skips the run entirely when a collection already succeeded
-that IST day — about 20 seconds on a normal day. The failure mode to recognise: **if the trigger's token
-expires, collection does not stop, it goes back to arriving in the afternoon.**
+that IST day — about 20 seconds on a normal day.
+
+**If the trigger stops firing, collection does not stop — it goes back to arriving in the afternoon.** That
+is a graceful failure and an invisible one, because the afternoon is exactly what it used to look like. So
+the `trigger-missing` job fails the run on purpose whenever the fallback has had to do the work, which makes
+GitHub email the owner — the same channel `storage.yml` uses. A red collection run on a day collection
+succeeded means one thing: **the 07:00 trigger did not fire.** The run log names the three likely causes and
+the command that fixes the usual one (an expired token). It cannot fire spuriously — it runs only on the
+scheduled path and only when `decide` found nothing collected that day.
 
 `storage.yml` was left on `schedule`. A free-tier alarm that fires six hours late is still a free-tier alarm;
 it is not worth a second external trigger.
