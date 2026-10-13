@@ -16,7 +16,23 @@ main = "src/index.js"
 # than the installed wrangler makes wrangler refuse to publish. Raise it freely if you ever need to.
 compatibility_date = "2025-01-01"
 
-# No public URL, and this has to be said rather than merely left out.
+# workers.dev is ON, reluctantly, and only until the trigger is proven.
+#
+# 13 Oct 2026: Cloudflare registered this Worker's crons -- the dashboard lists them with a correct "next
+# run" -- and then never invoked it. Metrics for the whole day: 0 invocations, 0 errors, 0 CPU. Four test
+# slots passed without the Worker running once.
+#
+# Every deploy made with workers_dev = false also printed "No targets deployed for as-amended-trigger", and
+# the dashboard shows an active deployment only for the workers_dev = true upload. That is not proof a cron
+# needs a deploy target -- the one slot tested in that configuration may have passed before the deploy
+# landed -- but it is the only difference observed, and tomorrow's 01:30 UTC run is the real test. Better it
+# runs in the configuration Cloudflare considers deployed.
+#
+# Turn this back to false the moment a cron invocation shows up in Metrics. The Worker has no fetch handler,
+# so the URL serves nothing and exposes nothing -- but an endpoint that exists gets probed, and this one
+# holds a token that can start jobs in the repository.
+#
+# Originally, and to return to:
 #
 # This Worker has only a `scheduled` handler -- there is no `fetch`, so there is nothing to serve and a
 # public endpoint would be exposure bought for nothing. But wrangler assumes workers.dev is wanted unless
@@ -25,7 +41,7 @@ compatibility_date = "2025-01-01"
 # subdomain"). Setting it false is how you decline permanently and deploy with no route at all.
 #
 # Cron triggers are unaffected. They do not need a route or a subdomain.
-workers_dev = false
+workers_dev = true
 
 # And the preview URL too, which is a second public endpoint and is on by default.
 #
