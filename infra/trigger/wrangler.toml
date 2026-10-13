@@ -27,6 +27,13 @@ compatibility_date = "2025-01-01"
 # Cron triggers are unaffected. They do not need a route or a subdomain.
 workers_dev = false
 
+# And the preview URL too, which is a second public endpoint and is on by default.
+#
+# Wrangler says so only as a warning during deploy: "Because your 'workers.dev' route is enabled and your
+# 'preview_urls' setting is not in your Wrangler file, Preview URLs will be enabled for this deployment by
+# default." Turning workers_dev off is not enough on its own -- this is the other door.
+preview_urls = false
+
 [triggers]
 # 01:30 UTC = 07:00 IST. Cloudflare crons are always UTC; there is no timezone setting to get wrong.
 #
