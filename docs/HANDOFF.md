@@ -63,7 +63,7 @@ will stop mid-month unless the schedule drops well below daily.**
 
 | workflow | what it does | when | triggered by |
 |---|---|---|---|
-| `worker.yml` | discover → fetch → tag, then re-fetch → page index → OCR as separate bounded steps | **07:00 IST daily** | Cloudflare Worker (`infra/trigger/`), `workflow_dispatch` |
+| `worker.yml` | discover → fetch → tag, then re-fetch → page index → OCR as separate bounded steps | **07:00 IST daily** | cron-job.org → `workflow_dispatch` (see `infra/trigger/README.md`) |
 | `digest.yml` | mails what changed | when collection finishes, ~08:40 IST | `workflow_run` on `worker.yml` completing |
 | `storage.yml` | free-tier alarm, fails past 60% | nominally 07:30 IST, actually ~13:45 | GitHub `schedule` — still late, see below |
 | `keepalive.yml` | keeps schedules alive | monthly | GitHub `schedule` |
@@ -75,8 +75,14 @@ the last. `created_at` equals `run_started_at` on every one, so the event itself
 queued waiting for a runner. Collection was starting at ~13:00 IST and the mail at ~14:40 IST.
 
 Only `schedule` behaves this way. `workflow_dispatch` and `workflow_run` are delivered at once, which is why
-collection is now started by a Cloudflare cron trigger that calls `workflow_dispatch` (see
+collection is now started by an external scheduler calling `workflow_dispatch` (see
 `infra/trigger/README.md`) and why the digest hangs off the collector finishing instead of a clock.
+
+That scheduler is **cron-job.org**. A Cloudflare Worker was built for the job first and never ran: its crons
+were registered and confirmed in Cloudflare's own dashboard, with an active deployment, and its metrics read
+0 invocations across four test slots on 13 Oct 2026. Nothing was misconfigured and no fault was found. The
+code is kept in `infra/trigger/` as a ready alternative, but **the Worker must stay undeployed** -- if
+Cloudflare's scheduler ever starts working, both triggers would fire and collection would run twice.
 
 `worker.yml` keeps its own cron as a fallback for the day the external trigger does not fire. It arrives
 hours late by definition, so the `decide` job skips the run entirely when a collection already succeeded

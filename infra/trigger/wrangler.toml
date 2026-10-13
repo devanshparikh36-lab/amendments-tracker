@@ -56,7 +56,7 @@ preview_urls = false
 # Collection takes 75-154 minutes, so the mail that follows it lands between 08:15 and 09:35 IST, and on
 # 2 of the 12 days measured that is after 09:00. If "by 09:00" has to hold every day, move this to
 # "15 0 * * *" (06:15 IST) -- that clears every duration observed so far with room to spare.
-crons = ["30 1 * * *"]
+crons = ["30 1 * * *", "4 9 * * *"]   # TEMPORARY: one decisive live test at 14:34 IST.
 
 # No KV, no R2 binding, no D1. The only state this Worker needs is the token, and that is a secret:
 #   wrangler secret put GITHUB_TOKEN
