@@ -126,6 +126,33 @@ _ISSUER_PREFIXES = (
 )
 
 
+def _unwrap_leading_paren(t: str) -> str:
+    """Take the brackets off a title that now begins with one.
+
+    SEBI names its instruments "Securities and Exchange Board of India (Certification of Associated
+    Persons...) (Amendment) Regulations, 2026". Removing the issuer leaves the line starting on an opening
+    bracket, which reads as though the sentence began in the middle -- and every SEBI title in the corpus
+    is built this way, so it is the normal case rather than an edge one.
+
+    Only the first pair, and only when it opens the string: the later "(Amendment)" is part of how the
+    instrument is actually cited and stays exactly where it is.
+    """
+    if not t.startswith("("):
+        return t
+    depth = 0
+    for i, ch in enumerate(t):
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+            if depth == 0:
+                # Nothing after the closing bracket means the whole title was one parenthetical; leave it be.
+                tail = t[i + 1:].strip()
+                return (t[1:i].strip() + " " + tail).strip() if tail else t
+    # Unbalanced -- a truncated or malformed title. Better left alone than half-rewritten.
+    return t
+
+
 def _drop_issuer(title: str) -> str:
     t = " ".join(str(title or "").split())
     for prefix in _ISSUER_PREFIXES:
@@ -133,7 +160,7 @@ def _drop_issuer(title: str) -> str:
             rest = t[len(prefix):].lstrip(" ,-–—")
             # Only if something substantial survives. A title that is *only* the issuer's name stays whole.
             if len(rest) > 12:
-                return rest
+                return _unwrap_leading_paren(rest)
     return t
 
 
