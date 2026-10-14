@@ -40,8 +40,14 @@ export async function POST(req: Request) {
   const pool = getPool();
   try {
     const r = await pool.query<{ id: number }>(
+      /* Deliberately does NOT touch last_seen_at. That column anchors "since you were last here", and
+       * identify owns it -- it advances only after a thirty-minute gap so the window survives a refresh.
+       * Setting it here defeated that completely: following a section, saving a note or keeping a search
+       * each slammed the clock to now(), so the list of what had landed emptied itself the moment a
+       * reader touched anything. Found by probing the routes in order and watching previousSeen move. */
       `INSERT INTO reader (email) VALUES ($1)
-       ON CONFLICT (email) DO UPDATE SET last_seen_at = now() RETURNING id`,
+       ON CONFLICT (email) DO UPDATE SET email = reader.email
+       RETURNING id`,
       [email],
     );
     const readerId = r.rows[0]?.id;

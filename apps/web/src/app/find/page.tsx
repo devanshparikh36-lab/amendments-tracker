@@ -1,5 +1,6 @@
 ﻿import Link from "next/link";
 import { redirect } from "next/navigation";
+import { SaveSearch } from "@/components/SaveSearch";
 import { SearchBox } from "@/components/SearchBox";
 import { KIND_LABEL, unitPlural } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
@@ -129,6 +130,10 @@ export default async function FindPage({
             within={scope?.slug ?? null}
           />
           <button className="btn btn-primary px-5">Search</button>
+          {/* Inside the form, and safe there only because it is type="button" -- the default is
+              type="submit", which would make saving a search also re-run it. Rendered only when there is
+              a query to keep, so an empty box does not offer to save nothing. */}
+          <SaveSearch q={q} />
         </form>
         {scope && (
           <p className="meta mt-2">

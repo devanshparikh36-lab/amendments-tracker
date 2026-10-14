@@ -50,8 +50,13 @@ export async function POST(req: Request) {
      * someone does after typing their address, and the two requests race -- so this creates the row if
      * the identify call has not landed yet rather than failing on a foreign key. */
     const r = await pool.query<{ id: number }>(
+      /* Deliberately does NOT touch last_seen_at. That column anchors "since you were last here", and
+       * identify owns it -- it advances only after a thirty-minute gap so the window survives a refresh.
+       * Setting it here defeated that completely: following a section, saving a note or keeping a search
+       * each slammed the clock to now(), so the list of what had landed emptied itself the moment a
+       * reader touched anything. Found by probing the routes in order and watching previousSeen move. */
       `INSERT INTO reader (email) VALUES ($1)
-       ON CONFLICT (email) DO UPDATE SET last_seen_at = now()
+       ON CONFLICT (email) DO UPDATE SET email = reader.email
        RETURNING id`,
       [email],
     );

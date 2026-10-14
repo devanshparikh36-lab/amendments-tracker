@@ -168,8 +168,16 @@ export function Account() {
       const a = document.createElement("a");
       a.href = url;
       a.download = "as-amended-my-data.csv";
+      /* In the document, and revoked on a later tick. A detached anchor does not reliably fire a
+       * download in every browser, and revoking the object URL in the same tick as the click can cancel
+       * the download that click just started -- the file silently never arrives. */
+      a.style.display = "none";
+      document.body.appendChild(a);
       a.click();
-      URL.revokeObjectURL(url);
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        a.remove();
+      }, 1000);
     } catch {
       /* nothing downloaded; the button stays */
     } finally {

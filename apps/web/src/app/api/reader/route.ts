@@ -119,7 +119,21 @@ export async function POST(req: Request) {
     if (!me) return NextResponse.json({ error: "could not identify" }, { status: 500 });
 
     const prev = me.previous_seen;
-    await pool.query("UPDATE reader SET last_seen_at = now() WHERE id = $1", [me.id]);
+    /* Only after a real gap, not on every load.
+     *
+     * Advancing this unconditionally made "since you were last here" destroy itself: a reader arrived,
+     * saw three notifications against their sections, refreshed or opened a second tab, and the window
+     * was now zero wide and the list empty. The one feature that brings somebody back erased its own
+     * answer the moment they looked at it.
+     *
+     * Thirty minutes is the width of a visit. Inside that the window holds still, so the list survives a
+     * refresh, a second tab and a trip through five sections; beyond it the next arrival is a new visit
+     * and the clock moves. The cost is that "last seen" in the admin table is accurate to half an hour,
+     * which is a precision nothing there needs. */
+    await pool.query(
+      "UPDATE reader SET last_seen_at = now() WHERE id = $1 AND last_seen_at < now() - interval '30 minutes'",
+      [me.id],
+    );
 
     /* Every count in one round trip. Four separate queries would each wake the same connection to ask
      * the same database a one-number question, on a serverless function that pays per invocation. */

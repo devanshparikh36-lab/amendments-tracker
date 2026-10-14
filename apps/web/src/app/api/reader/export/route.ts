@@ -27,6 +27,25 @@ function cell(v: unknown): string {
   return `"${String(v ?? "").replace(/"/g, '""')}"`;
 }
 
+/* Timestamps as "2026-10-14 14:12", in IST.
+ *
+ * The driver hands back Date objects and String() turns those into
+ * "Wed Oct 14 2026 14:12:32 GMT+0530 (India Standard Time)" -- which is the runtime's idea of a date,
+ * not a reader's, and which no spreadsheet will parse into a date column. Sortable, unambiguous, and in
+ * the zone everything else on this site is shown in. */
+function when(v: unknown): string {
+  if (!v) return "";
+  const d = v instanceof Date ? v : new Date(String(v));
+  if (Number.isNaN(d.getTime())) return String(v);
+  const p = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(d);
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? "";
+  return `${g("year")}-${g("month")}-${g("day")} ${g("hour")}:${g("minute")}`;
+}
+
 export async function POST(req: Request) {
   let body: Record<string, unknown>;
   try {
@@ -72,21 +91,21 @@ export async function POST(req: Request) {
      * A machine-readable export would be JSON, and nobody has asked for one. */
     const rows: string[] = [];
     rows.push(["type", "a", "b", "c", "d"].map(cell).join(","));
-    rows.push(["account", email, r.name ?? "", r.created_at, `alerts ${r.alerts_on ? r.alert_freq : "off"}`].map(cell).join(","));
+    rows.push(["account", email, r.name ?? "", when(r.created_at), `alerts ${r.alerts_on ? r.alert_freq : "off"}`].map(cell).join(","));
     rows.push("");
     rows.push(["kind", "instrument", "section", "title", "saved"].map(cell).join(","));
     for (const w of watches.rows as Record<string, unknown>[]) {
-      rows.push([w.kind, w.short_code, w.number, w.title, w.created_at].map(cell).join(","));
+      rows.push([w.kind, w.short_code, w.number, w.title, when(w.created_at)].map(cell).join(","));
     }
     rows.push("");
     rows.push(["note", "instrument", "section", "text", "updated"].map(cell).join(","));
     for (const n of notes.rows as Record<string, unknown>[]) {
-      rows.push(["note", n.short_code, n.number, n.body, n.updated_at].map(cell).join(","));
+      rows.push(["note", n.short_code, n.number, n.body, when(n.updated_at)].map(cell).join(","));
     }
     rows.push("");
     rows.push(["search", "query", "", "", "saved"].map(cell).join(","));
     for (const s of searches.rows as Record<string, unknown>[]) {
-      rows.push(["search", s.q, "", "", s.created_at].map(cell).join(","));
+      rows.push(["search", s.q, "", "", when(s.created_at)].map(cell).join(","));
     }
 
     // The BOM is for Excel, which otherwise reads a UTF-8 CSV as the system codepage and mangles the
