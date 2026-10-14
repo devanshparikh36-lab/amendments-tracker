@@ -1,6 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { mapEntries } from "@/lib/queries";
 
+/* force-dynamic, and it is not optional: without it this route answers every query with the first one.
+ *
+ * Netlify builds its CDN cache key from a `Netlify-Vary: query=...` header that the Next runtime emits,
+ * and on a route Next considers cacheable that header lists only Next's own internal params -- so `q` and
+ * `entity` drop out of the key entirely and one stored response is served for every filter for the whole
+ * TTL. Measured on production: ?q=salary and ?q=capital returned byte-identical CSVs.
+ *
+ * Invisible in development, which has neither the CDN nor the data cache, and invisible in the build log.
+ * The sibling /api/export/documents route escapes it; /api/suggest escapes it by declaring force-dynamic,
+ * which is the one reliable way to keep the query string in the cache key. The Cache-Control header below
+ * still gets honoured, so this costs nothing in cache hits.
+ */
+export const dynamic = "force-dynamic";
+
 function csv(v: unknown): string {
   const s = v == null ? "" : String(v);
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;

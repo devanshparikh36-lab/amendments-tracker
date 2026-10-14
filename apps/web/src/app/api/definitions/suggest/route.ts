@@ -10,9 +10,19 @@ import { suggestDefinedTerms } from "@/lib/queries";
  * Cached by the query helper like every other read, which matters more than usual on a keystroke endpoint:
  * everyone types the same first two or three letters, so the common prefixes are served without the regex
  * scan running at all.
+ *
+ * force-dynamic, and it is not optional: `export const revalidate` here answered every prefix with the
+ * first one typed after a deploy. Netlify builds its CDN cache key from a `Netlify-Vary: query=...` header
+ * the Next runtime emits, and on a route Next considers cacheable that header lists only Next's internal
+ * params -- so `q` leaves the key and one stored answer serves every prefix for the whole TTL. Caught on
+ * production, where ?q=inp returned the six "capital ..." terms. The masthead's /api/suggest was right all
+ * along by declaring force-dynamic; this one copied the wrong neighbour.
+ *
+ * Neither development nor the build shows it: dev has no CDN and Next disables the data cache there. The
+ * Cache-Control header below is still honoured, so the edge caching this wanted is not lost.
  */
 
-export const revalidate = 3600;
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const q = (req.nextUrl.searchParams.get("q") ?? "").trim();
