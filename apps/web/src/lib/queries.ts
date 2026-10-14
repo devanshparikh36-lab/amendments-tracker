@@ -1083,7 +1083,18 @@ export type DefinitionHit = {
 const DEFINING = "(means|includes|shall\\s+mean|shall\\s+include|shall\\s+be\\s+deemed|has\\s+the\\s+meaning|shall\\s+have\\s+the\\s+meaning)";
 
 /** Every place a word is *defined*, across every Act, Rule and Regulation that has text. */
-export async function searchDefinitions(term: string, limit = 80): Promise<DefinitionHit[]> {
+/* `regulator` narrows the search itself, not the results afterwards.
+ *
+ * Filtering the returned rows was the first attempt and it was wrong in two ways. The filter disappeared
+ * whenever every hit happened to share a regulator -- so on most searches the control simply was not there.
+ * And it could only ever hide rows the unfiltered ranking had already chosen: asking for "turnover in GST"
+ * could not surface a GST definition that sat at position 90 of the unfiltered order, because the query had
+ * already stopped at eighty. Narrowing in SQL asks the real question. */
+export async function searchDefinitions(
+  term: string,
+  limit = 80,
+  regulator?: string | null,
+): Promise<DefinitionHit[]> {
   const cleaned = term.trim();
   if (!cleaned) return [];
   const escaped = cleaned.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -1126,7 +1137,8 @@ export async function searchDefinitions(term: string, limit = 80): Promise<Defin
           WHERE ip.instrument_id = i.id AND ip.text ~* $1
           ORDER BY ip.page_no LIMIT 1
        ) pg ON p.pdf_page IS NULL
-      WHERE v.text ILIKE '%' || $2 || '%' AND v.text ~* $1)
+      WHERE v.text ILIKE '%' || $2 || '%' AND v.text ~* $1
+        AND ($5::text IS NULL OR reg.code = $5))
      UNION ALL
      -- The other 107 of 195 instruments.
      --
@@ -1147,14 +1159,65 @@ export async function searchDefinitions(term: string, limit = 80): Promise<Defin
         FROM instrument_page ip
         JOIN instrument i ON i.id = ip.instrument_id
         JOIN regulator reg ON reg.id = i.regulator_id
-       WHERE ip.text ILIKE '%' || $2 || '%' AND ip.text ~* $1)
+       WHERE ip.text ILIKE '%' || $2 || '%' AND ip.text ~* $1
+         AND ($5::text IS NULL OR reg.code = $5))
       -- Quoted first, being the clearest evidence; then a dedicated definitions clause; then parsed text
       -- ahead of text read out of a PDF, which is a finding aid and should not outrank the real thing.
       ORDER BY quoted DESC, in_definitions_section DESC, from_pdf, instrument_title, pdf_page NULLS LAST
       LIMIT $3`,
     // The cheap ILIKE runs first and throws out almost everything before either regex is considered.
-    [pattern, cleaned, limit, quotedPattern],
+    [pattern, cleaned, limit, quotedPattern, regulator || null],
   );
+}
+
+/* Defined terms beginning with what has been typed.
+ *
+ * The definitions box had no suggestions at all, and the reason recorded for that was sound as far as it
+ * went: offering section numbers and notifications in a box that takes a word to be defined answers a
+ * question nobody asked. The conclusion drawn from it was too broad. The right suggestion here is the one
+ * thing the page is about -- terms that are actually defined somewhere in the library.
+ *
+ * Extracted live rather than from an index. The regex is the same shape the search itself uses: a quoted
+ * term, then within ninety characters a defining verb. The ILIKE narrows which provisions are scanned
+ * before any regex runs -- without it this reads every current provision version and takes seconds; with
+ * it, measured against the real corpus, "cap" takes 0.48s and most prefixes about 0.2s.
+ *
+ * The prefix is then applied to the *extracted term*, not to the provision text. Filtering the text alone
+ * was the first attempt: it found provisions that contain some term starting with "cap" and then offered
+ * every definition in them, so typing "cap" suggested "royalty".
+ *
+ * Every backslash in the pattern below is doubled, and must be. This is a JavaScript template literal, so
+ * a lone backslash-s is not an escape JavaScript recognises and it drops the backslash silently: Postgres
+ * received a pattern matching the letter s rather than whitespace. It matched nothing, raised no error, and
+ * the endpoint returned an empty list for every prefix while the same SQL run by hand returned the right
+ * terms. Writing the explanation inside the literal then broke the build for the same reason.
+ *
+ * Ordered by how many instruments define the term, which puts the one a reader is most likely to mean at
+ * the top: "capital asset" is defined in both Income-tax Acts, "capital value of such units" in one.
+ */
+export async function suggestDefinedTerms(prefix: string, limit = 8): Promise<string[]> {
+  const cleaned = prefix.trim().toLowerCase();
+  // Two characters is where this becomes a suggestion rather than a list of everything.
+  if (cleaned.length < 2) return [];
+  // Only the characters a defined term can start with. Anything else cannot match and would send a
+  // pointless regex scan to the database on a keystroke.
+  if (!/^[a-z][a-z ’'-]*$/.test(cleaned)) return [];
+  const rows = await query<{ term: string }>(
+    `SELECT term FROM (
+       SELECT lower(btrim(m[1])) AS term
+         FROM provision_version v,
+              LATERAL regexp_matches(v.text,
+                '["“‘]\\s*([A-Za-z][A-Za-z ,\\-]{2,48}?)\\s*["”’][^.;]{0,90}?\\y(means|includes|shall mean)\\y',
+                'g') m
+        WHERE v.effective_to IS NULL AND v.text ILIKE '%"' || $1 || '%'
+     ) x
+      WHERE term LIKE $1 || '%'
+      GROUP BY term
+      ORDER BY count(*) DESC, length(term), term
+      LIMIT $2`,
+    [cleaned, limit],
+  );
+  return rows.map((r) => r.term);
 }
 
 export type Suggestion = {

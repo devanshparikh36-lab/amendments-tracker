@@ -1,5 +1,6 @@
 ﻿import Link from "next/link";
 import { Breadcrumbs } from "@/components/PageHeader";
+import { DefinitionBox } from "@/components/DefinitionBox";
 import { KIND_LABEL } from "@/lib/catalogue";
 import { searchDefinitions, type DefinitionHit } from "@/lib/queries";
 
@@ -100,20 +101,9 @@ function Hit({ h, term }: { h: DefinitionHit; term: string }) {
 export default async function DefinitionsPage({ searchParams }: { searchParams: Search }) {
   const { q, reg } = await searchParams;
   const term = (q ?? "").trim();
-  const all = term ? await searchDefinitions(term) : [];
-
-  /* Filtered here rather than in SQL, deliberately.
-   *
-   * The query returns at most eighty hits, ordered by how good the evidence is. Filtering in SQL would
-   * change *which* eighty, so narrowing to GST could surface weaker matches that the unfiltered search had
-   * correctly ranked out -- and the counts beside each regulator would be impossible to show without a
-   * second query. One fetch, filtered in memory, gives both: honest counts, and switching between
-   * regulators that costs nothing. */
-  const counts = new Map<string, number>();
-  for (const h of all) counts.set(h.regulator_code, (counts.get(h.regulator_code) ?? 0) + 1);
-  const active = reg && counts.has(reg) ? reg : null;
-  const hits = active ? all.filter((h) => h.regulator_code === active) : all;
-  const shown = REGULATORS.filter((r) => counts.has(r.code));
+  const active = REGULATORS.some((r) => r.code === reg) ? (reg as string) : null;
+  const hits = term ? await searchDefinitions(term, 80, active) : [];
+  const activeLabel = REGULATORS.find((r) => r.code === active)?.label ?? null;
 
   return (
     <div className="space-y-4">
@@ -128,19 +118,16 @@ export default async function DefinitionsPage({ searchParams }: { searchParams: 
       </div>
 
       <form action="/definitions" role="search" className="flex max-w-xl items-center gap-1.5">
+        {/* Keeps the chosen regulator when a suggestion is picked. Without it, selecting a term from the
+            list silently widened the search back to everywhere. */}
+        {active && <input type="hidden" name="reg" value={active} />}
         <label htmlFor="q" className="sr-only">
           Word to find the definition of
         </label>
-        {/* No suggestion list: this box takes a word to be defined, and offering section numbers and
-            notifications for it would answer a question nobody asked here. */}
-        <input
-          id="q"
-          name="q"
-          defaultValue={term}
-          className="field min-w-0 flex-1"
-          placeholder="capital asset"
-          autoComplete="off"
-        />
+        {/* The masthead's SearchBox is deliberately not used here -- it offers sections, instruments and
+            notifications, which answer "find me this" rather than "what does this word mean". This box
+            suggests the one thing the page is about: terms that are actually defined somewhere. */}
+        <DefinitionBox defaultValue={term} />
         <button className="btn btn-primary">Find</button>
       </form>
 
@@ -158,26 +145,33 @@ export default async function DefinitionsPage({ searchParams }: { searchParams: 
         </p>
       )}
 
-      {/* Only the regulators that actually have a hit, and only when there is more than one of them.
-          A filter offering five choices where four return nothing is furniture, and a filter offering a
-          single choice is a label pretending to be a control. */}
-      {term && shown.length > 1 && (
+      {/* Every regulator, every time, and no counts.
+          
+          The first version showed only the regulators that had a hit, with counts beside them -- which
+          meant the control vanished on any term defined in one place, which is most of them. A filter
+          that is sometimes there is worse than one that always is: a reader cannot learn where it lives.
+          
+          Counts went with it. They were only possible while filtering happened after the fetch, and that
+          was the thing making the filter unable to find anything the unfiltered ranking had cut. Asking
+          the database for counts as well would mean running the same regex scan a second time, on the
+          heaviest query the site has, to decorate a label. */}
+      {term && (
         <div className="flex flex-wrap items-center gap-1.5">
           <Link
             href={`/definitions?q=${encodeURIComponent(term)}`}
             aria-current={!active ? "true" : undefined}
             className={`chip ${!active ? "chip-on" : ""}`}
           >
-            All <span className="num opacity-60">{all.length}</span>
+            Everywhere
           </Link>
-          {shown.map((r) => (
+          {REGULATORS.map((r) => (
             <Link
               key={r.code}
               href={`/definitions?q=${encodeURIComponent(term)}&reg=${r.code}`}
               aria-current={active === r.code ? "true" : undefined}
               className={`chip ${active === r.code ? "chip-on" : ""}`}
             >
-              {r.label} <span className="num opacity-60">{counts.get(r.code)}</span>
+              {r.label}
             </Link>
           ))}
         </div>
@@ -187,9 +181,9 @@ export default async function DefinitionsPage({ searchParams }: { searchParams: 
         <section className="panel px-5 py-1">
           <p className="py-2 text-[12px] text-[var(--ink-3)]">
             {hits.length === 0
-              ? `No instrument we hold defines “${term}”.`
+              ? `No instrument we hold defines “${term}”${activeLabel ? ` in ${activeLabel}` : ""}.`
               : `${hits.length} ${hits.length === 1 ? "definition" : "definitions"} of “${term}”${
-                  active ? ` in ${REGULATORS.find((r) => r.code === active)?.label}` : ""
+                  activeLabel ? ` in ${activeLabel}` : ""
                 }.`}
           </p>
           {hits.length > 0 && (
