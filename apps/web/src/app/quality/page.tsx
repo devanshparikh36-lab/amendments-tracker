@@ -118,9 +118,13 @@ export default async function QualityPage({ searchParams }: { searchParams: Sear
           "section 68 cash credits <client>" is a plausible query and publishing it would be a disclosure.
           
           So it is collected and read through `cli.py quality`, which runs where the database credentials
-          already are, and it moves here when there is a sign-in to put in front of it. The alternative --
-          not recording the text at all -- would throw away the only measure of coverage that comes from
-          the people using the site. */}
+          already are. The alternative -- not recording the text at all -- would throw away the only measure
+          of coverage that comes from the people using the site.
+
+          Note for whoever picks this up: the gate this was waiting for now exists. /admin is behind
+          ADMIN_KEY, so the list could live there. The reader accounts added on 14 October are NOT that gate
+          and must never be mistaken for one -- an unverified email address authenticates nobody, which is
+          the whole premise of that feature and the reason this list cannot sit behind it. */}
 
       <section className="panel">
         <div className="panel-head">

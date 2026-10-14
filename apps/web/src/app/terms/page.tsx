@@ -15,8 +15,14 @@ export const metadata = {
  * point that matters. So this page is both, and it says so.
  *
  * The substance is shaped by what the site actually is: a reproduction of government material with a
- * machine-built index over it, published by one person, free, with no account and no transaction. There is
- * no payment clause, no subscription, no user content and no licence to grant, because none of those exist.
+ * machine-built index over it, published by one person, free, and with no transaction of any kind. There is
+ * no payment clause and no subscription, because neither exists.
+ *
+ * Revised on 14 October 2026, when accounts shipped. Two sentences here had become false and both were the
+ * incidental kind rather than the headline: "no account" in the acceptable-use section, and "no user
+ * content and no licence to grant" in this comment. A reader's notes are user content, so there is now an
+ * Accounts section saying who owns them, what the unverified address does and does not get you, and the one
+ * thing not to put in them.
  */
 export default function TermsPage() {
   return (
@@ -99,9 +105,48 @@ export default function TermsPage() {
         </p>
       </Section>
 
+      <Section id="accounts" heading="Accounts, and the notes you write">
+        <p>
+          Reading this site needs no account. You may optionally enter an email address so that it remembers the
+          sections you follow, the ones you bookmark, the notes you write against them and the searches you keep.
+          Doing so is subject to these terms and to the{" "}
+          <Link href="/privacy" className="text-[var(--link)] hover:underline">
+            privacy notice
+          </Link>
+          , which sets out exactly what is then held.
+        </p>
+        <p>
+          <strong className="font-medium text-[var(--ink)]">The address is not verified and the account has no
+          password.</strong> It identifies a set of lists; it does not authenticate a person. Anyone who knows or
+          guesses the address can read and change what is behind it, including the notes. By entering an address
+          you accept that, and you accept that you must not store anything in a note that you would mind a
+          stranger reading &mdash; in particular nothing confidential, privileged, or identifying a client or a
+          live matter. This is the one obligation on you in this document, and it exists because the alternative
+          is a password this site has deliberately chosen not to hold.
+        </p>
+        <p>
+          Please use an address that is yours. Entering someone else&rsquo;s to reach their lists is not a
+          technical feat and is not authorised by these terms.
+        </p>
+        <p>
+          <strong className="font-medium text-[var(--ink)]">Your notes are yours.</strong> No ownership of them is
+          claimed, no licence over them is asked for, and they are not read, mined, published, used to train
+          anything, or shown to anyone else. They are stored so that the site can hand them back to you.
+        </p>
+        <p>
+          An account can be deleted by you at any time from the account panel, which erases it and everything in it
+          at once. It may also be deleted from this end &mdash; if it is used to store material of the kind just
+          described, if it appears to belong to a child, or if the feature is withdrawn. Because the site is free
+          and offered as it stands, no undertaking is given that an account or its contents will survive: there is
+          an export button that hands you the lot as a spreadsheet, and anything you would mind losing should be
+          kept there too.
+        </p>
+      </Section>
+
       <Section id="use" heading="Acceptable use">
         <p>
-          Read as much as you like. There is no account, no limit on reading and no charge. Two things are asked.
+          Read as much as you like. There is no charge, no limit on reading, and no need to identify yourself to
+          do any of it. Two things are asked.
         </p>
         <p>
           Do not hammer it. The site runs on free-tier infrastructure with real limits, and the bulk endpoints are
@@ -122,14 +167,14 @@ export default function TermsPage() {
       <Section id="availability" heading="Availability">
         <p>
           The site is free and is offered with no undertaking that it will keep running, keep its addresses, or
-          keep any particular feature. It may change or stop at any time. Links to official documents point at the
-          regulators&rsquo; own sites and will outlive this one.
+          keep any particular feature &mdash; accounts and their contents included. It may change or stop at any
+          time. Links to official documents point at the regulators&rsquo; own sites and will outlive this one.
         </p>
       </Section>
 
       <Section id="privacy" heading="Privacy">
         <p>
-          What is recorded, which is almost nothing, is set out in the{" "}
+          What is recorded is set out in the{" "}
           <Link href="/privacy" className="text-[var(--link)] hover:underline">
             privacy notice
           </Link>

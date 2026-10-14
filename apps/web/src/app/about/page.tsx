@@ -147,9 +147,22 @@ export default async function AboutPage() {
 
           <FaqItem q="Does it track me?">
             <p>
-              No. No account, no cookie, no third-party script of any kind, no advertising. Page views are counted
-              in aggregate at the moment they are written, so a record of an individual visit never exists &mdash;
-              which is also why the site can report views and not visitors.
+              No. Reading this site needs no account, sets no cookie, loads no third-party script of any kind and
+              shows no advertising. Page views are counted in aggregate at the moment they are written, so a record
+              of an individual visit never exists &mdash; which is also why the site can report views and not
+              visitors.
+            </p>
+            <p>
+              There is one deliberate exception, and it only happens if you ask for it. You can enter an email
+              address to have the site remember the sections you follow, the ones you bookmark, the notes you write
+              and the searches you keep. That holds personal data about you, which is why it is optional, never
+              required to read anything, and deletable in one click &mdash; the delete button erases the account
+              and everything in it at once, and the export button hands you the whole lot as a spreadsheet first.
+            </p>
+            <p>
+              Even then there is still no cookie: the account is kept in your browser&rsquo;s own local storage and
+              is never attached to an ordinary page request. Nothing is ever sent to the address today &mdash; the
+              alerts switch records a preference and no mail machinery reads it yet.
             </p>
             <p>
               The full account is in the{" "}
@@ -190,6 +203,23 @@ export default async function AboutPage() {
           are noted here.
         </p>
         <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <span className="num text-[var(--ink-3)]">14 October 2026</span> &mdash; optional accounts added. Enter
+            an email address and the site remembers your follows, bookmarks, notes and saved searches; it is never
+            required to read anything. The{" "}
+            <Link href="/privacy" className="text-[var(--link)] hover:underline">
+              privacy notice
+            </Link>{" "}
+            was rewritten to say exactly what is held, where it is held, and how to export or erase it, and the{" "}
+            <Link href="/terms" className="text-[var(--link)] hover:underline">
+              terms
+            </Link>{" "}
+            gained an Accounts section. The earlier wording &mdash; &ldquo;no account, no cookie, no third-party
+            script of any kind&rdquo; &mdash; was true of the site that published it and became false on the first
+            of those three the day accounts shipped; it has been corrected rather than quietly dropped. Still no
+            cookies: the account lives in your browser&rsquo;s local storage. A contact address for privacy
+            questions and grievances is now published, which the previous wording admitted it lacked.
+          </li>
           <li>
             <span className="num text-[var(--ink-3)]">11 October 2026</span> &mdash; first publication of the
             privacy notice, cookies page and terms. Page-view counting introduced, aggregated and without any

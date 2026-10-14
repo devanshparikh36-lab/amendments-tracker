@@ -12,20 +12,28 @@ export const JURISDICTION = "Gujarat, India";
 
 /* The address for privacy questions and grievances.
  *
- * Deliberately a dedicated account rather than a personal or a work one: it is published on a page that
- * crawlers read, and it will be scraped. A work address would also tie a personally-published site to an
- * employer's domain, which is the opposite of what publishing personally means.
+ * This was null while the site held nothing about anybody, and the pages said so plainly rather than
+ * carrying a placeholder that reads as real and silently discards what is sent to it. That was defensible
+ * then. It stopped being defensible the day accounts shipped: a data fiduciary holding email addresses,
+ * notes and saved searches has to publish somewhere to write for access, correction, erasure and
+ * grievances, and "being set up" is not a contact.
  *
- * Until it exists this stays null and the pages say so in as many words. A placeholder address would be
- * worse than an admission -- it reads as a real contact and silently discards whatever is sent to it.
+ * So this is a personal address rather than the dedicated one the original note argued for. The reasoning
+ * there still stands -- this page is crawled and the address will be scraped -- and a dedicated account
+ * remains the better answer. It is not the better answer than having no address at all while holding
+ * personal data. Swap it for a dedicated one when it exists; it is one line and nothing else reads it.
+ *
+ * Not a work address, which was the one thing the original note ruled out outright: a personally-published
+ * site must not route its grievances through an employer's domain.
  */
-export const CONTACT_EMAIL: string | null = null;
+export const CONTACT_EMAIL: string | null = "devanshparikh36@gmail.com";
 
 /** The date the current wording took effect. Bump it when the substance changes, not for a typo. */
-export const LEGAL_UPDATED = "11 October 2026";
+export const LEGAL_UPDATED = "14 October 2026";
 
 /* The processors. Named on the privacy page because a reader is entitled to know whose machines their
- * request passes through, and because two of the three are outside India. */
+ * request passes through, and because two of the three are outside India -- which since accounts shipped
+ * means a reader's own data, and not only statutory text and counts, leaves the country. */
 export const PROCESSORS = [
   {
     name: "Netlify",
@@ -37,7 +45,7 @@ export const PROCESSORS = [
     name: "Neon",
     role: "Database",
     where: "Singapore (ap-southeast-1)",
-    what: "Holds the statutory text, the amendment records, the search outcomes and the page counts described above. Holds nothing about any reader.",
+    what: "Holds the statutory text, the amendment records, the search outcomes and the page counts described above. Also holds the accounts: the email addresses, names, follows, bookmarks, notes and saved searches of readers who have entered an address.",
   },
   {
     name: "Cloudflare R2",
