@@ -7,6 +7,7 @@ import { PageViews } from "@/components/PageViews";
 import { Reveal } from "@/components/Reveal";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { ThemeSync } from "@/components/ThemeSync";
+import { Account } from "@/components/Account";
 import { SiteNav } from "@/components/SiteNav";
 import { fmtDateTime } from "@/lib/format";
 import { lastRevised } from "@/lib/queries";
@@ -189,8 +190,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <ThemeToggle />
             </div>
           </div>
-          <div className="mx-auto max-w-[1360px] px-3.5 pt-1">
+          {/* The greeting sits at the end of the navigation row rather than up beside the masthead: the
+              right-hand cluster above already carries the "last checked" stamp and the theme control, and
+              a third thing there crowds the corner those two were arranged into. */}
+          <div className="mx-auto flex max-w-[1360px] items-center gap-3 px-3.5 pt-1">
             <SiteNav />
+            <div className="ml-auto">
+              <Account />
+            </div>
           </div>
         </header>
 

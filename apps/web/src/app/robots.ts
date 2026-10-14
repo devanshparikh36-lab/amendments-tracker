@@ -15,6 +15,11 @@ import { abs } from "@/lib/site";
  * never land on a table of failed jobs. Disallow keeps them out of the index without hiding them from a
  * person who is given the link.
  *
+ * `/you` and `/admin` hold one reader's list and the owner's view of all of them. Neither renders anything
+ * for a crawler -- `/you` is empty without a browser that knows who it is -- and neither should appear in a
+ * result page. `/admin` is additionally refused outright without the key; this only keeps it out of the
+ * index, which is a separate and weaker thing.
+ *
  * `/search` and `/find` are excluded for the ordinary reason: a search results page is a different page for
  * every query, so it is an infinite crawl surface and the results it holds are already indexed as themselves.
  */
@@ -24,7 +29,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/api/", "/status", "/quality", "/search", "/find"],
+        disallow: ["/api/", "/status", "/quality", "/search", "/find", "/you", "/admin"],
       },
     ],
     sitemap: abs("/sitemap.xml"),

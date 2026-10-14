@@ -1477,3 +1477,27 @@ a {
     box-shadow: none;
   }
 }
+
+/* The account panel, sliding in from the left.
+ *
+ * Transform rather than `left`, because a transform is composited and an offset is a layout: on a phone,
+ * animating `left` on a full-height panel relays out the page behind it sixty times a second.
+ *
+ * `will-change` is deliberately absent. It creates a containing block for fixed and sticky descendants,
+ * and the reading view's sidebar is sticky -- a hint worth a fraction of a frame is not worth unsticking
+ * a sidebar that works.
+ */
+@keyframes drawer-in {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+
+.drawer {
+  animation: drawer-in 0.18s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+
+/* Someone who has asked for less motion gets the panel already in place rather than a faster slide.
+   The panel is the point; the travel is decoration. */
+@media (prefers-reduced-motion: reduce) {
+  .drawer { animation: none; }
+}

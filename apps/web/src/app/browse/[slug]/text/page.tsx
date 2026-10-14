@@ -3,6 +3,7 @@ import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { CiteThis } from "@/components/CiteThis";
+import { FollowButton } from "@/components/FollowButton";
 import { CopyText } from "@/components/CopyText";
 import { PrintHeader } from "@/components/PrintHeader";
 import { PrintButton } from "@/components/PrintButton";
@@ -333,6 +334,10 @@ function ProvisionView({
             <Link href={`/browse/${slug}/${slugifyNumber(p.number)}/history`} className="btn">
               Amendment history{p.effect_count ? ` (${p.effect_count})` : ""}
             </Link>
+            {/* Beside the history link on purpose: "what has happened to this" and "tell me what happens
+                next" are the same question asked in two directions, and a reader who has just looked at
+                one is the reader who wants the other. */}
+            <FollowButton provisionId={p.id} label="Follow this section" />
             {/* Everything needed to cite this correctly is already on this page and all of it had to be
                 retyped, which is where file-note errors come from -- the "as on" date most of all, because
                 "as amended" says nothing without it. The official address goes in ahead of ours, so the
