@@ -39,3 +39,45 @@
 #   DATABASE_URL        Neon pooled connection string
 #   R2_PUBLIC_BASE_URL  public base URL of the R2 bucket, so file links go straight to R2
 # SITE_PASSCODE is no longer read: the passcode gate was removed on 14 Sept. It can be deleted there.
+
+# Response headers for the whole site.
+#
+# Here and not in the root netlify.toml for the same reason the `ignore` rule is: the root file is only
+# read when Netlify itself builds, and it stopped doing that on 16 Sept. `netlify build` and
+# `netlify deploy` both run from this directory on the GitHub runner (see deploy.yml), so this is the
+# config they read. Headers put at the root would be silently ignored, which is the worst way for a
+# security header to fail -- it looks set and is not.
+#
+# next.config.ts is an empty stub, so nothing here is fighting a header set by Next.
+#
+# Deliberately NOT a content policy. The site loads Google Fonts and nothing else external, but a
+# script-src or style-src mistake takes the site down rather than degrading it, and that cannot be
+# tested without deploying -- which costs credits here. `frame-ancestors` is the exception: it is the
+# one CSP directive that restricts nothing but framing, so it cannot break fonts, styles or scripts.
+[[headers]]
+  for = "/*"
+
+  [headers.values]
+    # Netlify already forces HTTPS, so this is belt and braces -- it tells the browser to refuse plain
+    # HTTP next time rather than relying on the redirect every time. No `preload`: that is a submission
+    # to a browser-vendor list and is painful to reverse, which is not a commitment worth making for a
+    # site on a netlify.app subdomain.
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+
+    # Serve what the Content-Type says and nothing cleverer. The site serves PDFs and JSON from R2 links
+    # and CSV exports of its own; none of it should ever be sniffed into something executable.
+    X-Content-Type-Options = "nosniff"
+
+    # The origin, never the path, once the reader leaves for a regulator's site. Every outbound link here
+    # goes to CBIC, SEBI, RBI, MCA or the income-tax department, and a full referrer would tell them which
+    # provision the reader was on -- the one genuinely revealing thing about a visit, on a site that
+    # promises on /privacy to keep no record of individual visits.
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+    # Not framable. Two headers for one rule: frame-ancestors is the modern form and X-Frame-Options is
+    # what older browsers read, and neither restricts anything other than framing.
+    X-Frame-Options = "DENY"
+    Content-Security-Policy = "frame-ancestors 'none'"
+
+    # Hardware the site has no use for. It has no images, no media, no payments and asks for no location.
+    Permissions-Policy = "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()"
