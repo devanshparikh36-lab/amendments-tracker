@@ -118,7 +118,7 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
 
       <div className={chosen ? "mx-auto max-w-3xl" : "grid gap-6 md:grid-cols-2 xl:grid-cols-3"}>
         {blocks.map((b) => (
-          <section key={b.subject.key} className={`panel sub-rule reveal lift ${subjectClass(b.subject.key)} flex flex-col`}>
+          <section key={b.subject.key} className={`panel sub-rule reveal lift ${subjectClass(b.subject.key)} flex flex-col`} suppressHydrationWarning>
             <div className="px-5 pt-4">
               <h2 className="card-title">
                 <Link href={`/browse?subject=${b.subject.key}`} className="hover:underline">
@@ -233,7 +233,7 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
       </div>
 
       {!chosen && (
-        <section className="reveal border-t border-[var(--rule)] pt-4 text-[13px]">
+        <section className="reveal border-t border-[var(--rule)] pt-4 text-[13px]" suppressHydrationWarning>
           <div className="flex flex-wrap gap-x-6 gap-y-1.5 text-[var(--ink-3)]">
             <Link href="/documents" className="hover:text-[var(--link)] hover:underline">
               Every notification and circular

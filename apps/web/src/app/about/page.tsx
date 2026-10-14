@@ -37,7 +37,7 @@ export default async function AboutPage() {
           on trust.
         </p>
         {stats && (
-          <div className="panel panel-body reveal lift">
+          <div className="panel panel-body reveal lift" suppressHydrationWarning>
             {/* The server renders the finished figures; CountUp only animates them once they scroll into
                 view, and only where it can. Without script, with reduced motion, or to a crawler these read
                 as the plain correct numbers -- which on a page whose point is the size of the library is the

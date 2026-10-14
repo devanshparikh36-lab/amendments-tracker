@@ -453,7 +453,7 @@ function ProvisionView({
         {/* The documents list below the provision. The provision itself is never given .reveal:
             statutory text must be on screen the instant the page is, not a fifth of a second later. */}
         {docs.length > 0 && (
-          <section className="reveal border-t border-[var(--rule)] px-5 py-3">
+          <section className="reveal border-t border-[var(--rule)] px-5 py-3" suppressHydrationWarning>
             <h3 className="eyebrow mb-1.5">Documents affecting this {unit}</h3>
             {/* Title, then citation, then status -- each on its own line. Titles here run long enough to
                 wrap, and with the number inline behind a dot separator it landed wherever the wrap left it,

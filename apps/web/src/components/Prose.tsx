@@ -43,7 +43,7 @@ export function Prose({
 /** A numbered section. The heading is the thing people link to, so it gets an id. */
 export function Section({ id, heading, children }: { id: string; heading: string; children: React.ReactNode }) {
   return (
-    <section id={id} className="reveal scroll-mt-20">
+    <section id={id} className="reveal scroll-mt-20" suppressHydrationWarning>
       <h2 className="serif text-[18px] font-semibold text-[var(--ink)]">{heading}</h2>
       <div className="mt-2 space-y-3">{children}</div>
     </section>
