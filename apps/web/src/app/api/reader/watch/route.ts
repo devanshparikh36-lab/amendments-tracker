@@ -1,20 +1,23 @@
 import { NextResponse } from "next/server";
 import { getPool } from "@/db";
 
-/* Follow and unfollow, and the list of what is followed.
+/* Follows and bookmarks, and the list of both.
+ *
+ * One route for two kinds because they are one row with a different intent -- see 0016_reader_extras.sql.
+ * They are independent: unfollowing something must not quietly throw away a bookmark on it.
  *
  * A watch is on an instrument ("anything in the CGST Rules") or on a provision ("just section 68"), never
  * both -- the database enforces that with a CHECK, so a malformed request fails loudly here rather than
  * leaving a row nobody can interpret.
  *
- * The same caveat as the parent route applies: the email identifies, it does not authenticate. Someone who
- * knows an address can change that reader's watchlist. The thing behind it is a list of sections, which is
- * why this is an acceptable trade and would not be if anything private sat here.
+ * The email identifies, it does not authenticate. Someone who knows an address can change that reader's
+ * lists. What is behind them is a set of pointers at public law, which is why that trade holds.
  */
 
 export const dynamic = "force-dynamic";
 
 const MAX_EMAIL = 254;
+const KINDS = new Set(["follow", "bookmark"]);
 
 function validEmail(v: string): boolean {
   return v.length >= 5 && v.length <= MAX_EMAIL && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
@@ -37,12 +40,15 @@ export async function POST(req: Request) {
   const email = (typeof body.email === "string" ? body.email : "").trim().toLowerCase().slice(0, MAX_EMAIL);
   if (!validEmail(email)) return NextResponse.json({ error: "bad email" }, { status: 400 });
 
+  const kindRaw = typeof body.kind === "string" ? body.kind : "follow";
+  const kind = KINDS.has(kindRaw) ? kindRaw : "follow";
+
   const pool = getPool();
 
   try {
-    /* The reader row must exist before anything can reference it. A follow is often the very first thing
-     * someone does after typing their address, and the two requests race -- so this creates the row if the
-     * identify call has not landed yet rather than failing on a foreign key. */
+    /* The reader row must exist before anything can reference it. A follow is often the first thing
+     * someone does after typing their address, and the two requests race -- so this creates the row if
+     * the identify call has not landed yet rather than failing on a foreign key. */
     const r = await pool.query<{ id: number }>(
       `INSERT INTO reader (email) VALUES ($1)
        ON CONFLICT (email) DO UPDATE SET last_seen_at = now()
@@ -55,18 +61,23 @@ export async function POST(req: Request) {
     const action = typeof body.action === "string" ? body.action : "toggle";
 
     if (action === "list") {
+      /* Both kinds in one response. A section page carries a Follow and a Bookmark side by side, and a
+       * contents page can carry fifty of each -- two requests per page to answer one question about the
+       * same reader would be the obvious design and twice the cost. */
       const rows = await pool.query(
-        `SELECT 'instrument' AS kind, i.id, i.short_code AS label, i.title, i.slug, NULL::text AS number, w.created_at
+        `SELECT w.kind, 'instrument' AS target, i.id, i.short_code AS label, i.title, i.slug,
+                NULL::text AS number, w.created_at
            FROM reader_watch w JOIN instrument i ON i.id = w.instrument_id
           WHERE w.reader_id = $1
           UNION ALL
-         SELECT 'provision' AS kind, p.id, i.short_code AS label, i.title, i.slug, p.number, w.created_at
+         SELECT w.kind, 'provision' AS target, p.id, i.short_code AS label, i.title, i.slug,
+                p.number, w.created_at
            FROM reader_watch w
            JOIN provision p  ON p.id = w.provision_id
            JOIN instrument i ON i.id = p.instrument_id
           WHERE w.reader_id = $1
           ORDER BY created_at DESC
-          LIMIT 500`,
+          LIMIT 1000`,
         [readerId],
       );
       return NextResponse.json({ ok: true, watches: rows.rows });
@@ -82,17 +93,20 @@ export async function POST(req: Request) {
     const value = instrumentId ?? provisionId;
 
     if (body.on === false) {
-      await pool.query(`DELETE FROM reader_watch WHERE reader_id = $1 AND ${col} = $2`, [readerId, value]);
-      return NextResponse.json({ ok: true, following: false });
+      await pool.query(
+        `DELETE FROM reader_watch WHERE reader_id = $1 AND ${col} = $2 AND kind = $3`,
+        [readerId, value, kind],
+      );
+      return NextResponse.json({ ok: true, on: false, kind });
     }
 
-    /* ON CONFLICT DO NOTHING against the partial unique indexes: following something twice is the same as
-     * following it once, and a double click should not be an error the reader has to understand. */
+    /* ON CONFLICT DO NOTHING against the partial unique indexes: doing this twice is the same as doing it
+     * once, and a double click should not be an error the reader has to understand. */
     await pool.query(
-      `INSERT INTO reader_watch (reader_id, ${col}) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-      [readerId, value],
+      `INSERT INTO reader_watch (reader_id, ${col}, kind) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [readerId, value, kind],
     );
-    return NextResponse.json({ ok: true, following: true });
+    return NextResponse.json({ ok: true, on: true, kind });
   } catch (err) {
     console.error("watch route:", err);
     return NextResponse.json({ error: "unavailable" }, { status: 503 });

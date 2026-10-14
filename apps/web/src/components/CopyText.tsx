@@ -1,5 +1,7 @@
 "use client";
 
+import { CopyIcon, TickIcon } from "@/components/icons";
+
 import { useState } from "react";
 import { copyText } from "@/lib/clipboard";
 
@@ -25,6 +27,7 @@ export function CopyText({
   targetId,
   title,
   source,
+  icon = false,
 }: {
   /** id of the element holding the rendered provision text. */
   targetId: string;
@@ -32,6 +35,8 @@ export function CopyText({
   title: string;
   /** The regulator's own page or file for this provision, when there is one. */
   source?: string | null;
+  /** Render as an icon. The action row on a section page carries eight of these; most must be glyphs. */
+  icon?: boolean;
 }) {
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
 
@@ -52,9 +57,25 @@ export function CopyText({
     setTimeout(() => setState("idle"), 2500);
   }
 
+  const said = state === "copied" ? "Text copied" : state === "failed" ? "Copy refused" : "Copy text";
+
+  if (icon) {
+    /* The outcome still has to be announced -- a tick is invisible to a screen reader, and "did that
+       work?" is the entire question this button answers. The live region carries the words; the glyph
+       carries them for everyone else. */
+    return (
+      <button type="button" onClick={copy} className="icon-btn no-print" aria-label={said} title={said}>
+        {state === "copied" ? <TickIcon /> : <CopyIcon />}
+        <span className="sr-only" aria-live="polite">
+          {state === "idle" ? "" : said}
+        </span>
+      </button>
+    );
+  }
+
   return (
     <button type="button" onClick={copy} className="btn no-print" aria-live="polite">
-      {state === "copied" ? "Text copied" : state === "failed" ? "Copy refused" : "Copy text"}
+      {said}
     </button>
   );
 }

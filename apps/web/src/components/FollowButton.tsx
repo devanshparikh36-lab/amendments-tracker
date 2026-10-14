@@ -1,107 +1,132 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { onReaderChange, readReader } from "@/lib/reader";
+import { BellIcon, BookmarkIcon } from "@/components/icons";
 
-/* Follow a section, or a whole Act.
+/* Follow and Bookmark: the same control twice, with different intent.
  *
- * Rendered on a page that is prerendered and shared by everyone, so the button cannot know its own state
- * in the HTML -- "Following" is a fact about one reader and the page is a fact about the law. It therefore
- * starts in a neutral state and corrects itself once the reader's list has loaded. That is the same
- * bargain the greeting makes, for the same reason: no cookie, no per-reader render, no cost per view.
+ * Follow  tell me when something lands against this
+ * Bookmark keep this where I can find it again
  *
- * Someone who has not signed in still sees the button. Hiding it would be the obvious choice and the wrong
- * one -- it is the only thing on the page that explains why an address is worth typing, and a reader who
- * never sees it never finds the feature. Pressing it asks for the address.
+ * They are independent on purpose. Unfollowing a section must not silently throw away a bookmark on it,
+ * and a reader who wants both gets both.
+ *
+ * Rendered on a page that is prerendered and shared by everyone, so neither button can know its own state
+ * in the HTML -- "Following" is a fact about one reader and the page is a fact about the law. Both start
+ * neutral and correct themselves once the reader's list has loaded. That is the same bargain the greeting
+ * makes, for the same reason: no cookie, no per-reader render, no cost per view.
+ *
+ * Someone who has not signed in still sees both. Hiding them would be the obvious choice and the wrong
+ * one -- they are the only things on the page that explain why an address is worth typing. Pressing one
+ * opens the account panel.
+ *
+ * Both are icons. Spelled out, "Follow this section" and "Bookmark" pushed an already crowded action row
+ * onto a second line and put a block of chrome above the provision. A bell and a bookmark are conventions
+ * a reader already holds -- but an icon alone is a button that says nothing to a screen reader, so both
+ * carry an aria-label and a title, and state is shown by filling the glyph as well as by colour.
  */
 
-type Props =
-  | { instrumentId: number; provisionId?: never; label?: string }
-  | { provisionId: number; instrumentId?: never; label?: string };
+type Target = { instrumentId?: number; provisionId?: number };
+type Kind = "follow" | "bookmark";
+type Watch = { kind: Kind; target: "instrument" | "provision"; id: number };
 
-export function FollowButton(props: Props) {
-  const { label } = props;
+/* One request per page, not one per button.
+ *
+ * A contents page can carry fifty of these, and every one of them asks the same question about the same
+ * reader. The promise is cached so that simultaneous mounts share a single response, and cleared whenever
+ * anything is toggled or the reader changes -- a stale list here shows the wrong state on a button the
+ * reader just pressed, which is the one thing that would make the feature feel broken.
+ */
+let listCache: { email: string; p: Promise<Watch[]> } | null = null;
+
+function fetchWatches(email: string): Promise<Watch[]> {
+  if (listCache && listCache.email === email) return listCache.p;
+  const p = fetch("/api/reader/watch", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "list", email }),
+  })
+    .then((r) => (r.ok ? r.json() : { watches: [] }))
+    .then((d) => (Array.isArray(d.watches) ? (d.watches as Watch[]) : []))
+    .catch(() => [] as Watch[]);
+  listCache = { email, p };
+  return p;
+}
+
+function invalidate() {
+  listCache = null;
+}
+
+function useWatchState(kind: Kind, target: Target) {
   const [email, setEmail] = useState<string | null>(null);
-  const [following, setFollowing] = useState<boolean | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [on, setOn] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const load = () => setEmail(readReader()?.email ?? null);
+    const load = () => {
+      invalidate();
+      setEmail(readReader()?.email ?? null);
+    };
     load();
     return onReaderChange(load);
   }, []);
 
-  // Which of the reader's watches matches this page. One request for the whole list rather than one per
-  // button: a contents page can carry fifty of these.
+  const want = target.instrumentId ?? target.provisionId;
+  const kindOfTarget = target.instrumentId ? "instrument" : "provision";
+
   useEffect(() => {
     if (!email) {
-      setFollowing(null);
+      setOn(null);
       return;
     }
     let live = true;
-    (async () => {
-      try {
-        const res = await fetch("/api/reader/watch", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ action: "list", email }),
-        });
-        if (!res.ok || !live) return;
-        const d = await res.json();
-        const want = props.instrumentId ?? props.provisionId;
-        const kind = props.instrumentId ? "instrument" : "provision";
-        setFollowing(
-          Array.isArray(d.watches) && d.watches.some((w: { kind: string; id: number }) => w.kind === kind && w.id === want),
-        );
-      } catch {
-        /* leave it neutral */
-      }
-    })();
+    fetchWatches(email).then((list) => {
+      if (live) setOn(list.some((w) => w.kind === kind && w.target === kindOfTarget && w.id === want));
+    });
     return () => {
       live = false;
     };
-  }, [email, props.instrumentId, props.provisionId]);
+  }, [email, kind, kindOfTarget, want]);
 
-  async function toggle() {
+  const toggle = useCallback(async () => {
     if (!email) {
-      /* No address yet. Open the account panel rather than growing a second sign-in form here -- there
-         should be exactly one place the site asks for this. */
       document.querySelector<HTMLButtonElement>('button[aria-haspopup="dialog"]')?.click();
       return;
     }
-    const next = !following;
-    setFollowing(next); // optimistic: the button must answer the press immediately
-    setBusy(true);
+    const next = !on;
+    setOn(next); // optimistic: a button must answer the press immediately
+    invalidate();
     try {
       const res = await fetch("/api/reader/watch", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          email,
-          on: next,
-          instrumentId: props.instrumentId,
-          provisionId: props.provisionId,
-        }),
+        body: JSON.stringify({ email, kind, on: next, ...target }),
       });
-      if (!res.ok) setFollowing(!next); // put it back if the server disagreed
+      if (!res.ok) setOn(!next);
     } catch {
-      setFollowing(!next);
-    } finally {
-      setBusy(false);
+      setOn(!next);
     }
-  }
+  }, [email, on, kind, target]);
 
-  const on = following === true;
+  return { on: on === true, toggle };
+}
+
+export function FollowButton(props: Target) {
+  const { on, toggle } = useWatchState("follow", props);
+  const label = on ? "Stop following this section" : "Follow this section — tell me when something lands against it";
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      disabled={busy}
-      aria-pressed={on}
-      title={on ? "Stop following this" : "Tell me when something lands against this"}
-      className={`btn no-print ${on ? "btn-primary" : ""}`}
-    >
-      {on ? "Following" : label || "Follow"}
+    <button type="button" onClick={toggle} aria-pressed={on} aria-label={label} title={label} className="icon-btn no-print">
+      <BellIcon filled={on} />
+    </button>
+  );
+}
+
+export function BookmarkButton(props: Target) {
+  const { on, toggle } = useWatchState("bookmark", props);
+  const label = on ? "Remove from your bookmarks" : "Bookmark — keep this where you can find it again";
+  return (
+    <button type="button" onClick={toggle} aria-pressed={on} aria-label={label} title={label} className="icon-btn no-print">
+      <BookmarkIcon filled={on} />
     </button>
   );
 }

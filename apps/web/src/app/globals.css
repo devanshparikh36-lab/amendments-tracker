@@ -1501,3 +1501,66 @@ a {
 @media (prefers-reduced-motion: reduce) {
   .drawer { animation: none; }
 }
+
+/* An action reduced to its icon.
+ *
+ * The section header carries up to eight actions. Spelled out they wrapped onto a second line and the
+ * provision -- the thing the page exists for -- started below a block of chrome. The two that need words
+ * keep them: the official source, because it is the primary action and must not be a guess, and the
+ * amendment history, because it carries a count. The rest are conventions a reader already knows.
+ *
+ * 30px, not the 16px the glyph occupies. WCAG 2.5.8 asks for a 24px target and a row of tiny icons is
+ * exactly the control that fails it -- the padding is the accessible part, the icon is only the label.
+ *
+ * Every one of these must carry an aria-label and a title: an icon with neither is a button that says
+ * nothing to a screen reader and nothing to anyone who does not already know the convention.
+ */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  border: 1px solid var(--rule-strong);
+  background: var(--paper);
+  color: var(--ink-3);
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+
+.icon-btn:hover {
+  background: var(--tint);
+  color: var(--ink);
+  border-color: var(--ink-4);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* On, as in following or bookmarked. Filled glyph *and* a colour change: colour alone is not a state a
+   reader with a colour deficiency can rely on, and the fill is what carries it for them. */
+.icon-btn[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--paper);
+}
+
+.icon-btn[disabled] {
+  opacity: 0.55;
+}
+
+/* The group, so the icons read as one cluster rather than six separate controls competing with the two
+   worded buttons beside them.
+   
+   Separated by space rather than a rule. A left border was the first attempt and it fails as soon as the
+   note panel opens: the panel is full width, wraps to its own line inside the cluster, and the rule then
+   runs down the side of a textarea it has nothing to do with. */
+.icon-row {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-left: 10px;
+}

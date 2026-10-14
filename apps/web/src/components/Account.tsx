@@ -29,7 +29,11 @@ import {
 
 type State = {
   watching: number;
+  bookmarks: number;
+  notes: number;
+  searches: number;
   alertsOn: boolean;
+  alertFreq: "daily" | "weekly";
   alertsConfirmed: boolean;
   since: { id: number; title: string; about: string | null; regulator_code: string }[];
 };
@@ -60,7 +64,11 @@ export function Account() {
       const d = await res.json();
       setState({
         watching: d.watching ?? 0,
+        bookmarks: d.bookmarks ?? 0,
+        notes: d.notes ?? 0,
+        searches: d.searches ?? 0,
         alertsOn: !!d.alertsOn,
+        alertFreq: d.alertFreq === "weekly" ? "weekly" : "daily",
         alertsConfirmed: !!d.alertsConfirmed,
         since: Array.isArray(d.since) ? d.since : [],
       });
@@ -132,12 +140,41 @@ export function Account() {
     writeReader({ email: reader.email, name: name || undefined });
   }
 
-  async function toggleAlerts() {
+  async function setAlerts(on: boolean, freq: "daily" | "weekly") {
     if (!reader || !state) return;
-    const next = !state.alertsOn;
-    setState({ ...state, alertsOn: next });
-    const d = await post({ action: "alerts", email: reader.email, on: next });
-    if (d) setState((s) => (s ? { ...s, alertsOn: !!d.alertsOn, alertsConfirmed: !!d.alertsConfirmed } : s));
+    setState({ ...state, alertsOn: on, alertFreq: freq });
+    const d = await post({ action: "alerts", email: reader.email, on, freq });
+    if (d) {
+      setState((s) =>
+        s ? { ...s, alertsOn: !!d.alertsOn, alertFreq: d.alertFreq === "weekly" ? "weekly" : "daily", alertsConfirmed: !!d.alertsConfirmed } : s,
+      );
+    }
+  }
+
+  /* Built in the browser rather than linked, because the address must travel in a body and not a URL --
+   * a reader's email in a query string ends up in history, in a Referer header and in a server log. */
+  async function exportData() {
+    if (!reader) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/reader/export", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: reader.email }),
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "as-amended-my-data.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      /* nothing downloaded; the button stays */
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function forget() {
@@ -258,11 +295,23 @@ export function Account() {
                   </div>
                 )}
 
-                <div className="mt-5 border-t border-[var(--rule)] pt-4">
-                  <Link href="/you" onClick={() => setOpen(false)} className="flex items-center justify-between text-[13.5px] text-[var(--ink)] hover:underline">
-                    <span>Following</span>
-                    <span className="num text-[var(--ink-3)]">{state?.watching ?? 0}</span>
-                  </Link>
+                <div className="mt-5 space-y-1.5 border-t border-[var(--rule)] pt-4">
+                  {([
+                    ["Following", state?.watching ?? 0, "/you"],
+                    ["Bookmarks", state?.bookmarks ?? 0, "/you#bookmarks"],
+                    ["Notes", state?.notes ?? 0, "/you#notes"],
+                    ["Saved searches", state?.searches ?? 0, "/you#searches"],
+                  ] as const).map(([label, n, href]) => (
+                    <Link
+                      key={label}
+                      href={href}
+                      onClick={() => setOpen(false)}
+                      className="flex items-center justify-between text-[13.5px] text-[var(--ink)] hover:underline"
+                    >
+                      <span>{label}</span>
+                      <span className="num text-[var(--ink-3)]">{n}</span>
+                    </Link>
+                  ))}
                 </div>
 
                 <div className="mt-4 border-t border-[var(--rule)] pt-4">
@@ -287,7 +336,7 @@ export function Account() {
                     <input
                       type="checkbox"
                       checked={!!state?.alertsOn}
-                      onChange={toggleAlerts}
+                      onChange={(e) => setAlerts(e.currentTarget.checked, state?.alertFreq ?? "daily")}
                       disabled={busy || !state}
                       className="mt-0.5"
                     />
@@ -300,6 +349,22 @@ export function Account() {
                       </span>
                     </span>
                   </label>
+
+                  {state?.alertsOn && (
+                    <div className="mt-2.5 flex gap-2 pl-6">
+                      {(["daily", "weekly"] as const).map((f) => (
+                        <button
+                          key={f}
+                          type="button"
+                          onClick={() => setAlerts(true, f)}
+                          aria-pressed={state.alertFreq === f}
+                          className={`btn text-[12.5px] ${state.alertFreq === f ? "btn-primary" : ""}`}
+                        >
+                          {f === "daily" ? "Every day" : "Once a week"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {seen.length > 0 && (
@@ -328,6 +393,9 @@ export function Account() {
                 )}
 
                 <div className="mt-auto space-y-2 border-t border-[var(--rule)] pt-4 text-[12.5px]">
+                  <button type="button" onClick={exportData} disabled={busy} className="block text-[var(--ink-2)] hover:underline">
+                    Export everything as a spreadsheet
+                  </button>
                   <button type="button" onClick={() => { setSwitching(true); setDraftEmail(""); }} className="block text-[var(--ink-2)] hover:underline">
                     Use a different email
                   </button>

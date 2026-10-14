@@ -1,5 +1,7 @@
 "use client";
 
+import { PrinterIcon } from "@/components/icons";
+
 /* Prints the provision, which on every current browser is also how you save it as a PDF.
  *
  * Worth a button rather than leaving it to Ctrl-P. The print layout here is not the screen with the
@@ -13,7 +15,20 @@
  * decision about build weight that is not mine to make quietly. The browser's own print-to-PDF produces a
  * better-looking document today than a hand-rolled .docx would.
  */
-export function PrintButton({ label = "Print or save as PDF" }: { label?: string }) {
+export function PrintButton({ label = "Print or save as PDF", icon = false }: { label?: string; icon?: boolean }) {
+  if (icon) {
+    return (
+      <button
+        type="button"
+        onClick={() => window.print()}
+        className="icon-btn no-print"
+        aria-label={label}
+        title={label}
+      >
+        <PrinterIcon />
+      </button>
+    );
+  }
   return (
     <button type="button" onClick={() => window.print()} className="btn no-print">
       {label}

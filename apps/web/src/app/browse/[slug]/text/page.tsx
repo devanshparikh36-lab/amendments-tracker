@@ -3,7 +3,8 @@ import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { CiteThis } from "@/components/CiteThis";
-import { FollowButton } from "@/components/FollowButton";
+import { BookmarkButton, FollowButton } from "@/components/FollowButton";
+import { NoteBox } from "@/components/NoteBox";
 import { CopyText } from "@/components/CopyText";
 import { PrintHeader } from "@/components/PrintHeader";
 import { PrintButton } from "@/components/PrintButton";
@@ -300,14 +301,41 @@ function ProvisionView({
           asOn={asOn ?? inst.official_updated_as_on}
           officialUrl={source?.href ?? null}
         />
-        <header className="border-b border-[var(--rule)] px-5 py-3">
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <h2 className="serif text-[18px] font-semibold capitalize">
-              {unit} {p.number}
-            </h2>
-            {p.heading && (
-              <span className="serif text-[16px] text-[var(--ink-2)]">{p.heading.replace(/[.\-\s]+$/, "")}</span>
-            )}
+        <header className="relative border-b border-[var(--rule)] px-5 py-3">
+          {/* The glyph cluster sits in the corner, level with the heading, rather than in the row of
+              buttons below it. Two reasons. It is the reader's own set -- follow, bookmark, note, and the
+              ways of taking this away with you -- which is a different kind of thing from "go to the
+              official source", and the corner is where a reader already looks for controls that act on
+              the item rather than on the page. And it takes six controls out of a row that was wrapping
+              onto a second line and pushing the provision down the screen. */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <h2 className="serif text-[18px] font-semibold capitalize">
+                {unit} {p.number}
+              </h2>
+              {p.heading && (
+                <span className="serif text-[16px] text-[var(--ink-2)]">{p.heading.replace(/[.\-\s]+$/, "")}</span>
+              )}
+            </div>
+            <span className="icon-row no-print shrink-0">
+              <FollowButton provisionId={p.id} />
+              <BookmarkButton provisionId={p.id} />
+              <PrintButton icon />
+              {(p.text || p.html) && (
+                <CopyText
+                  icon
+                  targetId="provision-body"
+                  title={[
+                    `${unit.charAt(0).toUpperCase()}${unit.slice(1)} ${p.number}, ${inst.title}`,
+                    p.heading?.replace(/[.\-\s]+$/, ""),
+                  ]
+                    .filter(Boolean)
+                    .join(" — ")}
+                  source={source?.href ?? null}
+                />
+              )}
+              <NoteBox provisionId={p.id} />
+            </span>
           </div>
           <div className="meta mt-1 flex flex-wrap items-center gap-2">
             <Link href={`/browse/${slug}`} className="hover:underline">
@@ -334,30 +362,10 @@ function ProvisionView({
             <Link href={`/browse/${slug}/${slugifyNumber(p.number)}/history`} className="btn">
               Amendment history{p.effect_count ? ` (${p.effect_count})` : ""}
             </Link>
-            {/* Beside the history link on purpose: "what has happened to this" and "tell me what happens
-                next" are the same question asked in two directions, and a reader who has just looked at
-                one is the reader who wants the other. */}
-            <FollowButton provisionId={p.id} label="Follow this section" />
-            {/* Everything needed to cite this correctly is already on this page and all of it had to be
-                retyped, which is where file-note errors come from -- the "as on" date most of all, because
-                "as amended" says nothing without it. The official address goes in ahead of ours, so the
-                note stands up without this site. */}
-            <PrintButton />
-            {/* "Copy text" takes the provision; "Cite this" takes a reference to it. Both are wanted and
-                they are not the same errand -- quoting a section into an opinion needs the words, filing a
-                note about it needs the citation. */}
-            {(p.text || p.html) && (
-              <CopyText
-                targetId="provision-body"
-                title={[
-                  `${unit.charAt(0).toUpperCase()}${unit.slice(1)} ${p.number}, ${inst.title}`,
-                  p.heading?.replace(/[.\-\s]+$/, ""),
-                ]
-                  .filter(Boolean)
-                  .join(" — ")}
-                source={source?.href ?? null}
-              />
-            )}
+            {/* Stays worded, and stays in this row rather than going to the corner with the glyphs.
+                Nobody recognises an icon for "citation" -- a quote mark reads as "copy the words", which
+                is what the copy glyph already does -- and on a page a practitioner opened in order to
+                cite something, this is the last action to make them hunt for. */}
             <CiteThis
               unit={unit}
               number={p.number}
@@ -367,6 +375,11 @@ function ProvisionView({
               officialUrl={source?.href ?? null}
               path={`/browse/${slug}/text?p=${encodeURIComponent(p.number)}`}
             />
+            {/* Everything below is a glyph. Spelled out, these eight actions wrapped onto a second line
+                and put a block of chrome between the heading and the provision -- which on a page whose
+                entire job is to show someone the text of the law is the wrong thing to spend the top of
+                the screen on. The two that keep their words are the two a reader cannot guess: the
+                official source, which is the primary action, and the history, which carries a count. */}
           </div>
         </header>
         {/* Which dated texts exist for this provision, and -- when a date was asked for that predates

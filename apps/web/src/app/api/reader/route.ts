@@ -64,19 +64,24 @@ export async function POST(req: Request) {
 
     if (action === "alerts") {
       const on = body.on === true;
+      /* 'daily' matches the collector, which runs once each morning -- anything more frequent would be a
+       * promise the pipeline cannot keep. 'weekly' exists because a digest nobody opens is worse than no
+       * digest. An unknown value falls back rather than failing: this is a preference, not a command. */
+      const freq = body.freq === "weekly" ? "weekly" : "daily";
       /* Switching alerts on does not start mail arriving. It records the wish; alerts_ok_at is what
        * permits a send, and only a click on a confirmation link sets that. Switching off is immediate
        * and unconditional, because the one thing that must never need a round trip is stopping. */
-      const r = await pool.query<{ alerts_on: boolean; confirmed: boolean }>(
-        `UPDATE reader SET alerts_on = $2, last_seen_at = now()
+      const r = await pool.query<{ alerts_on: boolean; alert_freq: string; confirmed: boolean }>(
+        `UPDATE reader SET alerts_on = $2, alert_freq = $3, last_seen_at = now()
           WHERE lower(email) = $1
-      RETURNING alerts_on, (alerts_ok_at IS NOT NULL) AS confirmed`,
-        [email, on],
+      RETURNING alerts_on, alert_freq, (alerts_ok_at IS NOT NULL) AS confirmed`,
+        [email, on, freq],
       );
       const row = r.rows[0];
       return NextResponse.json({
         ok: true,
         alertsOn: row?.alerts_on ?? on,
+        alertFreq: row?.alert_freq ?? freq,
         alertsConfirmed: row?.confirmed ?? false,
       });
     }
@@ -90,7 +95,8 @@ export async function POST(req: Request) {
      * zero wide, and the feature would quietly report nothing for ever. The clock is moved by the second
      * statement below, once the old value is safely in hand. */
     const up = await pool.query<{
-      id: number; name: string | null; previous_seen: string; alerts_on: boolean; confirmed: boolean;
+      id: number; name: string | null; previous_seen: string;
+      alerts_on: boolean; alert_freq: string; confirmed: boolean;
     }>(
       `INSERT INTO reader (email, name)
             VALUES ($1, NULLIF($2, ''))
@@ -104,6 +110,7 @@ export async function POST(req: Request) {
                    -- time gets an empty window rather than the entire history of the corpus.
                    last_seen_at AS previous_seen,
                    alerts_on,
+                   alert_freq,
                    (alerts_ok_at IS NOT NULL) AS confirmed`,
       [email, name],
     );
@@ -114,10 +121,16 @@ export async function POST(req: Request) {
     const prev = me.previous_seen;
     await pool.query("UPDATE reader SET last_seen_at = now() WHERE id = $1", [me.id]);
 
-    const watches = await pool.query<{ n: string }>(
-      "SELECT count(*)::text AS n FROM reader_watch WHERE reader_id = $1",
+    /* Every count in one round trip. Four separate queries would each wake the same connection to ask
+     * the same database a one-number question, on a serverless function that pays per invocation. */
+    const counts = await pool.query<{ follows: string; bookmarks: string; notes: string; searches: string }>(
+      `SELECT (SELECT count(*) FROM reader_watch  WHERE reader_id = $1 AND kind = 'follow')::text   AS follows,
+              (SELECT count(*) FROM reader_watch  WHERE reader_id = $1 AND kind = 'bookmark')::text AS bookmarks,
+              (SELECT count(*) FROM reader_note   WHERE reader_id = $1)::text                       AS notes,
+              (SELECT count(*) FROM reader_search WHERE reader_id = $1)::text                       AS searches`,
       [me.id],
     );
+    const c = counts.rows[0];
 
     /* What landed against anything this reader follows, since they were last here.
      *
@@ -135,7 +148,7 @@ export async function POST(req: Request) {
            JOIN document d     ON d.id = t.document_id
            JOIN regulator r    ON r.id = d.regulator_id
            JOIN instrument i   ON i.id = w.instrument_id
-          WHERE w.reader_id = $1 AND w.instrument_id IS NOT NULL AND d.first_seen_at > $2
+          WHERE w.reader_id = $1 AND w.kind = 'follow' AND w.instrument_id IS NOT NULL AND d.first_seen_at > $2
          UNION
          SELECT DISTINCT ON (d.id)
                 d.id, d.title, d.date_issued, d.first_seen_at,
@@ -151,7 +164,7 @@ export async function POST(req: Request) {
            JOIN document d     ON d.id = t.document_id
            JOIN regulator r    ON r.id = d.regulator_id
            JOIN provision p    ON p.id = w.provision_id
-          WHERE w.reader_id = $1 AND w.provision_id IS NOT NULL AND d.first_seen_at > $2
+          WHERE w.reader_id = $1 AND w.kind = 'follow' AND w.provision_id IS NOT NULL AND d.first_seen_at > $2
        ) x
        ORDER BY first_seen_at DESC
        LIMIT ${SINCE_LIMIT}`,
@@ -161,8 +174,12 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       name: me.name,
-      watching: Number(watches.rows[0]?.n ?? 0),
+      watching: Number(c?.follows ?? 0),
+      bookmarks: Number(c?.bookmarks ?? 0),
+      notes: Number(c?.notes ?? 0),
+      searches: Number(c?.searches ?? 0),
       alertsOn: me.alerts_on,
+      alertFreq: me.alert_freq,
       alertsConfirmed: me.confirmed,
       previousSeen: prev,
       since: since.rows,

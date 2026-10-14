@@ -1,21 +1,24 @@
 import { timingSafeEqual } from "node:crypto";
+import Link from "next/link";
 import { getPool } from "@/db";
 import { fmtDateTime } from "@/lib/format";
 
-/* Who has signed up, and what they follow.
+/* Who has signed up, and what they are keeping.
  *
  * Guarded by one secret in an environment variable, compared in constant time. That is the whole of the
- * access control and it is proportionate to what is behind it: a list of email addresses and the sections
- * they follow. It is not proportionate to anything more, so nothing more should be put on this page.
+ * access control and it is proportionate to what is behind it. The repository is public, so the secret
+ * cannot live in it: ADMIN_KEY is set in Netlify (Project configuration > Environment variables). With it
+ * unset the page refuses everyone, including the owner -- the right way round for a page that is
+ * otherwise world-readable.
  *
- * The repository is public, so the secret cannot live in it. ADMIN_KEY is set in Netlify's environment
- * (Project configuration > Environment variables). With it unset the page refuses everyone, including the
- * owner -- which is the right way round for a page that is otherwise world-readable.
+ * What is deliberately absent, and should stay absent: the text of anyone's notes, and what each reader
+ * read. Notes are the readers' own words and the owner has no reason to need them in aggregate -- the
+ * count is enough to know the feature is used. A reading history would be a row per page view per person,
+ * which is the one addition that would turn this from "who signed up" into surveillance, and it should be
+ * its own decision with its own retention rule rather than a column added quietly.
  *
- * Deliberately not here: what each reader read. That would mean a row per page view per person, and it is
- * the one thing that would turn this site's record from "who signed up" into a reading history. It is also
- * the thing the privacy notice would have to be rewritten hardest to permit. If it is ever wanted it
- * should be a separate decision with its own retention rule, not an extra column added quietly.
+ * The popularity tables are the useful half: "which sections do practitioners actually care about" is a
+ * question nothing else on this site can answer, and it is answered here without naming anybody.
  */
 
 export const dynamic = "force-dynamic";
@@ -26,16 +29,21 @@ function authorised(given: string | undefined): boolean {
   if (!want || !given) return false;
   const a = Buffer.from(given);
   const b = Buffer.from(want);
-  // Length is compared first and separately: timingSafeEqual throws on a mismatch rather than returning
-  // false, and the length of a secret is not the part worth hiding.
+  // Length first and separately: timingSafeEqual throws on a mismatch rather than returning false, and
+  // the length of a secret is not the part worth hiding.
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export default async function AdminPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ key?: string }>;
-}) {
+function Stat({ n, label }: { n: unknown; label: string }) {
+  return (
+    <span>
+      <span className="num text-[18px] font-semibold text-[var(--ink)]">{String(n ?? 0)}</span>{" "}
+      <span className="text-[var(--ink-3)]">{label}</span>
+    </span>
+  );
+}
+
+export default async function AdminPage({ searchParams }: { searchParams: Promise<{ key?: string }> }) {
   const { key } = await searchParams;
 
   if (!authorised(key)) {
@@ -54,12 +62,25 @@ export default async function AdminPage({
   }
 
   const pool = getPool();
-  const [readers, totals] = await Promise.all([
+  const [totals, readers, popular, marked, queries] = await Promise.all([
     pool.query(
-      `SELECT r.id, r.email, r.name, r.created_at, r.last_seen_at, r.alerts_on,
+      `SELECT (SELECT count(*) FROM reader)                                              AS readers,
+              (SELECT count(*) FROM reader WHERE last_seen_at > now() - interval '7 days') AS active,
+              (SELECT count(*) FROM reader WHERE alerts_on)                              AS alerts,
+              (SELECT count(*) FROM reader WHERE alerts_on AND alert_freq = 'weekly')    AS weekly,
+              (SELECT count(*) FROM reader WHERE alerts_ok_at IS NOT NULL)               AS confirmed,
+              (SELECT count(*) FROM reader_watch WHERE kind = 'follow')                  AS follows,
+              (SELECT count(*) FROM reader_watch WHERE kind = 'bookmark')                AS bookmarks,
+              (SELECT count(*) FROM reader_note)                                         AS notes,
+              (SELECT count(*) FROM reader_search)                                       AS searches`,
+    ),
+    pool.query(
+      `SELECT r.id, r.email, r.name, r.created_at, r.last_seen_at, r.alerts_on, r.alert_freq,
               (r.alerts_ok_at IS NOT NULL) AS confirmed,
-              count(w.*) FILTER (WHERE w.provision_id IS NOT NULL)  AS sections,
-              count(w.*) FILTER (WHERE w.instrument_id IS NOT NULL) AS acts
+              count(w.*) FILTER (WHERE w.kind = 'follow')   AS follows,
+              count(w.*) FILTER (WHERE w.kind = 'bookmark') AS bookmarks,
+              (SELECT count(*) FROM reader_note n  WHERE n.reader_id = r.id) AS notes,
+              (SELECT count(*) FROM reader_search s WHERE s.reader_id = r.id) AS searches
          FROM reader r
          LEFT JOIN reader_watch w ON w.reader_id = r.id
         GROUP BY r.id
@@ -67,60 +88,123 @@ export default async function AdminPage({
         LIMIT 500`,
     ),
     pool.query(
-      `SELECT count(*) AS readers,
-              count(*) FILTER (WHERE alerts_on) AS alerts,
-              count(*) FILTER (WHERE last_seen_at > now() - interval '7 days') AS active
-         FROM reader`,
+      `SELECT i.short_code, i.slug, p.number, count(*) AS n
+         FROM reader_watch w
+         JOIN provision p  ON p.id = w.provision_id
+         JOIN instrument i ON i.id = p.instrument_id
+        WHERE w.kind = 'follow'
+        GROUP BY i.short_code, i.slug, p.number
+        ORDER BY count(*) DESC, i.short_code
+        LIMIT 15`,
+    ),
+    pool.query(
+      `SELECT i.short_code, i.slug, p.number, count(*) AS n
+         FROM reader_watch w
+         JOIN provision p  ON p.id = w.provision_id
+         JOIN instrument i ON i.id = p.instrument_id
+        WHERE w.kind = 'bookmark'
+        GROUP BY i.short_code, i.slug, p.number
+        ORDER BY count(*) DESC, i.short_code
+        LIMIT 15`,
+    ),
+    pool.query(
+      `SELECT q, count(*) AS n FROM reader_search GROUP BY q ORDER BY count(*) DESC, q LIMIT 15`,
     ),
   ]);
 
-  const t = totals.rows[0] ?? {};
+  const t = (totals.rows[0] ?? {}) as Record<string, unknown>;
+  const rows = readers.rows as Record<string, unknown>[];
+
+  const Popular = ({ title, data, note }: { title: string; data: Record<string, unknown>[]; note: string }) => (
+    <section>
+      <h2 className="eyebrow">{title}</h2>
+      <p className="mt-0.5 text-[11.5px] text-[var(--ink-4)]">{note}</p>
+      {data.length === 0 ? (
+        <p className="mt-2 text-[13px] text-[var(--ink-3)]">Nothing yet.</p>
+      ) : (
+        <ul className="mt-2 divide-y divide-[var(--rule)] border-y border-[var(--rule)]">
+          {data.map((d, i) => (
+            <li key={`${String(d.slug)}-${String(d.number)}-${i}`} className="flex justify-between gap-3 py-1.5 text-[13px]">
+              <Link href={`/browse/${String(d.slug)}/text`} className="truncate text-[var(--link)] hover:underline">
+                <span className="num font-medium">{String(d.number)}</span>
+                <span className="text-[var(--ink-3)]"> · {String(d.short_code)}</span>
+              </Link>
+              <span className="num shrink-0 text-[var(--ink-3)]">{String(d.n)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
 
   return (
-    <div className="mx-auto max-w-5xl py-2">
+    <div className="mx-auto max-w-6xl py-2">
       <p className="eyebrow">Admin</p>
       <h1 className="serif mt-1 text-[25px] font-semibold text-[var(--ink)]">Readers</h1>
 
-      <div className="mt-4 flex flex-wrap gap-6 border-y border-[var(--rule)] py-3 text-[13px]">
-        <span>
-          <span className="num text-[18px] font-semibold text-[var(--ink)]">{String(t.readers ?? 0)}</span>{" "}
-          <span className="text-[var(--ink-3)]">signed up</span>
-        </span>
-        <span>
-          <span className="num text-[18px] font-semibold text-[var(--ink)]">{String(t.active ?? 0)}</span>{" "}
-          <span className="text-[var(--ink-3)]">seen in 7 days</span>
-        </span>
-        <span>
-          <span className="num text-[18px] font-semibold text-[var(--ink)]">{String(t.alerts ?? 0)}</span>{" "}
-          <span className="text-[var(--ink-3)]">want alerts</span>
-        </span>
+      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-y border-[var(--rule)] py-3 text-[13px]">
+        <Stat n={t.readers} label="signed up" />
+        <Stat n={t.active} label="seen in 7 days" />
+        <Stat n={t.alerts} label="want alerts" />
+        <Stat n={t.confirmed} label="confirmed" />
+        <Stat n={t.weekly} label="weekly" />
+        <Stat n={t.follows} label="follows" />
+        <Stat n={t.bookmarks} label="bookmarks" />
+        <Stat n={t.notes} label="notes" />
+        <Stat n={t.searches} label="saved searches" />
       </div>
 
-      {readers.rows.length === 0 ? (
-        <p className="mt-6 text-[13.5px] text-[var(--ink-3)]">Nobody has signed in yet.</p>
+      <div className="mt-6 grid gap-6 md:grid-cols-3">
+        <Popular title="Most followed" data={popular.rows as Record<string, unknown>[]} note="Sections readers want to be told about." />
+        <Popular title="Most bookmarked" data={marked.rows as Record<string, unknown>[]} note="Sections readers come back to." />
+        <section>
+          <h2 className="eyebrow">Saved searches</h2>
+          <p className="mt-0.5 text-[11.5px] text-[var(--ink-4)]">Kept deliberately, not logged.</p>
+          {queries.rows.length === 0 ? (
+            <p className="mt-2 text-[13px] text-[var(--ink-3)]">Nothing yet.</p>
+          ) : (
+            <ul className="mt-2 divide-y divide-[var(--rule)] border-y border-[var(--rule)]">
+              {(queries.rows as Record<string, unknown>[]).map((d, i) => (
+                <li key={i} className="flex justify-between gap-3 py-1.5 text-[13px]">
+                  <span className="truncate">{String(d.q)}</span>
+                  <span className="num shrink-0 text-[var(--ink-3)]">{String(d.n)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
+
+      <h2 className="eyebrow mt-8">Everyone</h2>
+      {rows.length === 0 ? (
+        <p className="mt-2 text-[13.5px] text-[var(--ink-3)]">Nobody has signed in yet.</p>
       ) : (
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-2 overflow-x-auto">
           <table className="w-full border-collapse text-[13px]">
             <thead>
               <tr className="border-b border-[var(--rule-strong)] text-left">
-                <th className="py-2 pr-3 font-semibold">Email</th>
-                <th className="py-2 pr-3 font-semibold">Name</th>
-                <th className="py-2 pr-3 text-right font-semibold">Sections</th>
-                <th className="py-2 pr-3 text-right font-semibold">Acts</th>
-                <th className="py-2 pr-3 font-semibold">Alerts</th>
-                <th className="py-2 pr-3 font-semibold">Joined</th>
-                <th className="py-2 font-semibold">Last seen</th>
+                {["Email", "Name", "Follows", "Marks", "Notes", "Searches", "Alerts", "Joined", "Last seen"].map((h, i) => (
+                  <th key={h} className={`py-2 pr-3 font-semibold ${i >= 2 && i <= 5 ? "text-right" : ""}`}>
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {readers.rows.map((r: Record<string, unknown>) => (
+              {rows.map((r) => (
                 <tr key={String(r.id)} className="border-b border-[var(--rule)]">
                   <td className="py-1.5 pr-3 break-all">{String(r.email)}</td>
                   <td className="py-1.5 pr-3">{(r.name as string) || <span className="text-[var(--ink-4)]">—</span>}</td>
-                  <td className="num py-1.5 pr-3 text-right">{String(r.sections)}</td>
-                  <td className="num py-1.5 pr-3 text-right">{String(r.acts)}</td>
+                  <td className="num py-1.5 pr-3 text-right">{String(r.follows)}</td>
+                  <td className="num py-1.5 pr-3 text-right">{String(r.bookmarks)}</td>
+                  <td className="num py-1.5 pr-3 text-right">{String(r.notes)}</td>
+                  <td className="num py-1.5 pr-3 text-right">{String(r.searches)}</td>
                   <td className="py-1.5 pr-3 text-[12px]">
-                    {r.alerts_on ? (r.confirmed ? "on" : "unconfirmed") : <span className="text-[var(--ink-4)]">off</span>}
+                    {r.alerts_on ? (
+                      `${String(r.alert_freq)}${r.confirmed ? "" : ", unconfirmed"}`
+                    ) : (
+                      <span className="text-[var(--ink-4)]">off</span>
+                    )}
                   </td>
                   <td className="num py-1.5 pr-3 text-[12px] text-[var(--ink-3)]">{fmtDateTime(r.created_at as string)}</td>
                   <td className="num py-1.5 text-[12px] text-[var(--ink-3)]">{fmtDateTime(r.last_seen_at as string)}</td>

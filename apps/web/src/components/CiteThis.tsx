@@ -1,5 +1,6 @@
 "use client";
 
+
 import { useEffect, useState } from "react";
 import { copyText } from "@/lib/clipboard";
 
@@ -93,6 +94,9 @@ export function CiteThis({
 
   return (
     <span className="no-print inline-flex items-center gap-1.5">
+      {/* This one keeps its words. A citation is not a convention with an icon anyone recognises -- a
+          quote mark reads as "quote the text", which is what Copy does -- and it is the action most
+          worth finding on a page a practitioner came to in order to cite something. */}
       <button type="button" onClick={copy} className="btn" aria-live="polite">
         {state === "copied" ? "Citation copied" : state === "failed" ? "Select it below" : "Cite this"}
       </button>
