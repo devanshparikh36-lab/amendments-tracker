@@ -8,7 +8,20 @@ import { searchDefinitions, type DefinitionHit } from "@/lib/queries";
 
 export const metadata = { title: "Search definitions" };
 
-type Search = Promise<{ q?: string }>;
+type Search = Promise<{ q?: string; reg?: string }>;
+
+/* The five regulators, in the words a practitioner uses rather than the codes the database stores.
+ *
+ * "Income tax" and "GST" are how somebody thinks about where a definition lives; CBDT and CBIC are how
+ * the collector files it. The code is kept as the value in the URL because it is short, stable and
+ * already what every other part of the site keys on. */
+const REGULATORS: { code: string; label: string }[] = [
+  { code: "CBDT", label: "Income tax" },
+  { code: "CBIC", label: "GST & customs" },
+  { code: "MCA", label: "Companies" },
+  { code: "SEBI", label: "Securities" },
+  { code: "RBI", label: "FEMA & banking" },
+];
 
 const EXAMPLES = ["capital asset", "associate company", "advance tax", "dividend", "turnover"];
 
@@ -85,9 +98,22 @@ function Hit({ h, term }: { h: DefinitionHit; term: string }) {
 }
 
 export default async function DefinitionsPage({ searchParams }: { searchParams: Search }) {
-  const { q } = await searchParams;
+  const { q, reg } = await searchParams;
   const term = (q ?? "").trim();
-  const hits = term ? await searchDefinitions(term) : [];
+  const all = term ? await searchDefinitions(term) : [];
+
+  /* Filtered here rather than in SQL, deliberately.
+   *
+   * The query returns at most eighty hits, ordered by how good the evidence is. Filtering in SQL would
+   * change *which* eighty, so narrowing to GST could surface weaker matches that the unfiltered search had
+   * correctly ranked out -- and the counts beside each regulator would be impossible to show without a
+   * second query. One fetch, filtered in memory, gives both: honest counts, and switching between
+   * regulators that costs nothing. */
+  const counts = new Map<string, number>();
+  for (const h of all) counts.set(h.regulator_code, (counts.get(h.regulator_code) ?? 0) + 1);
+  const active = reg && counts.has(reg) ? reg : null;
+  const hits = active ? all.filter((h) => h.regulator_code === active) : all;
+  const shown = REGULATORS.filter((r) => counts.has(r.code));
 
   return (
     <div className="space-y-4">
@@ -132,17 +158,44 @@ export default async function DefinitionsPage({ searchParams }: { searchParams: 
         </p>
       )}
 
+      {/* Only the regulators that actually have a hit, and only when there is more than one of them.
+          A filter offering five choices where four return nothing is furniture, and a filter offering a
+          single choice is a label pretending to be a control. */}
+      {term && shown.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Link
+            href={`/definitions?q=${encodeURIComponent(term)}`}
+            aria-current={!active ? "true" : undefined}
+            className={`chip ${!active ? "chip-on" : ""}`}
+          >
+            All <span className="num opacity-60">{all.length}</span>
+          </Link>
+          {shown.map((r) => (
+            <Link
+              key={r.code}
+              href={`/definitions?q=${encodeURIComponent(term)}&reg=${r.code}`}
+              aria-current={active === r.code ? "true" : undefined}
+              className={`chip ${active === r.code ? "chip-on" : ""}`}
+            >
+              {r.label} <span className="num opacity-60">{counts.get(r.code)}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+
       {term && (
         <section className="panel px-5 py-1">
           <p className="py-2 text-[12px] text-[var(--ink-3)]">
             {hits.length === 0
               ? `No instrument we hold defines “${term}”.`
-              : `${hits.length} ${hits.length === 1 ? "definition" : "definitions"} of “${term}”.`}
+              : `${hits.length} ${hits.length === 1 ? "definition" : "definitions"} of “${term}”${
+                  active ? ` in ${REGULATORS.find((r) => r.code === active)?.label}` : ""
+                }.`}
           </p>
           {hits.length > 0 && (
             <ul className="mb-2">
               {hits.map((h) => (
-                <Hit key={`${h.slug}-${h.number}`} h={h} term={term} />
+                <Hit key={`${h.slug}-${h.number}-${h.pdf_page ?? ""}`} h={h} term={term} />
               ))}
             </ul>
           )}

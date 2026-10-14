@@ -25,7 +25,24 @@ import type { InstrumentRow, ProvisionRow } from "@/lib/queries";
  */
 const READER_PAGES: { when: (i: InstrumentRow) => boolean; url: string }[] = [
   { when: (i) => i.regulator_code === "CBIC" && i.kind === "rules", url: "https://cbic-gst.gov.in/gst-rules.html" },
-  { when: (i) => i.regulator_code === "CBIC", url: "https://cbic-gst.gov.in/gst-acts.html" },
+  /* CBIC's Acts, and the least-bad of three bad options -- checked 14 Oct 2026, in a browser.
+   *
+   * `cbic-gst.gov.in/gst-acts.html` loads, names the five GST Acts correctly, and every single one of its
+   * links is a 404 on CBIC's own server: CGST-bill-e.html, IGST-bill-e.html, UTGST-bill-e.html,
+   * compensation-cess-bill-e.html and constitution-amendment-act.html. All five, tested individually. A
+   * page that names what you want and cannot open any of it is worse than no page, because the reader
+   * spends a click and their confidence before finding out.
+   *
+   * CBIC's newer portal is no better for this: `taxinformation.cbic.gov.in/content-page/explore-act` is
+   * the target of their own navigation and renders completely blank.
+   *
+   * So this points at the portal's front page. It is vague -- the reader has to find their way -- but it
+   * is alive, current (it carries a "last updated" date that moves), and it is where the Act text on this
+   * site is actually read from. Vague and honest beats specific and broken.
+   *
+   * Recheck when CBIC fixes either page; a per-Act address is obviously the right answer and does not
+   * currently exist anywhere on their estate that I could find. */
+  { when: (i) => i.regulator_code === "CBIC", url: "https://taxinformation.cbic.gov.in/" },
   // ssid picks the section of SEBI's Legal listing: 1 acts, 3 regulations, 6 master circulars.
   { when: (i) => i.regulator_code === "SEBI" && i.kind === "act", url: "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=1&ssid=1&smid=0" },
   { when: (i) => i.regulator_code === "SEBI" && i.kind === "master_circular", url: "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=1&ssid=6&smid=0" },

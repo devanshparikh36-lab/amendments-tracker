@@ -1054,6 +1054,8 @@ export async function lastRevised(): Promise<{ checked: string | null; added: st
 
 export type DefinitionHit = {
   slug: string;
+  /** Which regulator issued the instrument. Drives the filter on /definitions. */
+  regulator_code: string;
   instrument_title: string;
   short_code: string;
   kind: string;
@@ -1105,6 +1107,7 @@ export async function searchDefinitions(term: string, limit = 80): Promise<Defin
   const pattern = `(?:${quotedPattern}|\\y${escaped}\\y[ ,]{0,3}\\y${DEFINING}\\y)`;
   return query<DefinitionHit>(
     `(SELECT i.slug, i.title AS instrument_title, i.short_code, i.kind, i.pdf_storage_key,
+            reg.code AS regulator_code,
             p.number, p.heading,
             coalesce(p.pdf_page, pg.page_no) AS pdf_page,
             substring(v.text from greatest(1, strpos(lower(v.text), lower($2)) - 60) for 420) AS snippet,
@@ -1114,6 +1117,7 @@ export async function searchDefinitions(term: string, limit = 80): Promise<Defin
        FROM provision p
        JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
        JOIN instrument i ON i.id = p.instrument_id
+       JOIN regulator reg ON reg.id = i.regulator_id
        -- provision.pdf_page is only filled in for instruments the regulator publishes as a PDF -- 156 of
        -- several thousand provisions. For the rest we still hold the official PDF page by page, so look the
        -- definition up there with the same pattern: the page that states the definition is the page to open.
@@ -1133,6 +1137,7 @@ export async function searchDefinitions(term: string, limit = 80): Promise<Defin
      -- the same pattern; a page hit carries no provision number, only the page it is printed on, which is
      -- exactly what is needed to open the official file at the right place.
      (SELECT i.slug, i.title, i.short_code, i.kind, i.pdf_storage_key,
+             reg.code,
              NULL::text, NULL::text,
              ip.page_no,
              substring(ip.text from greatest(1, strpos(lower(ip.text), lower($2)) - 60) for 420),
@@ -1141,6 +1146,7 @@ export async function searchDefinitions(term: string, limit = 80): Promise<Defin
              true
         FROM instrument_page ip
         JOIN instrument i ON i.id = ip.instrument_id
+        JOIN regulator reg ON reg.id = i.regulator_id
        WHERE ip.text ILIKE '%' || $2 || '%' AND ip.text ~* $1)
       -- Quoted first, being the clearest evidence; then a dedicated definitions clause; then parsed text
       -- ahead of text read out of a PDF, which is a finding aid and should not outrank the real thing.
