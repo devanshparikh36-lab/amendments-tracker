@@ -140,9 +140,19 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       R2_PUBLIC_BASE_URL: ${{ secrets.R2_PUBLIC_BASE_URL }}
       TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+      # Mail. SMTP is used when SMTP_USER and SMTP_PASSWORD are both set, and Resend is the fallback
+      # when they are not -- see services/pipeline/amendments/notify/email.py. SMTP_HOST and SMTP_PORT
+      # are not secret and default to Gmail; they are passed anyway so that changing provider is a
+      # secret to add rather than this file to edit.
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_PORT: ${{ secrets.SMTP_PORT }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
       RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
       DIGEST_FROM: ${{ secrets.DIGEST_FROM }}
       DIGEST_TO: ${{ secrets.DIGEST_TO }}
+      DIGEST_REPLY_TO: ${{ secrets.DIGEST_REPLY_TO }}
+      DIGEST_UNSUBSCRIBE: ${{ secrets.DIGEST_UNSUBSCRIBE }}
       SITE_URL: ${{ secrets.SITE_URL }}
       REQUEST_DELAY_SECONDS: "1.0"
       PYTHONUNBUFFERED: "1"

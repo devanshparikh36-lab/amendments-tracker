@@ -12,21 +12,22 @@ export const JURISDICTION = "Gujarat, India";
 
 /* The address for privacy questions and grievances.
  *
- * This was null while the site held nothing about anybody, and the pages said so plainly rather than
- * carrying a placeholder that reads as real and silently discards what is sent to it. That was defensible
- * then. It stopped being defensible the day accounts shipped: a data fiduciary holding email addresses,
- * notes and saved searches has to publish somewhere to write for access, correction, erasure and
- * grievances, and "being set up" is not a contact.
+ * A dedicated account, which is what the first version of this note argued for and could not have: it was
+ * null while the site held nothing about anybody, and the pages said so plainly rather than carrying a
+ * placeholder that reads as real and silently discards what is sent to it. That stopped being defensible
+ * the day accounts shipped, since access, correction, erasure and grievances all need a destination.
  *
- * So this is a personal address rather than the dedicated one the original note argued for. The reasoning
- * there still stands -- this page is crawled and the address will be scraped -- and a dedicated account
- * remains the better answer. It is not the better answer than having no address at all while holding
- * personal data. Swap it for a dedicated one when it exists; it is one line and nothing else reads it.
+ * It is also the account the digest is sent from, so one address is the sender, the reply-to and the
+ * published contact. Fewer things to keep in step, and a reply to the digest reaches a mailbox somebody
+ * reads.
  *
- * Not a work address, which was the one thing the original note ruled out outright: a personally-published
- * site must not route its grievances through an employer's domain.
+ * It will be scraped -- this page is crawled, and that was always the cost of publishing one. Accepted,
+ * because the alternative is holding personal data with nowhere to write about it.
+ *
+ * Not a work address, which the original note ruled out outright: a personally-published site must not
+ * route its grievances through an employer domain.
  */
-export const CONTACT_EMAIL: string | null = "devanshparikh36@gmail.com";
+export const CONTACT_EMAIL: string | null = "as.amended321@gmail.com";
 
 /** The date the current wording took effect. Bump it when the substance changes, not for a typo. */
 export const LEGAL_UPDATED = "14 October 2026";

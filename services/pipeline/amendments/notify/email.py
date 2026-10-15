@@ -1,4 +1,4 @@
-"""Daily digest email via Resend.
+"""Daily digest email, over SMTP with Resend as a fallback.
 
 Written for mail clients, which is a narrower medium than it looks. Every style is inline, because Gmail
 strips a <style> block in some views and Outlook in others; layout is tables, because Outlook renders through
@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import html
 import logging
+import smtplib
+import ssl
 from datetime import date, datetime, timedelta, timezone
+from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
 
 from ..config import settings
 
@@ -502,33 +506,148 @@ def build_digest_text(
     return "\n".join(lines)
 
 
-def send_digest(subject: str, body_html: str, body_text: str | None = None) -> bool:
-    if not settings.resend_api_key or not settings.digest_to:
-        log.info("RESEND_API_KEY / DIGEST_TO not set; skipping digest email")
-        return False
-    try:
-        import resend
+def _unsubscribe_headers() -> dict[str, str]:
+    """RFC 8058, and both headers or neither.
 
-        resend.api_key = settings.resend_api_key
-        payload: dict = {
-            "from": settings.digest_from,
-            "to": settings.digest_to,
-            "subject": subject,
-            "html": body_html,
-        }
-        if body_text:
-            payload["text"] = body_text
-        if settings.digest_reply_to:
-            payload["reply_to"] = settings.digest_reply_to
-        if settings.digest_unsubscribe:
-            # RFC 8058: the -Post header is what lets a client offer one-click unsubscribe rather than
-            # sending the reader off to a page. Both or neither -- the header alone does nothing.
-            payload["headers"] = {
-                "List-Unsubscribe": f"<{settings.digest_unsubscribe}>",
-                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-            }
-        resend.Emails.send(payload)
-        return True
-    except Exception as exc:
-        log.error("Resend failed: %s", exc)
+    The -Post header is what lets a client offer one-click unsubscribe in its own interface rather than
+    sending the reader off to a page; List-Unsubscribe on its own does nothing in most clients. Empty until
+    DIGEST_UNSUBSCRIBE is set, which only starts to matter once the digest goes to anyone but its owner.
+    """
+    if not settings.digest_unsubscribe:
+        return {}
+    return {
+        "List-Unsubscribe": f"<{settings.digest_unsubscribe}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
+
+
+def _smtp_ready() -> bool:
+    return bool(settings.smtp_host and settings.smtp_user and settings.smtp_password)
+
+
+def smtp_from() -> str:
+    """Who the mail is from, over SMTP.
+
+    The authenticated account unless DIGEST_FROM says otherwise, because Gmail rewrites a From that is
+    neither the account nor one of its verified "Send mail as" aliases -- so inventing one here produces
+    mail that silently disagrees with its own configuration.
+    """
+    return settings.digest_from or f"As Amended <{settings.smtp_user}>"
+
+
+def build_message(
+    subject: str,
+    body_html: str,
+    body_text: str | None,
+    from_addr: str,
+    to_addrs: list[str],
+) -> EmailMessage:
+    """The MIME message, kept separate from sending it so its shape can be tested without a password.
+
+    Plain text first and HTML second, which is the whole point of multipart/alternative: a client renders
+    the last part it understands. Reversed, every modern client shows the plain text instead.
+    """
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = from_addr
+    msg["To"] = ", ".join(to_addrs)
+    # The server would add both if they were absent, and both are worth setting anyway: a message with no
+    # Date is scored as suspicious by several filters, and a Message-ID generated here is one we could log.
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain="as-amended")
+    if settings.digest_reply_to:
+        msg["Reply-To"] = settings.digest_reply_to
+    for k, v in _unsubscribe_headers().items():
+        msg[k] = v
+    # A text part always, even when the caller passed none. A message with no text alternative scores worse
+    # with spam filters, which costs more than these few lines of fallback.
+    msg.set_content(body_text or "This digest is formatted as HTML. Open it in a client that renders HTML.")
+    msg.add_alternative(body_html, subtype="html")
+    return msg
+
+
+def _send_via_smtp(subject: str, body_html: str, body_text: str | None) -> bool:
+    msg = build_message(subject, body_html, body_text, smtp_from(), settings.digest_to)
+    # A timeout, because this runs unattended. Without one a half-open connection hangs until the job's own
+    # 15-minute limit kills it, turning a transient network fault into a quarter-hour of runner time.
+    with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
+        smtp.ehlo()
+        # STARTTLS with a verifying context: create_default_context checks the certificate and the hostname,
+        # which an unverified connection does not -- and the password goes over this immediately after.
+        smtp.starttls(context=ssl.create_default_context())
+        smtp.ehlo()
+        smtp.login(settings.smtp_user or "", settings.smtp_password or "")
+        smtp.send_message(msg)
+    return True
+
+
+def _send_via_resend(subject: str, body_html: str, body_text: str | None) -> bool:
+    import resend
+
+    resend.api_key = settings.resend_api_key
+    payload: dict = {
+        # Resend's shared sender reaches only the Resend account's own address. Set DIGEST_FROM to an
+        # address on a verified domain to reach anyone else, and to lose the visible "via resend.dev".
+        "from": settings.digest_from or "As Amended <onboarding@resend.dev>",
+        "to": settings.digest_to,
+        "subject": subject,
+        "html": body_html,
+    }
+    if body_text:
+        payload["text"] = body_text
+    if settings.digest_reply_to:
+        payload["reply_to"] = settings.digest_reply_to
+    headers = _unsubscribe_headers()
+    if headers:
+        payload["headers"] = headers
+    resend.Emails.send(payload)
+    return True
+
+
+def send_digest(subject: str, body_html: str, body_text: str | None = None) -> bool:
+    """Send it, by whichever transport is configured. False means it did not go.
+
+    SMTP wins when it is configured, and Resend stays as a fallback rather than being deleted -- selected
+    by which secrets are present, so a Google lockout or an app password that stops being accepted is a
+    secret to change rather than a rewrite to do under pressure.
+
+    Returning False rather than raising is load-bearing. The caller records it against the digest
+    watermark, which only advances on a send that worked, so a failure leaves today's findings to be
+    carried by tomorrow's mail rather than falling into a window that moved on without them. It also exits
+    the workflow non-zero, which is what turns a failed digest into mail from GitHub instead of silence.
+    """
+    if not settings.digest_to:
+        log.info("DIGEST_TO not set; skipping digest email")
         return False
+
+    if _smtp_ready():
+        try:
+            ok = _send_via_smtp(subject, body_html, body_text)
+            log.info("digest sent via SMTP (%s)", settings.smtp_host)
+            return ok
+        except smtplib.SMTPAuthenticationError as exc:
+            # Named separately because the cause is almost never a mistyped password. Gmail refuses a plain
+            # account password outright, and an app password requires 2-Step Verification to be on first;
+            # both arrive here as the same unhelpful "Username and Password not accepted".
+            log.error(
+                "SMTP auth refused for %s: %s -- this needs an app password with 2-Step Verification "
+                "enabled, not the account password",
+                settings.smtp_user,
+                exc,
+            )
+            return False
+        except Exception as exc:
+            log.error("SMTP send failed via %s: %s", settings.smtp_host, exc)
+            return False
+
+    if settings.resend_api_key:
+        try:
+            ok = _send_via_resend(subject, body_html, body_text)
+            log.info("digest sent via Resend")
+            return ok
+        except Exception as exc:
+            log.error("Resend failed: %s", exc)
+            return False
+
+    log.info("no mail transport configured (set SMTP_USER and SMTP_PASSWORD, or RESEND_API_KEY)")
+    return False

@@ -38,12 +38,38 @@ class Settings:
 
     # Notifications
     teams_webhook_url: str | None = field(default_factory=lambda: _env("TEAMS_WEBHOOK_URL"))
+
+    # SMTP, which is the transport actually in use. Gmail by default, hence the host and port defaults.
+    #
+    # Chosen over Resend deliberately and not for cost -- both are free at this volume. Resend's shared
+    # sender, onboarding@resend.dev, delivers only to the address that owns the Resend account, and a
+    # verified domain is the only way past that. This project has no domain, so Resend could never mail a
+    # reader. SMTP from an address we own can mail anybody, which is the difference between reader alerts
+    # being unimplemented and being impossible.
+    #
+    # What that costs, written down so it is not rediscovered: no bounce or complaint webhooks, weaker
+    # standing with corporate mail servers than a verified domain, and Google's long drift away from app
+    # passwords towards OAuth. All three start to bite only when mail goes to people other than the owner.
+    smtp_host: str = field(default_factory=lambda: _env("SMTP_HOST") or "smtp.gmail.com")
+    smtp_port: int = field(default_factory=lambda: int(_env("SMTP_PORT") or "587"))
+    smtp_user: str | None = field(default_factory=lambda: _env("SMTP_USER"))
+    # Whitespace is stripped, which is not fussiness: Google shows an app password as four groups of four
+    # ("abcd efgh ijkl mnop") and it is pasted that way more often than not. SMTP AUTH then fails with
+    # "Username and Password not accepted", which reads like a wrong password rather than a formatting one.
+    smtp_password: str | None = field(
+        default_factory=lambda: "".join((_env("SMTP_PASSWORD") or "").split()) or None
+    )
+
     resend_api_key: str | None = field(default_factory=lambda: _env("RESEND_API_KEY"))
-    # onboarding@resend.dev is Resend's shared sender, which needs no domain to be verified -- but it will
-    # only deliver to the address that owns the Resend account, and mail carries a visible "via resend.dev".
-    # Set DIGEST_FROM to an address on a verified domain to reach anyone else, and to lose the "via".
-    # example.com is a reserved documentation domain and was silently unsendable, so this default matters.
-    digest_from: str = field(default_factory=lambda: _env("DIGEST_FROM") or "As Amended <onboarding@resend.dev>")
+    # Deliberately no default here any more: the right one depends on which transport sends, and only the
+    # sender knows that. notify/email.py resolves it -- the authenticated SMTP user for SMTP, Resend's
+    # shared sender for Resend.
+    #
+    # Setting this to something Gmail has not been told we own does not do what it looks like. Gmail
+    # rewrites a From that is neither the authenticated account nor one of its verified "Send mail as"
+    # aliases, so the mail arrives from the account anyway and the configuration reads as a lie. Leave it
+    # unset unless an alias has actually been set up in Gmail.
+    digest_from: str | None = field(default_factory=lambda: _env("DIGEST_FROM"))
     digest_to: list[str] = field(
         default_factory=lambda: [a.strip() for a in (_env("DIGEST_TO") or "").split(",") if a.strip()]
     )
