@@ -255,9 +255,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <Link href="/terms" className="hover:text-[var(--ink-2)] hover:underline">
                 Terms
               </Link>
-              <Link href="/feed.xml" className="hover:text-[var(--ink-2)] hover:underline">
+              {/* A plain anchor, not <Link>: /feed.xml is a route handler returning XML, not a page,
+                  so a client-side navigation has no RSC payload to fetch and errors instead of showing
+                  the feed. The Subscribe link on /documents was always an <a> for exactly this. */}
+              <a href="/feed.xml" className="hover:text-[var(--ink-2)] hover:underline">
                 Feed
-              </Link>
+              </a>
               <Link href="/status" className="hover:text-[var(--ink-2)] hover:underline">
                 Collection status
               </Link>

@@ -134,9 +134,10 @@ export default async function AboutPage() {
           <FaqItem q="Is there a feed, or a way to get the data in bulk?">
             <p>
               Yes to both, and both are preferable to crawling.{" "}
-              <Link href="/feed.xml" className="text-[var(--link)] hover:underline">
+              {/* <a>, not <Link> -- see the note in layout.tsx's footer. */}
+              <a href="/feed.xml" className="text-[var(--link)] hover:underline">
                 An Atom feed
-              </Link>{" "}
+              </a>{" "}
               carries every notification and circular as it arrives, and it can be narrowed to one regulator or
               one instrument with <code className="num">?regulator=</code> or{" "}
               <code className="num">?instrument=</code>. Outlook and Teams both read Atom, so it needs nothing

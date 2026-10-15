@@ -154,9 +154,10 @@ export default function TermsPage() {
           Do not hammer it. The site runs on free-tier infrastructure with real limits, and the bulk endpoints are
           rate-limited for that reason. If you want the data in quantity there are proper routes provided for it
           &mdash; the CSV exports and the{" "}
-          <Link href="/feed.xml" className="text-[var(--link)] hover:underline">
+          {/* <a>, not <Link> -- see the note in layout.tsx's footer. */}
+          <a href="/feed.xml" className="text-[var(--link)] hover:underline">
             Atom feed
-          </Link>{" "}
+          </a>{" "}
           &mdash; and they are a great deal more efficient than crawling pages.
         </p>
         <p>
