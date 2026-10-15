@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Prose, Section } from "@/components/Prose";
-import { CONTACT_EMAIL, JURISDICTION, PROCESSORS, PUBLISHER } from "@/lib/legal";
+import { PublisherName } from "@/components/Credit";
+import { CONTACT_EMAIL, JURISDICTION, PROCESSORS } from "@/lib/legal";
 
 export const metadata = {
   title: "Privacy",
@@ -44,8 +45,7 @@ export default function PrivacyPage() {
     >
       <Section id="who" heading="Who publishes this">
         <p>
-          As Amended is published by <strong className="font-medium text-[var(--ink)]">{PUBLISHER}</strong> as an
-          individual. It is not published by, on behalf of, or in the name of any firm or employer, and nothing on
+          As Amended is published by <PublisherName strong /> as an individual. It is not published by, on behalf of, or in the name of any firm or employer, and nothing on
           it is issued in any professional capacity.
         </p>
         <p>
@@ -351,7 +351,7 @@ export default function PrivacyPage() {
       <Section id="contact" heading="Contact and grievances">
         <p>
           Questions about this notice, a request the buttons do not cover, or a grievance about how data is
-          handled, go to {PUBLISHER}
+          handled, go to <PublisherName />
           {CONTACT_EMAIL ? (
             <>
               {" "}

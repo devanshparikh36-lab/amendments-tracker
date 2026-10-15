@@ -7,6 +7,19 @@
 /** Published by an individual, not by a firm. Nothing here is issued by or on behalf of any employer. */
 export const PUBLISHER = "Devansh Parikh";
 
+/* Where the publisher's name points.
+ *
+ * A link out, never a resource pulled in. The LinkedIn mark that sits beside it in the footer is an inline
+ * SVG drawn here, not an image fetched from LinkedIn -- /privacy says in as many words that no script,
+ * stylesheet, font or image is loaded from a third party, and borrowing their logo file would have made
+ * that false for a 300-byte graphic.
+ *
+ * Linking is different from loading: nothing is requested until a reader chooses to leave, and
+ * Referrer-Policy is already strict-origin-when-cross-origin site-wide, so LinkedIn learns the site they
+ * came from and not the provision they were reading.
+ */
+export const PUBLISHER_URL = "https://www.linkedin.com/in/devanshparikhh";
+
 /** Gujarat, India. */
 export const JURISDICTION = "Gujarat, India";
 

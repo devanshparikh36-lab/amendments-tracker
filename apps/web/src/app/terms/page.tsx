@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Prose, Section } from "@/components/Prose";
-import { CONTACT_EMAIL, JURISDICTION, PUBLISHER } from "@/lib/legal";
+import { PublisherName } from "@/components/Credit";
+import { CONTACT_EMAIL, JURISDICTION } from "@/lib/legal";
 
 export const metadata = {
   title: "Terms",
@@ -34,7 +35,7 @@ export default function TermsPage() {
         <p>
           As Amended reproduces Indian tax and corporate law as the regulators publish it, and records which
           notification changed which provision and when. It is published by{" "}
-          <strong className="font-medium text-[var(--ink)]">{PUBLISHER}</strong> as an individual, not by any firm
+          <PublisherName strong /> as an individual, not by any firm
           or employer, and nothing on it is issued in a professional capacity or on anyone&rsquo;s instructions.
         </p>
         <p>Using the site means accepting what follows. If you do not accept it, please do not use the site.</p>

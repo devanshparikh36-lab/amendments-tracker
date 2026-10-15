@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Prose, Section } from "@/components/Prose";
 import { Faq, FaqItem } from "@/components/Faq";
 import { CountUp } from "@/components/CountUp";
-import { PUBLISHER } from "@/lib/legal";
+import { Credit, PublisherName } from "@/components/Credit";
 import { homeStats } from "@/lib/queries";
 
 export const metadata = {
@@ -29,6 +29,11 @@ export default async function AboutPage() {
       dated={false}
       lede="As Amended holds Indian tax and corporate law in the regulator's own words, and records which notification changed which provision, and when."
     >
+      {/* First thing on the page, above the first heading: who made it, before what it does. It lives
+          here and not in the site footer -- a credit repeated under every provision of the Income-tax Act
+          would be a signature on somebody else's work, since the law on those pages is the regulator's. */}
+      <Credit />
+
       <Section id="what" heading="What it does">
         <p>
           It collects Acts, Rules, Regulations and Master Directions from the authorities that issue them, keeps
@@ -181,7 +186,7 @@ export default async function AboutPage() {
 
           <FaqItem q="Who publishes it, and what does it cost?">
             <p>
-              {PUBLISHER}, as an individual &mdash; not a firm, and not in any professional capacity. It is free,
+              <PublisherName />, as an individual &mdash; not a firm, and not in any professional capacity. It is free,
               there is nothing to buy, and there is no intention to charge for it.
             </p>
             <p>
