@@ -30,11 +30,15 @@ export const JURISDICTION = "Gujarat, India";
 export const CONTACT_EMAIL: string | null = "as.amended321@gmail.com";
 
 /** The date the current wording took effect. Bump it when the substance changes, not for a typo. */
-export const LEGAL_UPDATED = "14 October 2026";
+export const LEGAL_UPDATED = "15 October 2026";
 
 /* The processors. Named on the privacy page because a reader is entitled to know whose machines their
- * request passes through, and because two of the three are outside India -- which since accounts shipped
- * means a reader's own data, and not only statutory text and counts, leaves the country. */
+ * request passes through, and because every one of them is outside India -- which since accounts shipped
+ * means a reader's own data, and not only statutory text and counts, leaves the country.
+ *
+ * Google joined the list on 15 October 2026, when the site began sending mail to readers. A service that
+ * carries a message necessarily handles the address it goes to, so it processes personal data and belongs
+ * here. Leaving it off because "we only use it for sending" is the commonest way these lists go stale. */
 export const PROCESSORS = [
   {
     name: "Netlify",
@@ -53,5 +57,11 @@ export const PROCESSORS = [
     role: "File storage",
     where: "Global",
     what: "Holds the regulators' own PDFs. Serves them when a reader opens an official document.",
+  },
+  {
+    name: "Google (Gmail)",
+    role: "Sending email",
+    where: "Global",
+    what: "Carries the two messages this site sends: the note that verifies an address, and the daily digest to readers who have confirmed one. Handling those means handling the address they are sent to. It is not used for anything else, and a reader who never asks for email never has an address pass through it.",
   },
 ] as const;

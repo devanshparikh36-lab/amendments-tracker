@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getPool } from "@/db";
 
@@ -43,13 +44,21 @@ export async function POST(req: Request) {
      * The expiry is computed from confirm_sent_at rather than stored as a deadline, because the mail
      * quotes 48 hours from when it was sent and those two must be the same number.
      */
+    /* The unsubscribe token is minted here, in the same statement, because this is the first instant the
+     * reader can begin receiving anything -- and every digest they get has to carry a working opt-out.
+     * COALESCE so that a second confirmation of the same address, were one ever possible, keeps the token
+     * already printed in digests that have gone out. */
+    const unsub = randomBytes(24).toString("base64url");
     const r = await pool.query<{ email: string }>(
       `UPDATE reader
-          SET alerts_ok_at = now(), alerts_on = TRUE, confirm_token = NULL
+          SET alerts_ok_at = now(),
+              alerts_on = TRUE,
+              confirm_token = NULL,
+              unsub_token = COALESCE(unsub_token, $3)
         WHERE confirm_token = $1
           AND confirm_sent_at > now() - make_interval(hours => $2)
       RETURNING email`,
-      [token, TTL_HOURS],
+      [token, TTL_HOURS, unsub],
     );
 
     if (r.rows.length === 0) {

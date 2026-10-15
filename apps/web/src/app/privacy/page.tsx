@@ -15,8 +15,16 @@ export const metadata = {
  *                               document.cookie appears nowhere but in the comments of this page and /cookies
  *   "no third-party script"  -- nothing external is loaded; the fonts are self-hosted at build time
  *   "90 days"                -- `cli.py forget` runs nightly from the worker and nulls the text
- *   "nothing is sent to you" -- no code outside apps/web reads `reader` or `reader_watch`; grepped, not assumed
+ *   "nothing unverified"     -- the digest selects on alerts_ok_at IS NOT NULL. Tested by sending to a
+ *                               recorder and reading the captured messages, not by reading the query
+ *   "every copy can be stopped" -- a reader copy carries List-Unsubscribe built from that reader's own
+ *                               token; the owner copy carries none. Same test
  *   "deleting is immediate"  -- the forget action is DELETE FROM reader, and every child table cascades
+ *
+ * Revised again on 15 October 2026, when the site began actually sending mail to readers. The version
+ * before it said plainly that nothing was ever sent to a reader -- true when written, and false from the
+ * day the digest learned to read the confirmed list. Google joined the processor list in the same change,
+ * because a service that carries a message handles the address it is going to.
  *
  * This page was rewritten on 14 October 2026 because accounts shipped and the previous wording -- "no
  * account, no cookie, no third-party script of any kind" -- became false on the first of those three while
@@ -126,15 +134,27 @@ export default function PrivacyPage() {
             still records nothing about you, exactly as described above.
           </li>
           <li>
-            <strong className="font-medium text-[var(--ink)]">Whether you have asked for alerts.</strong>{" "}
-            At most one message a day; there is no other cadence to choose.
+            <strong className="font-medium text-[var(--ink)]">
+              Whether you have asked for the digest, and whether the address has been verified.
+            </strong>{" "}
+            At most one message a day; there is no other cadence to choose. Two tokens sit alongside: the
+            single-use one from the verification link, which expires in 48 hours and is erased the moment it is
+            used, and one that identifies your unsubscribe link for as long as you keep receiving mail.
           </li>
         </ul>
         <p>
-          <strong className="font-medium text-[var(--ink)]">Nothing is currently sent to that address.</strong> The
-          alerts switch records a preference and no more: no part of this site&rsquo;s collection or mail machinery
-          reads the accounts, so no message of any kind has ever been sent to a reader. If that changes it will be
-          because you asked for it, and this page and the date at the top will change with it.
+          <strong className="font-medium text-[var(--ink)]">Two messages are sent, and only if you ask.</strong>{" "}
+          Ticking the alerts box sends nothing at all. A <em>Verify this email</em> button then appears, and
+          pressing it sends one note with a link in it. Opening that link is what starts the daily digest. Until
+          then the address is unverified and nothing is sent to it &mdash; which is the entire reason that step
+          exists, since a tick is made by whoever is holding the browser and is not evidence the address is theirs.
+        </p>
+        <p>
+          The digest is one message on days a regulator published something, and nothing at all on quiet days.
+          Every copy carries a one-click unsubscribe, both as a link you can see and as the header that makes your
+          mail client offer a button of its own. Unsubscribing stops the mail and touches nothing else: your
+          follows, bookmarks and notes stay exactly as they are, and switching it back on later needs no second
+          verification, because the address was already proved once.
         </p>
       </Section>
 
@@ -217,7 +237,7 @@ export default function PrivacyPage() {
       </Section>
 
       <Section id="processors" heading="Whose machines are involved">
-        <p>Running a site means using someone&rsquo;s infrastructure. Three services are involved and no others.</p>
+        <p>Running a site means using someone&rsquo;s infrastructure. Four services are involved and no others.</p>
         <ul className="space-y-3">
           {PROCESSORS.map((p) => (
             <li key={p.name} className="panel panel-body">
@@ -231,11 +251,12 @@ export default function PrivacyPage() {
           ))}
         </ul>
         <p>
-          Two of those are outside India, so using this site involves transferring data abroad. If you only read,
-          what crosses a border is statutory text and counts that identify nobody. If you have an account, the
-          account is held in Singapore &mdash; so your address, your notes and your saved searches are stored
-          outside India. That follows from running on free infrastructure, and it is a real consequence, so it is
-          said here rather than left to be inferred from a list of service names.
+          Every one of those is outside India, so using this site involves transferring data abroad. If you only
+          read, what crosses a border is statutory text and counts that identify nobody. If you have an account,
+          it is held in Singapore &mdash; so your address, your notes and your saved searches are stored outside
+          India &mdash; and if you have asked for the digest, your address also passes through Google in order to
+          be mailed. That follows from running on free infrastructure, and it is a real consequence, so it is said
+          here rather than left to be inferred from a list of service names.
         </p>
       </Section>
 

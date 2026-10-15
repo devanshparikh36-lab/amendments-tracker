@@ -284,6 +284,7 @@ def build_digest_html(
     day: date,
     since: datetime | None = None,
     arrivals: list[dict] | None = None,
+    unsubscribe_url: str | None = None,
 ) -> str:
     site = site_url.rstrip("/")
     sans = "-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif"
@@ -434,7 +435,21 @@ def build_digest_html(
         f"<div style='font:400 11.5px/1.6 {sans};color:{INK_3};padding-top:16px;border-top:1px solid {RULE};"
         f"margin-top:20px'>Amendments are shown as references and are never applied to the statutory text, so "
         f"what you read is the regulator&rsquo;s own wording. A research aid, not legal advice.</div>"
-        f"</td></tr>"
+        # A visible way out, for the reader's copy only.
+        #
+        # The List-Unsubscribe headers cover Gmail and Outlook, which draw their own control from them. This
+        # is for every other client, and for the reader who looks for the word rather than the button. The
+        # owner's copy is built without a URL and gets no line: there is nothing for them to unsubscribe
+        # from, and an opt-out link on your own digest invites you to break your own alerting.
+        + (
+            f"<div style='font:400 11.5px/1.6 {sans};color:{INK_3};padding-top:10px'>"
+            f"You are getting this because you confirmed this address on As Amended. "
+            f"<a href='{unsubscribe_url}' style='color:{INK_3};text-decoration:underline'>Stop these emails</a>"
+            f".</div>"
+            if unsubscribe_url
+            else ""
+        )
+        + f"</td></tr>"
     )
 
     # A whole document rather than a fragment, so the colour-scheme meta tags exist. Without them a client in
@@ -462,6 +477,7 @@ def build_digest_text(
     site_url: str,
     day: date,
     arrivals: list[dict] | None = None,
+    unsubscribe_url: str | None = None,
 ) -> str:
     """The same thing as plain text.
 
@@ -503,20 +519,29 @@ def build_digest_text(
                     lines.append(f"    Official PDF: {pdf}")
     lines += ["", site, "", "Amendments are shown as references and are never applied to the statutory text.",
               "A research aid, not legal advice."]
+    if unsubscribe_url:
+        lines += ["", "You are getting this because you confirmed this address on As Amended.",
+                  "To stop these emails: " + unsubscribe_url]
     return "\n".join(lines)
 
 
-def _unsubscribe_headers() -> dict[str, str]:
+def _unsubscribe_headers(url: str | None = None) -> dict[str, str]:
     """RFC 8058, and both headers or neither.
 
     The -Post header is what lets a client offer one-click unsubscribe in its own interface rather than
-    sending the reader off to a page; List-Unsubscribe on its own does nothing in most clients. Empty until
-    DIGEST_UNSUBSCRIBE is set, which only starts to matter once the digest goes to anyone but its owner.
+    sending the reader off to a page; List-Unsubscribe on its own does nothing in most clients.
+
+    The URL is now per reader, built from their own token, rather than the one DIGEST_UNSUBSCRIBE address
+    for everybody -- a shared link cannot tell the sender who pressed it, so it cannot actually unsubscribe
+    anyone. DIGEST_UNSUBSCRIBE remains as a fallback for a caller that has no reader to name.
+
+    Empty for the owner's copy. There is nothing for them to unsubscribe from.
     """
-    if not settings.digest_unsubscribe:
+    target = url or settings.digest_unsubscribe
+    if not target:
         return {}
     return {
-        "List-Unsubscribe": f"<{settings.digest_unsubscribe}>",
+        "List-Unsubscribe": f"<{target}>",
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     }
 
@@ -541,6 +566,7 @@ def build_message(
     body_text: str | None,
     from_addr: str,
     to_addrs: list[str],
+    unsubscribe_url: str | None = None,
 ) -> EmailMessage:
     """The MIME message, kept separate from sending it so its shape can be tested without a password.
 
@@ -557,7 +583,7 @@ def build_message(
     msg["Message-ID"] = make_msgid(domain="as-amended")
     if settings.digest_reply_to:
         msg["Reply-To"] = settings.digest_reply_to
-    for k, v in _unsubscribe_headers().items():
+    for k, v in _unsubscribe_headers(unsubscribe_url).items():
         msg[k] = v
     # A text part always, even when the caller passed none. A message with no text alternative scores worse
     # with spam filters, which costs more than these few lines of fallback.
@@ -566,8 +592,16 @@ def build_message(
     return msg
 
 
-def _send_via_smtp(subject: str, body_html: str, body_text: str | None) -> bool:
-    msg = build_message(subject, body_html, body_text, smtp_from(), settings.digest_to)
+def _send_via_smtp(
+    subject: str,
+    body_html: str,
+    body_text: str | None,
+    to: list[str] | None = None,
+    unsubscribe_url: str | None = None,
+) -> bool:
+    msg = build_message(
+        subject, body_html, body_text, smtp_from(), to or settings.digest_to, unsubscribe_url=unsubscribe_url
+    )
     # A timeout, because this runs unattended. Without one a half-open connection hangs until the job's own
     # 15-minute limit kills it, turning a transient network fault into a quarter-hour of runner time.
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=30) as smtp:
@@ -581,7 +615,13 @@ def _send_via_smtp(subject: str, body_html: str, body_text: str | None) -> bool:
     return True
 
 
-def _send_via_resend(subject: str, body_html: str, body_text: str | None) -> bool:
+def _send_via_resend(
+    subject: str,
+    body_html: str,
+    body_text: str | None,
+    to: list[str] | None = None,
+    unsubscribe_url: str | None = None,
+) -> bool:
     import resend
 
     resend.api_key = settings.resend_api_key
@@ -589,7 +629,7 @@ def _send_via_resend(subject: str, body_html: str, body_text: str | None) -> boo
         # Resend's shared sender reaches only the Resend account's own address. Set DIGEST_FROM to an
         # address on a verified domain to reach anyone else, and to lose the visible "via resend.dev".
         "from": settings.digest_from or "As Amended <onboarding@resend.dev>",
-        "to": settings.digest_to,
+        "to": to or settings.digest_to,
         "subject": subject,
         "html": body_html,
     }
@@ -597,14 +637,20 @@ def _send_via_resend(subject: str, body_html: str, body_text: str | None) -> boo
         payload["text"] = body_text
     if settings.digest_reply_to:
         payload["reply_to"] = settings.digest_reply_to
-    headers = _unsubscribe_headers()
+    headers = _unsubscribe_headers(unsubscribe_url)
     if headers:
         payload["headers"] = headers
     resend.Emails.send(payload)
     return True
 
 
-def send_digest(subject: str, body_html: str, body_text: str | None = None) -> bool:
+def send_digest(
+    subject: str,
+    body_html: str,
+    body_text: str | None = None,
+    to: list[str] | None = None,
+    unsubscribe_url: str | None = None,
+) -> bool:
     """Send it, by whichever transport is configured. False means it did not go.
 
     SMTP wins when it is configured, and Resend stays as a fallback rather than being deleted -- selected
@@ -616,13 +662,14 @@ def send_digest(subject: str, body_html: str, body_text: str | None = None) -> b
     carried by tomorrow's mail rather than falling into a window that moved on without them. It also exits
     the workflow non-zero, which is what turns a failed digest into mail from GitHub instead of silence.
     """
-    if not settings.digest_to:
-        log.info("DIGEST_TO not set; skipping digest email")
+    recipients = to if to is not None else settings.digest_to
+    if not recipients:
+        log.info("no recipients for this digest; skipping")
         return False
 
     if _smtp_ready():
         try:
-            ok = _send_via_smtp(subject, body_html, body_text)
+            ok = _send_via_smtp(subject, body_html, body_text, recipients, unsubscribe_url)
             log.info("digest sent via SMTP (%s)", settings.smtp_host)
             return ok
         except smtplib.SMTPAuthenticationError as exc:
@@ -642,7 +689,7 @@ def send_digest(subject: str, body_html: str, body_text: str | None = None) -> b
 
     if settings.resend_api_key:
         try:
-            ok = _send_via_resend(subject, body_html, body_text)
+            ok = _send_via_resend(subject, body_html, body_text, recipients, unsubscribe_url)
             log.info("digest sent via Resend")
             return ok
         except Exception as exc:

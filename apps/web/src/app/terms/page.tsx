@@ -126,7 +126,9 @@ export default function TermsPage() {
         </p>
         <p>
           Please use an address that is yours. Entering someone else&rsquo;s to reach their lists is not a
-          technical feat and is not authorised by these terms.
+          technical feat and is not authorised by these terms. It is also why the digest is sent only to an
+          address somebody has verified by opening a link sent to it: an address you type is not an address you
+          have shown is yours.
         </p>
         <p>
           <strong className="font-medium text-[var(--ink)]">Your notes are yours.</strong> No ownership of them is

@@ -12,6 +12,7 @@ import time
 import traceback
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import quote
 
 import psycopg
 
@@ -1746,6 +1747,42 @@ def prune_before_cutoff() -> dict[str, int]:
 
 # ----------------------------------------------------------------------------- digest
 
+def confirmed_readers() -> list[dict]:
+    """Addresses that may lawfully be mailed, and the token each unsubscribe link needs.
+
+    Three conditions, and all three are load-bearing:
+
+      alerts_on             the reader still wants it. Unticking the box, or pressing unsubscribe in
+                            Gmail, clears this and is the only thing either of those has to do.
+      alerts_ok_at NOT NULL the address was proved reachable by somebody opening a link sent to it. A tick
+                            alone is a wish typed into a form by whoever was holding the browser, which is
+                            not evidence the address belongs to them.
+      unsub_token NOT NULL  there is a working way out. Mailing somebody with no opt-out is the one
+                            failure here that cannot be undone by fixing the code afterwards.
+
+    The last is defence rather than expectation: confirming an address mints the token in the same
+    statement, so a confirmed reader without one should not exist. If one ever does, the right behaviour is
+    to leave them unmailed rather than to send mail nobody can stop.
+    """
+    with db.transaction() as conn:
+        return db.fetch_all(
+            conn,
+            """
+            SELECT email, unsub_token
+              FROM reader
+             WHERE alerts_on
+               AND alerts_ok_at IS NOT NULL
+               AND unsub_token IS NOT NULL
+             ORDER BY created_at
+            """,
+            (),
+        )
+
+
+def _unsubscribe_url(token: str) -> str:
+    return f"{settings.site_url.rstrip('/')}/api/reader/unsubscribe?t={quote(token, safe='')}"
+
+
 def send_daily_digest(day: date | None = None, force: bool = False, since: datetime | None = None) -> str:
     """Mail the day's findings, or stay quiet if there were none.
 
@@ -1900,12 +1937,57 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
         news_docs, merges, cannot, diffs, settings.site_url, day, since=since, arrivals=arrivals
     )
     text_body = email_notify.build_digest_text(news_docs, settings.site_url, day, arrivals=arrivals)
+    # The owner's copy, to DIGEST_TO, with no unsubscribe anything. This one is the operator's own
+    # alerting and its success is what decides whether the run counts as sent.
     ok = email_notify.send_digest(subject, html_body, text_body)
+
+    # Then every confirmed reader, one message each.
+    #
+    # One per recipient rather than one message addressed to all of them, and this is not a style choice:
+    # a shared To: header shows every reader the address of every other reader, which for a site read by
+    # tax practitioners is a client list. BCC would hide them from each other and still put the whole list
+    # in one envelope, where a single misconfiguration exposes it. A message each costs one Gmail
+    # recipient per reader out of roughly 500 a day, which is the right thing to spend it on.
+    #
+    # The body is rebuilt per reader because the unsubscribe link is theirs alone. A shared link cannot
+    # identify who pressed it, which makes it a link that cannot unsubscribe anybody.
+    readers = confirmed_readers()
+    delivered, failed = 0, 0
+    for r in readers:
+        address = (r.get("email") or "").strip()
+        token = r.get("unsub_token")
+        if not address or not token:
+            continue
+        unsub = _unsubscribe_url(token)
+        reader_html = email_notify.build_digest_html(
+            news_docs, merges, cannot, diffs, settings.site_url, day,
+            since=since, arrivals=arrivals, unsubscribe_url=unsub,
+        )
+        reader_text = email_notify.build_digest_text(
+            news_docs, settings.site_url, day, arrivals=arrivals, unsubscribe_url=unsub,
+        )
+        # Each reader independently. One bad address must not stop the rest of the list, and it must not
+        # affect whether the run is recorded as sent -- that is the owner's copy, already decided above.
+        if email_notify.send_digest(subject, reader_html, reader_text, to=[address], unsubscribe_url=unsub):
+            delivered += 1
+        else:
+            failed += 1
+            # The address is deliberately absent. A log line pairing somebody's address with a failure is a
+            # record of who reads this site, which is what the rest of this codebase avoids keeping.
+            log.warning("digest: a reader copy failed to send")
+
+    if readers:
+        log.info("digest: %d reader copies sent, %d failed", delivered, failed)
+
+    detail = f"{len(new_docs)} new docs; readers {delivered} sent"
+    if failed:
+        detail += f", {failed} failed"
+
     with db.transaction() as conn:
         db.execute(
             conn,
             "INSERT INTO notification_log (channel, ok, sent_at, detail) VALUES ('email', %s, %s, %s)",
-            (ok, cutoff, f"{len(new_docs)} new docs"),
+            (ok, cutoff, detail),
         )
     return "sent" if ok else "not-sent"
 

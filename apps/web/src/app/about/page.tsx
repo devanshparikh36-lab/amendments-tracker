@@ -161,8 +161,9 @@ export default async function AboutPage() {
             </p>
             <p>
               Even then there is still no cookie: the account is kept in your browser&rsquo;s own local storage and
-              is never attached to an ordinary page request. Nothing is ever sent to the address today &mdash; the
-              alerts switch records a preference and no mail machinery reads it yet.
+              is never attached to an ordinary page request. And nothing is sent to an address until somebody
+              opens a link sent to that address &mdash; ticking the box is not enough, deliberately, because a
+              tick is made by whoever is holding the browser.
             </p>
             <p>
               The full account is in the{" "}
@@ -203,6 +204,17 @@ export default async function AboutPage() {
           are noted here.
         </p>
         <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <span className="num text-[var(--ink-3)]">15 October 2026</span> &mdash; the daily digest can now be
+            emailed to readers who ask for it. Nothing is sent to an address until somebody opens a link sent to
+            that address, and every message carries a one-click unsubscribe. Google is now listed as a processor
+            on the{" "}
+            <Link href="/privacy" className="text-[var(--link)] hover:underline">
+              privacy notice
+            </Link>
+            , because the service carrying a message necessarily handles the address it is going to. The weekly
+            option was removed before it had ever sent anything; the digest is daily or nothing.
+          </li>
           <li>
             <span className="num text-[var(--ink-3)]">14 October 2026</span> &mdash; optional accounts added. Enter
             an email address and the site remembers your follows, bookmarks, notes and saved searches; it is never
