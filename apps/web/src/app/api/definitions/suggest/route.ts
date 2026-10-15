@@ -11,15 +11,23 @@ import { suggestDefinedTerms } from "@/lib/queries";
  * everyone types the same first two or three letters, so the common prefixes are served without the regex
  * scan running at all.
  *
- * force-dynamic, and it is not optional: `export const revalidate` here answered every prefix with the
- * first one typed after a deploy. Netlify builds its CDN cache key from a `Netlify-Vary: query=...` header
- * the Next runtime emits, and on a route Next considers cacheable that header lists only Next's internal
- * params -- so `q` leaves the key and one stored answer serves every prefix for the whole TTL. Caught on
- * production, where ?q=inp returned the six "capital ..." terms. The masthead's /api/suggest was right all
- * along by declaring force-dynamic; this one copied the wrong neighbour.
+ * The Netlify-Vary header below is what makes this correct, and it is not optional.
  *
- * Neither development nor the build shows it: dev has no CDN and Next disables the data cache there. The
- * Cache-Control header below is still honoured, so the edge caching this wanted is not lost.
+ * Netlify does not key its CDN cache on the whole URL. The Next runtime emits
+ * `netlify-vary: query=__nextDataReq|_rsc`, so only those two parameters form part of the key and every
+ * value of `q` is the same entry -- the first prefix anyone typed after a deploy was then served to
+ * everybody for the whole hour. On production, ?q=inp answered with the six "capital ..." terms and
+ * ?q=cap suggested "digital signature".
+ *
+ * Worth recording how long that took to pin down, because the wrong fix looked right twice. First
+ * `export const revalidate` was swapped for force-dynamic, on the theory that Next only emitted the
+ * restricted header for routes it considered cacheable. That shipped and changed nothing. The actual
+ * mechanism was documented forty lines into /api/suggest the whole time, which had hit this exact bug
+ * earlier and fixed it with the one line below -- and comparing the two files' `export const` declarations,
+ * rather than reading them, is what missed it.
+ *
+ * Neither development nor the build can show this: dev has no CDN. It is only visible by asking production
+ * two different questions and comparing the answers.
  */
 
 export const dynamic = "force-dynamic";
@@ -35,7 +43,11 @@ export async function GET(req: NextRequest) {
       {
         // An hour at the edge. A defined term does not stop being defined, and the set changes only when
         // collection adds an instrument -- once a day at most.
-        headers: { "cache-control": "public, max-age=60, s-maxage=3600, stale-while-revalidate=86400" },
+        headers: {
+          "cache-control": "public, max-age=60, s-maxage=3600, stale-while-revalidate=86400",
+          // Without this, every prefix shares one cache entry. See the note at the top of this file.
+          "Netlify-Vary": "query=q",
+        },
       },
     );
   } catch (err) {

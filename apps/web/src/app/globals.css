@@ -353,6 +353,22 @@ summary:focus-visible,
   color: var(--on-accent);
 }
 
+/* A quieter .btn, for an action that sits inside a block rather than ending one.
+ *
+ * The verification button is the case this was written for: it lives under a checkbox, among rows of plain
+ * text links, and at full size it was the heaviest thing in the account panel -- which read as the panel's
+ * main action when it is a step in one setting. Smaller type and tighter padding put it back in proportion
+ * without making it look disabled.
+ *
+ * Still 28px tall at this padding, so it stays above the 24px minimum target size in WCAG 2.5.8. Shrinking
+ * a control is a legibility decision and stops being one the moment it is hard to hit.
+ */
+.btn-sm {
+  padding: 0.25rem 0.6rem;
+  font-size: 12px;
+  gap: 0.3rem;
+}
+
 .field {
   border: 1px solid var(--rule-strong);
   background: var(--paper);

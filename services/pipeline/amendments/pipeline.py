@@ -1951,12 +1951,28 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
     #
     # The body is rebuilt per reader because the unsubscribe link is theirs alone. A shared link cannot
     # identify who pressed it, which makes it a link that cannot unsubscribe anybody.
+    # Anyone already reached by the owner's copy is skipped here.
+    #
+    # The operator's own address is in DIGEST_TO permanently, and they can also sign up on the site like
+    # any other reader -- which is not a mistake, it is the obvious thing to do while testing the feature.
+    # Without this they would then get the same digest twice every morning, and the second copy would carry
+    # an unsubscribe link that silently does nothing to the first, because DIGEST_TO is a secret and not a
+    # reader row. Two copies is the visible symptom; an opt-out that does not opt you out is the one that
+    # would waste an afternoon.
+    #
+    # Case-insensitive, because an address typed into a form and an address typed into a secret are typed
+    # by the same person on different days.
+    already = {a.strip().lower() for a in settings.digest_to if a and a.strip()}
+
     readers = confirmed_readers()
-    delivered, failed = 0, 0
+    delivered, failed, skipped = 0, 0, 0
     for r in readers:
         address = (r.get("email") or "").strip()
         token = r.get("unsub_token")
         if not address or not token:
+            continue
+        if address.lower() in already:
+            skipped += 1
             continue
         unsub = _unsubscribe_url(token)
         reader_html = email_notify.build_digest_html(
@@ -1977,11 +1993,18 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
             log.warning("digest: a reader copy failed to send")
 
     if readers:
-        log.info("digest: %d reader copies sent, %d failed", delivered, failed)
+        log.info(
+            "digest: %d reader copies sent, %d failed, %d already covered by DIGEST_TO",
+            delivered,
+            failed,
+            skipped,
+        )
 
     detail = f"{len(new_docs)} new docs; readers {delivered} sent"
     if failed:
         detail += f", {failed} failed"
+    if skipped:
+        detail += f", {skipped} deduped"
 
     with db.transaction() as conn:
         db.execute(

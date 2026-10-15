@@ -370,39 +370,47 @@ export function Account() {
                   </div>
                 </div>
 
+                {/* The checkbox sits in its own flex column so that the label, the helper line and the
+                    verify button all start at the same x. They used to be siblings with the button
+                    carrying `pl-6` to fake the indent -- a number that happened to match the checkbox
+                    plus its gap, and would stop matching the moment either changed. Alignment that comes
+                    out of the layout cannot drift; alignment typed as a padding value always eventually
+                    does. */}
                 <div className="mt-4 border-t border-[var(--rule)] pt-4">
-                  <label className="flex items-start gap-2.5 text-[13.5px] text-[var(--ink)]">
+                  <div className="flex items-start gap-2.5">
                     <input
+                      id="acct-alerts"
                       type="checkbox"
                       checked={!!state?.alertsOn}
                       onChange={(e) => setAlerts(e.currentTarget.checked)}
                       disabled={busy || !state}
-                      className="mt-0.5"
+                      className="mt-0.5 shrink-0"
                     />
-                    <span>
-                      Email me when something lands
-                      <span className="mt-0.5 block text-[12px] leading-snug text-[var(--ink-3)]">
+                    <div className="min-w-0 flex-1">
+                      <label htmlFor="acct-alerts" className="block text-[13.5px] text-[var(--ink)]">
+                        Email me when something lands
+                      </label>
+                      <p className="mt-0.5 text-[12px] leading-snug text-[var(--ink-3)]">
                         {state?.alertsOn && !state?.alertsConfirmed
                           ? "Nothing is sent until the address is confirmed. Press the button below and we will mail you a link."
                           : "What the regulators published that day, on the days they publish. Never more than one a day."}
-                      </span>
-                    </span>
-                  </label>
+                      </p>
 
-                  {/* The daily/weekly pair used to sit here. Removed in 0017: one cadence, so a choice
-                      between it and nothing is a control that cannot be wrong, which is a control worth
-                      not drawing. The copy above already says at most one a day. */}
+                      {/* The daily/weekly pair used to sit here. Removed in 0017: one cadence, so a choice
+                          between it and nothing is a control that cannot be wrong, which is a control
+                          worth not drawing. The copy above already says at most one a day. */}
 
-                  {/* Visible only while there is something to do: alerts asked for, address not yet
-                      confirmed. Once confirmed this disappears rather than becoming a disabled control,
-                      because a button that cannot be pressed is a question the reader has to answer. */}
-                  {state?.alertsOn && !state?.alertsConfirmed && (
-                    <div className="mt-2.5 pl-6">
+                      {/* Visible only while there is something to do: alerts asked for, address not yet
+                          confirmed. Once confirmed this disappears rather than becoming a disabled
+                          control, because a button that cannot be pressed is a question the reader has
+                          to answer. */}
+                      {state?.alertsOn && !state?.alertsConfirmed && (
+                    <div className="mt-2">
                       <button
                         type="button"
                         onClick={sendVerification}
                         disabled={verify === "sending"}
-                        className="btn btn-primary text-[12.5px]"
+                        className="btn btn-primary btn-sm"
                       >
                         {verify === "sending"
                           ? "Sending…"
@@ -429,7 +437,9 @@ export function Account() {
                         </p>
                       )}
                     </div>
-                  )}
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 {seen.length > 0 && (
