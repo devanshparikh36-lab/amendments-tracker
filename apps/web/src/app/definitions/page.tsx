@@ -43,8 +43,25 @@ function Hit({ h, term }: { h: DefinitionHit; term: string }) {
   // A hit from a PDF-served instrument has no provision number -- those rows are deleted at seed time and
   // the page is all there is. It still gets a destination: the reading view opened at that page, with the
   // term carried through so the in-PDF search box arrives already filled in.
+  /* A text fragment, so the browser lands the reader on the words rather than on the section holding them.
+   *
+   * Section 2 of the Income-tax Act is the definitions section: one provision carrying a hundred-odd
+   * clauses. Linking to ?p=2 and stopping there dropped the reader at the top of all of them to find
+   * "capital asset" by eye, which is most of the work they came here to avoid. The PDF branch already
+   * solved its half with ?pq=; this brings the HTML branch level.
+   *
+   * `#:~:text=` is done by the browser: it scrolls to the first match and highlights it in the browser's
+   * own colours, with no JavaScript of ours involved. That last part is the point. The version before this
+   * was a client component that found the text and painted it, and it cost three separate attempts to get
+   * wrong -- marks wiped by hydration, a two-pass render that only worked under hot reload, and finally a
+   * production hydration failure (React #418) that appeared purely from mounting a null-rendering client
+   * component beside the provision body. A browser feature has none of that surface.
+   *
+   * Unsupported browsers ignore the fragment and land on the section, which is exactly the old behaviour,
+   * so the floor here is what shipped before and the ceiling is the definition itself. */
+  const fragment = h.number ? `#:~:text=${encodeURIComponent(term)}` : "";
   const sectionHref = h.number
-    ? `/browse/${h.slug}/text?p=${encodeURIComponent(h.number)}`
+    ? `/browse/${h.slug}/text?p=${encodeURIComponent(h.number)}${fragment}`
     : h.pdf_page
       ? `/browse/${h.slug}/text?page=${h.pdf_page}&pq=${encodeURIComponent(term)}`
       : `/browse/${h.slug}`;
@@ -59,10 +76,12 @@ function Hit({ h, term }: { h: DefinitionHit; term: string }) {
   return (
     <li className="border-b border-[var(--rule)] py-3 last:border-0">
       <div className="flex flex-wrap items-baseline gap-x-2">
-        <Link href={sectionHref} className="serif text-[15px] font-semibold text-[var(--link)] hover:underline">
+        {/* A plain anchor, not <Link>: a text fragment is only honoured on a document load, and a
+            client-side navigation would silently drop it. See the note on sectionHref. */}
+        <a href={sectionHref} className="serif text-[15px] font-semibold text-[var(--link)] hover:underline">
           {h.short_code}
           {h.number ? ` — ${h.number}` : h.pdf_page ? ` — page ${h.pdf_page}` : ""}
-        </Link>
+        </a>
         {h.heading && <span className="text-[13px] text-[var(--ink-2)]">{h.heading.replace(/[.\-\s]+$/, "")}</span>}
         <span className="meta">{KIND_LABEL[h.kind] ?? h.kind}</span>
         {h.in_definitions_section && (
@@ -80,11 +99,11 @@ function Hit({ h, term }: { h: DefinitionHit; term: string }) {
         …<Snippet text={h.snippet} term={term} />…
       </p>
       <p className="mt-1 text-[12px]">
-        <Link href={sectionHref} className="text-[var(--link)] hover:underline">
+        <a href={sectionHref} className="text-[var(--link)] hover:underline">
           {h.number
-            ? `Read the ${KIND_LABEL[h.kind]?.toLowerCase() === "act" ? "section" : "provision"}`
+            ? `Read it in the ${KIND_LABEL[h.kind]?.toLowerCase() === "act" ? "section" : "provision"}`
             : "Open at this page"}
-        </Link>
+        </a>
         {pdfHref && (
           <>
             {" · "}

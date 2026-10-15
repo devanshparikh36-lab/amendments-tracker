@@ -1204,7 +1204,7 @@ export async function suggestDefinedTerms(prefix: string, limit = 8): Promise<st
   if (!/^[a-z][a-z ’'-]*$/.test(cleaned)) return [];
   const rows = await query<{ term: string }>(
     `SELECT term FROM (
-       SELECT lower(btrim(m[1])) AS term
+       SELECT lower(btrim(m[1], ' ,-')) AS term
          FROM provision_version v,
               LATERAL regexp_matches(v.text,
                 '["“‘]\\s*([A-Za-z][A-Za-z ,\\-]{2,48}?)\\s*["”’][^.;]{0,90}?\\y(means|includes|shall mean)\\y',
@@ -1213,7 +1213,22 @@ export async function suggestDefinedTerms(prefix: string, limit = 8): Promise<st
      ) x
       WHERE term LIKE $1 || '%'
       GROUP BY term
-      ORDER BY count(*) DESC, length(term), term
+      /* Fewest words first, and that ordering is the whole difference between a useful list and a list.
+       *
+       * Frequency alone put "capital sum" above "capital asset" and "capital value of such units" above
+       * "capital goods" -- because the ranking measured how often a phrase is defined across the corpus,
+       * which is not what somebody typing three letters is asking. They are asking for the term they
+       * already have in mind, and that is almost always the short canonical one.
+       *
+       * So: an exact hit first, then by word count, and only then by how often it is defined. Frequency
+       * still decides between terms of equal length, where it is a fair proxy for which one a reader
+       * means. string_to_array rather than a regexp_split: this SQL lives inside a JS template literal,
+       * where every backslash has to be doubled, and a silently de-escaped \s once cost an afternoon. */
+      ORDER BY (term = $1) DESC,
+               array_length(string_to_array(term, ' '), 1) ASC,
+               count(*) DESC,
+               length(term) ASC,
+               term
       LIMIT $2`,
     [cleaned, limit],
   );
