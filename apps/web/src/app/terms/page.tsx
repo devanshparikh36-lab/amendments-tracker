@@ -68,12 +68,9 @@ export default function TermsPage() {
       <Section id="accuracy" heading="Accuracy, completeness and currency">
         <p>
           The collection is automated. It can be out of date, it can miss a document, it can file one against the
-          wrong provision, and a regulator can publish something in a form it cannot read. The site reports on its
-          own condition rather than hiding it: see{" "}
-          <Link href="/status" className="text-[var(--link)] hover:underline">
-            Collection status
-          </Link>{" "}
-          for what last ran and what failed.
+          wrong provision, and a regulator can publish something in a form it cannot read. Every page carries the
+          time the collector last ran, and every provision links to the regulator&rsquo;s own document &mdash;
+          which is the authority, and the check worth making before relying on anything here.
         </p>
         <p>
           The site is therefore provided as it stands and as it is available, with no warranty of accuracy,

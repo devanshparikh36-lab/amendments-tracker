@@ -241,9 +241,6 @@ export default async function Home({ searchParams }: { searchParams: Search }) {
             <Link href="/browse" className="hover:text-[var(--link)] hover:underline">
               Every tracked instrument
             </Link>
-            <Link href="/status" className="hover:text-[var(--link)] hover:underline">
-              Collection status
-            </Link>
           </div>
         </section>
       )}

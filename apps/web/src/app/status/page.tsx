@@ -1,17 +1,57 @@
 ﻿import Link from "next/link";
 import { Breadcrumbs } from "@/components/PageHeader";
 import { Badge } from "@/components/Badge";
+import { authorised } from "@/lib/admin";
 import { fmtDate, fmtDateTime } from "@/lib/format";
 import { provisionHref } from "@/lib/lookup";
 import { jobStats, pageViews, recentEffects, sourceGaps, sourceRuns } from "@/lib/queries";
 
-// Deliberately dynamic: this page answers "is collection alive right now", and a cached answer to that
-// question is worse than a slow one.
+/* Behind the admin key since 15 October 2026.
+ *
+ * It was public, deliberately and with a stated rationale -- anyone could audit how current the library
+ * was and what had failed, which is a good thing for a site asking to be trusted about the law. That was
+ * reversed on the owner's instruction, and the honest reason to record is that it is now an operational
+ * console rather than a public report: it carries run timings, job backlogs, failed fetches and per-page
+ * view counts, which answer "how is my pipeline" and not "can I rely on this provision".
+ *
+ * What a reader loses is the self-reporting the terms used to point at, so that clause was rewritten in
+ * the same change rather than left pointing at a door that no longer opens. The freshness signal readers
+ * actually used -- "Last checked <time>" in the masthead -- stays, as text rather than a link.
+ */
 export const dynamic = "force-dynamic";
 
-export const metadata = { title: "Collection status" };
+export const metadata = { title: "Collection status", robots: { index: false, follow: false } };
 
-export default async function StatusPage() {
+export default async function StatusPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ key?: string }>;
+}) {
+  const { key } = await searchParams;
+  if (!authorised(key)) {
+    return (
+      <div className="mx-auto max-w-lg py-10">
+        <div className="panel panel-body">
+          <p className="eyebrow">Collection status</p>
+          <h1 className="serif mt-1 text-[20px] font-semibold text-[var(--ink)]">Not available</h1>
+          <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--ink-2)]">
+            This page is part of the admin console. If you are the owner, append{" "}
+            <code className="num">?key=</code> and the value of <code className="num">ADMIN_KEY</code>.
+          </p>
+          <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--ink-2)]">
+            Every page carries the time collection last ran in the masthead, and each provision links to the
+            regulator&rsquo;s own document &mdash; which is the authority either way.
+          </p>
+          <p className="mt-3 text-[13px]">
+            <Link href="/" className="text-[var(--link)] hover:underline">
+              Go to the site &rarr;
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   const [runs, jobs, effects, gaps, views] = await Promise.all([
     sourceRuns(),
     jobStats(),

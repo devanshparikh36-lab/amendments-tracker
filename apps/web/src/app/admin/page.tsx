@@ -133,6 +133,16 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       <p className="eyebrow">Admin</p>
       <h1 className="serif mt-1 text-[25px] font-semibold text-[var(--ink)]">Readers</h1>
 
+      {/* The other half of the console. /status carries the same key, so this hands it over rather than
+          making the owner paste it a second time -- which is the sort of friction that ends with a key
+          written down somewhere it should not be. */}
+      <p className="mt-1 text-[13px]">
+        <Link href={`/status?key=${encodeURIComponent(key ?? "")}`} className="text-[var(--link)] hover:underline">
+          Collection status &rarr;
+        </Link>
+        <span className="ml-2 text-[var(--ink-4)]">what last ran, what failed, what is queued</span>
+      </p>
+
       <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-y border-[var(--rule)] py-3 text-[13px]">
         <Stat n={t.readers} label="signed up" />
         <Stat n={t.active} label="seen in 7 days" />

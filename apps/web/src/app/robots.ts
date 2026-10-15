@@ -10,18 +10,10 @@ import { abs } from "@/lib/site";
  * CSV. A crawler walking them would burn the free-tier allowances on responses that are useless in a result
  * page, and `/api/suggest?q=` in particular is an unbounded space of URLs.
  *
- * `/status` and `/quality` are maintenance screens. They are public on purpose -- anyone may audit how the
- * collection is doing -- but they describe the machinery rather than the law, and a search for an Act should
- * never land on a table of failed jobs. Disallow keeps them out of the index without hiding them from a
- * person who is given the link.
- *
- * `/you` and `/admin` hold one reader's list and the owner's view of all of them. Neither renders anything
- * for a crawler -- `/you` is empty without a browser that knows who it is -- and neither should appear in a
- * result page. `/admin` is additionally refused outright without the key; this only keeps it out of the
- * index, which is a separate and weaker thing.
- *
- * `/search` and `/find` are excluded for the ordinary reason: a search results page is a different page for
- * every query, so it is an infinite crawl surface and the results it holds are already indexed as themselves.
+ * `/status` and `/quality` are operational screens rather than public reports. /status moved behind
+ * ADMIN_KEY on 15 October 2026; /quality is still reachable but is listed here so neither is indexed.
+ * Disallowing them is about keeping crawlers off pages that are expensive and uninteresting, not about
+ * secrecy -- robots.txt protects nothing, which is why /status has a key and not just a disallow.
  */
 export default function robots(): MetadataRoute.Robots {
   return {

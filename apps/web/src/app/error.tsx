@@ -23,8 +23,10 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
         <Link href="/" className="btn">
           Home
         </Link>
-        <Link href="/status" className="btn">
-          Collection status
+        {/* "Collection status" used to sit here. It moved behind the admin key, and pointing a reader
+            who has just hit an error at a page that will also refuse them is two failures instead of one. */}
+        <Link href="/about" className="btn">
+          About this site
         </Link>
       </div>
       {error.digest && (

@@ -17,6 +17,15 @@ export const PUBLISHER = "Devansh Parikh";
  * Linking is different from loading: nothing is requested until a reader chooses to leave, and
  * Referrer-Policy is already strict-origin-when-cross-origin site-wide, so LinkedIn learns the site they
  * came from and not the provision they were reading.
+ *
+ * Bare, with no query string. The share sheet in LinkedIn's iOS app hands out this URL with utm_source,
+ * utm_content and utm_medium appended; those were tried here and taken back out. They are analytics tags
+ * that tell LinkedIn a click came from a link shared off someone's phone -- they reach the identical page,
+ * and they have no bearing on whether a signed-out visitor sees the profile or a sign-in prompt, which is
+ * LinkedIn's decision and the profile's own visibility setting.
+ *
+ * So they bought nothing and would have been the only tracking parameters anywhere on this site, on a
+ * page that tells readers their reading is not reported to anyone. Not worth the inconsistency.
  */
 export const PUBLISHER_URL = "https://www.linkedin.com/in/devanshparikhh";
 

@@ -167,14 +167,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 side by side, and items-center, which centred the control under the stamp and left it
                 floating short of the corner. */}
             <div className="ml-auto flex w-full flex-col items-end gap-1.5 sm:w-auto">
+              {/* The stamp stays; the link under it does not. /status moved behind the admin key, and a
+                  masthead link that refuses every reader who presses it is worse than no link. The time
+                  itself is the part readers used -- it says how current the library is, and it gives away
+                  nothing. */}
               {(revised.checked || revised.added) && (
-                <Link
-                  href="/status"
+                <span
                   title="When the collector last checked the regulators' websites"
-                  className="text-[11px] leading-none text-[var(--ink-4)] hover:text-[var(--ink-2)]"
+                  className="text-[11px] leading-none text-[var(--ink-4)]"
                 >
                   Last checked {fmtDateTime(revised.checked ?? revised.added)}
-                </Link>
+                </span>
               )}
 
               {/* The search box that used to sit here is gone, and with it the "Look up" button.
@@ -261,9 +264,6 @@ export default async function RootLayout({ children }: { children: React.ReactNo
               <a href="/feed.xml" className="hover:text-[var(--ink-2)] hover:underline">
                 Feed
               </a>
-              <Link href="/status" className="hover:text-[var(--ink-2)] hover:underline">
-                Collection status
-              </Link>
             </nav>
           </div>
         </footer>

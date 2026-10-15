@@ -53,9 +53,6 @@ export default async function AboutPage() {
               <CountUp value={stats.provisions} className="num font-medium text-[var(--ink)]" /> provisions and{" "}
               <CountUp value={stats.documents} className="num font-medium text-[var(--ink)]" /> notifications and
               circulars.{" "}
-              <Link href="/status" className="text-[var(--link)] hover:underline">
-                Collection status
-              </Link>
             </p>
           </div>
         )}

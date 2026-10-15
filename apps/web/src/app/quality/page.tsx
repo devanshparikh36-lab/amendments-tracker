@@ -39,7 +39,9 @@ export default async function QualityPage({ searchParams }: { searchParams: Sear
   return (
     <div className="mx-auto max-w-[76rem] space-y-5">
       <div>
-        <Breadcrumbs trail={[{ label: "Collection status", href: "/status" }, { label: "Text that needs a look" }]} />
+        {/* Climbs to Home rather than to Collection status, which moved behind the admin key. A
+            breadcrumb to a page the reader cannot open is a worse trail than a shorter one. */}
+        <Breadcrumbs trail={[{ label: "Home", href: "/" }, { label: "Text that needs a look" }]} />
         <h1 className="page-title mt-1">Text that needs a look</h1>
         <p className="meta mt-1 max-w-3xl">
           {total.toLocaleString("en-IN")} of the provisions held carry text that does not read like a
