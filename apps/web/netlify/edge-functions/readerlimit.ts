@@ -34,6 +34,12 @@ export const config = {
     "/api/reader/searches",
     "/api/reader/export",
     "/api/admin/readers",
+    // The two that send or consume mail. /verify is the most expensive endpoint on the site by a wide
+    // margin -- not in compute but in quota: every call spends one of Gmail's ~500 recipients a day, shared
+    // with the digest. The route also enforces a two-minute cooldown per address, which is the limit that
+    // matters; this one bounds how fast a single IP can work through a list of other people's addresses.
+    "/api/reader/verify",
+    "/api/reader/confirm",
   ],
   rateLimit: {
     windowLimit: 40,

@@ -49,6 +49,9 @@ export function Account() {
   const [draftEmail, setDraftEmail] = useState("");
   const [draftName, setDraftName] = useState("");
   const [busy, setBusy] = useState(false);
+  /* What the verify button last did. Null until pressed -- the panel says nothing rather than reassuring
+   * somebody about a mail that has not been asked for yet. */
+  const [verify, setVerify] = useState<null | "sending" | "sent" | "quiet" | "failed">(null);
   const [switching, setSwitching] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -140,6 +143,32 @@ export function Account() {
     const name = draftName.trim().slice(0, 60);
     await post({ action: "rename", email: reader.email, name });
     writeReader({ email: reader.email, name: name || undefined });
+  }
+
+  /* Ask As Amended to send the confirmation mail to this address.
+   *
+   * Explicit, by a press, rather than fired when the box is ticked: an accidental tick then sends nothing,
+   * and a reader whose mail did not arrive can ask again without toggling a setting off and on.
+   *
+   * "quiet" is the honest answer to the route declining to say why it sent nothing -- already confirmed,
+   * no such reader, or asked again inside the two-minute cooldown. It will not distinguish them, because
+   * doing so would turn this into a way to ask whether a given person has an account here.
+   */
+  async function sendVerification() {
+    if (!reader) return;
+    setVerify("sending");
+    try {
+      const res = await fetch("/api/reader/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: reader.email }),
+      });
+      const d = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+      if (!res.ok) setVerify("failed");
+      else setVerify(d.sent ? "sent" : "quiet");
+    } catch {
+      setVerify("failed");
+    }
   }
 
   async function setAlerts(on: boolean) {
@@ -354,8 +383,8 @@ export function Account() {
                       Email me when something lands
                       <span className="mt-0.5 block text-[12px] leading-snug text-[var(--ink-3)]">
                         {state?.alertsOn && !state?.alertsConfirmed
-                          ? "We will send one note to confirm the address before anything else — nothing is sent until you click it."
-                          : "One message when a notification touches something you follow. Never more than one a day."}
+                          ? "Nothing is sent until the address is confirmed. Press the button below and we will mail you a link."
+                          : "What the regulators published that day, on the days they publish. Never more than one a day."}
                       </span>
                     </span>
                   </label>
@@ -363,6 +392,44 @@ export function Account() {
                   {/* The daily/weekly pair used to sit here. Removed in 0017: one cadence, so a choice
                       between it and nothing is a control that cannot be wrong, which is a control worth
                       not drawing. The copy above already says at most one a day. */}
+
+                  {/* Visible only while there is something to do: alerts asked for, address not yet
+                      confirmed. Once confirmed this disappears rather than becoming a disabled control,
+                      because a button that cannot be pressed is a question the reader has to answer. */}
+                  {state?.alertsOn && !state?.alertsConfirmed && (
+                    <div className="mt-2.5 pl-6">
+                      <button
+                        type="button"
+                        onClick={sendVerification}
+                        disabled={verify === "sending"}
+                        className="btn btn-primary text-[12.5px]"
+                      >
+                        {verify === "sending"
+                          ? "Sending…"
+                          : verify
+                            ? "Send the confirmation again"
+                            : "Verify this email"}
+                      </button>
+                      {verify === "sent" && (
+                        <p className="mt-1.5 text-[12px] leading-snug text-[var(--ink-2)]">
+                          Sent to <strong className="font-medium">{reader?.email}</strong>. Open the link in
+                          it and the digest starts. The link lasts 48 hours.
+                        </p>
+                      )}
+                      {verify === "quiet" && (
+                        <p className="mt-1.5 text-[12px] leading-snug text-[var(--ink-3)]">
+                          Nothing sent just now — either one went out in the last couple of minutes, or this
+                          address is already confirmed. Check the inbox before pressing again.
+                        </p>
+                      )}
+                      {verify === "failed" && (
+                        <p className="mt-1.5 text-[12px] leading-snug text-[var(--bad)]">
+                          That did not send. Nothing has been confirmed, so nothing will be mailed to this
+                          address until it goes through.
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {seen.length > 0 && (
