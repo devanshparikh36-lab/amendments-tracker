@@ -1,7 +1,8 @@
-import { timingSafeEqual } from "node:crypto";
 import Link from "next/link";
+import { AdminReaders } from "@/components/AdminReaders";
 import { getPool } from "@/db";
 import { fmtDateTime } from "@/lib/format";
+import { authorised } from "@/lib/admin";
 
 /* Who has signed up, and what they are keeping.
  *
@@ -23,16 +24,6 @@ import { fmtDateTime } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Admin", robots: { index: false, follow: false } };
-
-function authorised(given: string | undefined): boolean {
-  const want = process.env.ADMIN_KEY;
-  if (!want || !given) return false;
-  const a = Buffer.from(given);
-  const b = Buffer.from(want);
-  // Length first and separately: timingSafeEqual throws on a mismatch rather than returning false, and
-  // the length of a secret is not the part worth hiding.
-  return a.length === b.length && timingSafeEqual(a, b);
-}
 
 function Stat({ n, label }: { n: unknown; label: string }) {
   return (
@@ -67,7 +58,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
       `SELECT (SELECT count(*) FROM reader)                                              AS readers,
               (SELECT count(*) FROM reader WHERE last_seen_at > now() - interval '7 days') AS active,
               (SELECT count(*) FROM reader WHERE alerts_on)                              AS alerts,
-              (SELECT count(*) FROM reader WHERE alerts_on AND alert_freq = 'weekly')    AS weekly,
+              (SELECT count(*) FROM reader WHERE source = 'admin')                       AS added,
               (SELECT count(*) FROM reader WHERE alerts_ok_at IS NOT NULL)               AS confirmed,
               (SELECT count(*) FROM reader_watch WHERE kind = 'follow')                  AS follows,
               (SELECT count(*) FROM reader_watch WHERE kind = 'bookmark')                AS bookmarks,
@@ -75,7 +66,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
               (SELECT count(*) FROM reader_search)                                       AS searches`,
     ),
     pool.query(
-      `SELECT r.id, r.email, r.name, r.created_at, r.last_seen_at, r.alerts_on, r.alert_freq,
+      `SELECT r.id, r.email, r.name, r.created_at, r.last_seen_at, r.alerts_on, r.source,
               (r.alerts_ok_at IS NOT NULL) AS confirmed,
               count(w.*) FILTER (WHERE w.kind = 'follow')   AS follows,
               count(w.*) FILTER (WHERE w.kind = 'bookmark') AS bookmarks,
@@ -147,7 +138,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         <Stat n={t.active} label="seen in 7 days" />
         <Stat n={t.alerts} label="want alerts" />
         <Stat n={t.confirmed} label="confirmed" />
-        <Stat n={t.weekly} label="weekly" />
+        <Stat n={t.added} label="added by hand" />
         <Stat n={t.follows} label="follows" />
         <Stat n={t.bookmarks} label="bookmarks" />
         <Stat n={t.notes} label="notes" />
@@ -175,6 +166,8 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         </section>
       </div>
 
+      <AdminReaders adminKey={key ?? ""} />
+
       <h2 className="eyebrow mt-8">Everyone</h2>
       {rows.length === 0 ? (
         <p className="mt-2 text-[13.5px] text-[var(--ink-3)]">Nobody has signed in yet.</p>
@@ -183,7 +176,7 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
           <table className="w-full border-collapse text-[13px]">
             <thead>
               <tr className="border-b border-[var(--rule-strong)] text-left">
-                {["Email", "Name", "Follows", "Marks", "Notes", "Searches", "Alerts", "Joined", "Last seen"].map((h, i) => (
+                {["Email", "Name", "Follows", "Marks", "Notes", "Searches", "Alerts", "Source", "Joined", "Last seen"].map((h, i) => (
                   <th key={h} className={`py-2 pr-3 font-semibold ${i >= 2 && i <= 5 ? "text-right" : ""}`}>
                     {h}
                   </th>
@@ -201,9 +194,18 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
                   <td className="num py-1.5 pr-3 text-right">{String(r.searches)}</td>
                   <td className="py-1.5 pr-3 text-[12px]">
                     {r.alerts_on ? (
-                      `${String(r.alert_freq)}${r.confirmed ? "" : ", unconfirmed"}`
+                      <span className={r.confirmed ? undefined : "text-[var(--ink-2)]"}>
+                        on{r.confirmed ? "" : ", unconfirmed"}
+                      </span>
                     ) : (
                       <span className="text-[var(--ink-4)]">off</span>
+                    )}
+                  </td>
+                  <td className="py-1.5 pr-3 text-[12px]">
+                    {r.source === "admin" ? (
+                      <span className="text-[var(--ink-2)]">added by hand</span>
+                    ) : (
+                      <span className="text-[var(--ink-4)]">signed up</span>
                     )}
                   </td>
                   <td className="num py-1.5 pr-3 text-[12px] text-[var(--ink-3)]">{fmtDateTime(r.created_at as string)}</td>

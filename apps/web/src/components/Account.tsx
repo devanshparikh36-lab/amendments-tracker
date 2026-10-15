@@ -33,7 +33,9 @@ type State = {
   notes: number;
   searches: number;
   alertsOn: boolean;
-  alertFreq: "daily" | "weekly";
+  /* Always "daily" since 0017. Kept on the wire so an older cached client does not read undefined, and
+   * because re-admitting a second cadence should not mean re-deriving this type. */
+  alertFreq: "daily";
   alertsConfirmed: boolean;
   since: { id: number; title: string; about: string | null; regulator_code: string }[];
 };
@@ -68,7 +70,7 @@ export function Account() {
         notes: d.notes ?? 0,
         searches: d.searches ?? 0,
         alertsOn: !!d.alertsOn,
-        alertFreq: d.alertFreq === "weekly" ? "weekly" : "daily",
+        alertFreq: "daily",
         alertsConfirmed: !!d.alertsConfirmed,
         since: Array.isArray(d.since) ? d.since : [],
       });
@@ -140,13 +142,13 @@ export function Account() {
     writeReader({ email: reader.email, name: name || undefined });
   }
 
-  async function setAlerts(on: boolean, freq: "daily" | "weekly") {
+  async function setAlerts(on: boolean) {
     if (!reader || !state) return;
-    setState({ ...state, alertsOn: on, alertFreq: freq });
-    const d = await post({ action: "alerts", email: reader.email, on, freq });
+    setState({ ...state, alertsOn: on, alertFreq: "daily" });
+    const d = await post({ action: "alerts", email: reader.email, on });
     if (d) {
       setState((s) =>
-        s ? { ...s, alertsOn: !!d.alertsOn, alertFreq: d.alertFreq === "weekly" ? "weekly" : "daily", alertsConfirmed: !!d.alertsConfirmed } : s,
+        s ? { ...s, alertsOn: !!d.alertsOn, alertFreq: "daily", alertsConfirmed: !!d.alertsConfirmed } : s,
       );
     }
   }
@@ -344,7 +346,7 @@ export function Account() {
                     <input
                       type="checkbox"
                       checked={!!state?.alertsOn}
-                      onChange={(e) => setAlerts(e.currentTarget.checked, state?.alertFreq ?? "daily")}
+                      onChange={(e) => setAlerts(e.currentTarget.checked)}
                       disabled={busy || !state}
                       className="mt-0.5"
                     />
@@ -358,21 +360,9 @@ export function Account() {
                     </span>
                   </label>
 
-                  {state?.alertsOn && (
-                    <div className="mt-2.5 flex gap-2 pl-6">
-                      {(["daily", "weekly"] as const).map((f) => (
-                        <button
-                          key={f}
-                          type="button"
-                          onClick={() => setAlerts(true, f)}
-                          aria-pressed={state.alertFreq === f}
-                          className={`btn text-[12.5px] ${state.alertFreq === f ? "btn-primary" : ""}`}
-                        >
-                          {f === "daily" ? "Every day" : "Once a week"}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  {/* The daily/weekly pair used to sit here. Removed in 0017: one cadence, so a choice
+                      between it and nothing is a control that cannot be wrong, which is a control worth
+                      not drawing. The copy above already says at most one a day. */}
                 </div>
 
                 {seen.length > 0 && (

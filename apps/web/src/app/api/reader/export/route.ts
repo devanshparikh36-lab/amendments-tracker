@@ -59,8 +59,8 @@ export async function POST(req: Request) {
 
   const pool = getPool();
   try {
-    const me = await pool.query<{ id: number; name: string | null; created_at: string; alerts_on: boolean; alert_freq: string }>(
-      "SELECT id, name, created_at, alerts_on, alert_freq FROM reader WHERE lower(email) = $1",
+    const me = await pool.query<{ id: number; name: string | null; created_at: string; alerts_on: boolean; source: string }>(
+      "SELECT id, name, created_at, alerts_on, source FROM reader WHERE lower(email) = $1",
       [email],
     );
     const r = me.rows[0];
@@ -91,7 +91,20 @@ export async function POST(req: Request) {
      * A machine-readable export would be JSON, and nobody has asked for one. */
     const rows: string[] = [];
     rows.push(["type", "a", "b", "c", "d"].map(cell).join(","));
-    rows.push(["account", email, r.name ?? "", when(r.created_at), `alerts ${r.alerts_on ? r.alert_freq : "off"}`].map(cell).join(","));
+    /* `source` is in here because the reader is entitled to know it. An address added from the admin
+     * console was never asked for, and someone requesting their own data should be able to see that that
+     * is how it got here rather than being told they signed up. */
+    rows.push(
+      [
+        "account",
+        email,
+        r.name ?? "",
+        when(r.created_at),
+        `alerts ${r.alerts_on ? "daily" : "off"}, ${r.source === "admin" ? "added by the site owner" : "self signed-up"}`,
+      ]
+        .map(cell)
+        .join(","),
+    );
     rows.push("");
     rows.push(["kind", "instrument", "section", "title", "saved"].map(cell).join(","));
     for (const w of watches.rows as Record<string, unknown>[]) {

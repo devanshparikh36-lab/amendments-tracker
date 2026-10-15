@@ -22,7 +22,19 @@ export default async (_request: Request, context: { next: () => Promise<Response
 export const config = {
   // Every account route, including the ones added later: the export is the most expensive of them and the
   // one most worth a ceiling, since it reads four tables and builds a file.
-  path: ["/api/reader", "/api/reader/watch", "/api/reader/notes", "/api/reader/searches", "/api/reader/export"],
+  //
+  // /api/admin/readers is here too, and for a different reason than the rest. It is key-guarded rather
+  // than open, so it is not a row-flooding risk -- but it is the one endpoint on the site where guessing
+  // correctly is worth something, and an unthrottled POST is an invitation to try. A long random ADMIN_KEY
+  // is not brute-forceable at any rate, so this is defence in depth against a short one.
+  path: [
+    "/api/reader",
+    "/api/reader/watch",
+    "/api/reader/notes",
+    "/api/reader/searches",
+    "/api/reader/export",
+    "/api/admin/readers",
+  ],
   rateLimit: {
     windowLimit: 40,
     windowSize: 60,

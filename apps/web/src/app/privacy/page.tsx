@@ -126,8 +126,8 @@ export default function PrivacyPage() {
             still records nothing about you, exactly as described above.
           </li>
           <li>
-            <strong className="font-medium text-[var(--ink)]">Whether you have asked for alerts</strong>, and
-            whether you asked for them daily or weekly.
+            <strong className="font-medium text-[var(--ink)]">Whether you have asked for alerts.</strong>{" "}
+            At most one message a day; there is no other cadence to choose.
           </li>
         </ul>
         <p>

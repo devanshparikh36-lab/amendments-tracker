@@ -64,24 +64,27 @@ export async function POST(req: Request) {
 
     if (action === "alerts") {
       const on = body.on === true;
-      /* 'daily' matches the collector, which runs once each morning -- anything more frequent would be a
-       * promise the pipeline cannot keep. 'weekly' exists because a digest nobody opens is worse than no
-       * digest. An unknown value falls back rather than failing: this is a preference, not a command. */
-      const freq = body.freq === "weekly" ? "weekly" : "daily";
+      /* Daily, and no longer a choice. It matches the collector, which runs once each morning, so anything
+       * more frequent would be a promise the pipeline cannot keep -- and weekly was removed in 0017 before
+       * a single message had been sent, so nothing was taken from anybody.
+       *
+       * `freq` is ignored rather than validated. An old client still sending "weekly" gets daily alerts
+       * and an honest answer saying so, which is better than a 400 for a field that is no longer a
+       * decision. The CHECK in 0017 is what makes that unambiguous at the bottom. */
       /* Switching alerts on does not start mail arriving. It records the wish; alerts_ok_at is what
        * permits a send, and only a click on a confirmation link sets that. Switching off is immediate
        * and unconditional, because the one thing that must never need a round trip is stopping. */
-      const r = await pool.query<{ alerts_on: boolean; alert_freq: string; confirmed: boolean }>(
-        `UPDATE reader SET alerts_on = $2, alert_freq = $3, last_seen_at = now()
+      const r = await pool.query<{ alerts_on: boolean; confirmed: boolean }>(
+        `UPDATE reader SET alerts_on = $2, alert_freq = 'daily', last_seen_at = now()
           WHERE lower(email) = $1
-      RETURNING alerts_on, alert_freq, (alerts_ok_at IS NOT NULL) AS confirmed`,
-        [email, on, freq],
+      RETURNING alerts_on, (alerts_ok_at IS NOT NULL) AS confirmed`,
+        [email, on],
       );
       const row = r.rows[0];
       return NextResponse.json({
         ok: true,
         alertsOn: row?.alerts_on ?? on,
-        alertFreq: row?.alert_freq ?? freq,
+        alertFreq: "daily",
         alertsConfirmed: row?.confirmed ?? false,
       });
     }
@@ -96,7 +99,7 @@ export async function POST(req: Request) {
      * statement below, once the old value is safely in hand. */
     const up = await pool.query<{
       id: number; name: string | null; previous_seen: string;
-      alerts_on: boolean; alert_freq: string; confirmed: boolean;
+      alerts_on: boolean; confirmed: boolean;
     }>(
       `INSERT INTO reader (email, name)
             VALUES ($1, NULLIF($2, ''))
@@ -110,7 +113,6 @@ export async function POST(req: Request) {
                    -- time gets an empty window rather than the entire history of the corpus.
                    last_seen_at AS previous_seen,
                    alerts_on,
-                   alert_freq,
                    (alerts_ok_at IS NOT NULL) AS confirmed`,
       [email, name],
     );
@@ -193,7 +195,7 @@ export async function POST(req: Request) {
       notes: Number(c?.notes ?? 0),
       searches: Number(c?.searches ?? 0),
       alertsOn: me.alerts_on,
-      alertFreq: me.alert_freq,
+      alertFreq: "daily",
       alertsConfirmed: me.confirmed,
       previousSeen: prev,
       since: since.rows,
