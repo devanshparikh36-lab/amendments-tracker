@@ -41,10 +41,24 @@ export async function generateStaticParams() {
   }
 }
 
+/* A notification's own title and summary, so 8,000 document pages are not interchangeable in a result list.
+ *
+ * The title was already the document's, truncated at 70 characters. What was missing is a description --
+ * every one of these pages was inheriting the site-wide sentence, which tells a searcher nothing about
+ * which circular they are looking at -- and a canonical, which fixes the page to one address.
+ */
 export async function generateMetadata({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const data = await getDocument(Number(id));
-  return { title: data ? data.doc.title.slice(0, 70) : "Document" };
+  if (!data) return { title: "Document" };
+  const d = data.doc;
+  const issued = d.date_issued ? new Date(d.date_issued).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : null;
+  const bits = [d.number, d.regulator_code, issued].filter(Boolean).join(" · ");
+  return {
+    title: d.title.slice(0, 70),
+    description: `${bits ? bits + ". " : ""}${d.title}`.slice(0, 180),
+    alternates: { canonical: `/documents/${id}` },
+  };
 }
 
 export default async function DocumentPage({ params }: { params: Promise<{ id: string }> }) {

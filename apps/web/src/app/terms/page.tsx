@@ -4,6 +4,7 @@ import { PublisherName } from "@/components/Credit";
 import { CONTACT_EMAIL, JURISDICTION } from "@/lib/legal";
 
 export const metadata = {
+  alternates: { canonical: "/terms" },
   title: "Terms",
   description:
     "Terms of use: a research aid, not legal advice. The regulator's own document is the only authority, and every screen links to it.",

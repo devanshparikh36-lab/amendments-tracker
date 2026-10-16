@@ -74,6 +74,22 @@ export const metadata: Metadata = {
       "application/atom+xml": [{ url: "/feed.xml", title: "As Amended — every notification and circular" }],
     },
   },
+  /* Search Console ownership, from an environment variable rather than this file.
+   *
+   * Google hands out a token when a property is added and checks for it on the homepage. It is not a
+   * secret -- anyone can read it in the page source, and that is the point of it -- but it is deployment
+   * configuration rather than code: a different property, a second verified user or a re-verification
+   * changes the value without changing anything about the site.
+   *
+   * NEXT_PUBLIC_ so it is inlined at build time. Absent, Next omits the tag entirely rather than printing
+   * an empty one, so nothing has to be cleaned up if the property is ever removed.
+   *
+   * Set it in Netlify: Project configuration > Environment variables > NEXT_PUBLIC_GOOGLE_VERIFICATION,
+   * value = the content attribute only, not the whole <meta> tag Google shows you.
+   */
+  verification: process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION
+    ? { google: process.env.NEXT_PUBLIC_GOOGLE_VERIFICATION }
+    : undefined,
 };
 
 // Its own export, not a key inside `metadata`. Next 15 ignores it there — silently, apart from a build

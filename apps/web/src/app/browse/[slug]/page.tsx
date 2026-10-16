@@ -34,7 +34,14 @@ type Search = Promise<{ p?: string; asOn?: string; view?: string; pq?: string; p
 export async function generateMetadata({ params }: { params: Params }) {
   const { slug } = await params;
   const inst = await getInstrument(slug);
-  return { title: inst ? inst.title : "Instrument" };
+  if (!inst) return { title: "Instrument" };
+  return {
+    title: inst.title,
+    description:
+      `${inst.title} as ${inst.regulator_code} publishes it — the contents, the official document, and ` +
+      `every notification and circular filed against the provision it affects.`,
+    alternates: { canonical: `/browse/${slug}` },
+  };
 }
 
 function n(v: number | null | undefined): string {

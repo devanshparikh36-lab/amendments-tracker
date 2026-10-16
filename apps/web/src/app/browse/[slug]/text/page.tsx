@@ -40,10 +40,74 @@ import { documentPageUrl, officialSource, type OfficialSource, regulatorPageUrl 
 type Params = Promise<{ slug: string }>;
 type Search = Promise<{ p?: string; asOn?: string; view?: string; pq?: string; page?: string }>;
 
-export async function generateMetadata({ params }: { params: Params }) {
+/* Strip markup and squeeze whitespace, then cut to a word boundary.
+ *
+ * Provision text is HTML for some regulators and plain text for others, so a description built from it has
+ * to survive both. ~155 characters because that is roughly where Google truncates a snippet -- longer is
+ * not punished, it is simply not shown, and a sentence cut mid-word in a result page looks like a broken
+ * site rather than a long one.
+ */
+function summarise(text: string | null | undefined, limit = 155): string {
+  const flat = String(text ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/&[a-z]+;|&#\d+;/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!flat) return "";
+  if (flat.length <= limit) return flat;
+  return flat.slice(0, limit).replace(/\s+\S*$/, "") + "\u2026";
+}
+
+/* What a search engine is told about this page, and the reason it is worth the extra query.
+ *
+ * Until now every provision of an Act shared one title -- "Income-tax Act, 1961" -- because this read only
+ * the slug. That is 500-odd pages of the ITA that a search engine cannot tell apart, and it meant the query
+ * people actually type, "section 80C income tax act", could not reach the page holding section 80C.
+ *
+ * So the provision is fetched here as well as in the page body. That is a second read of the same row,
+ * which the query cache absorbs: generateMetadata and the page run in the same request, so the second call
+ * is a cache hit rather than a second round trip.
+ *
+ * The canonical is the part that stops this backfiring. The same provision is reachable as ?p=80C,
+ * ?p=80C&asOn=2024-04-01 and ?p=80C&view=full, which are three URLs showing substantially the same text --
+ * exactly what a search engine treats as duplication, splitting whatever authority the page earns between
+ * them. Naming one of them canonical collapses that back into a single page. A point-in-time view is still
+ * reachable and still readable; it just does not compete with the current text for the same query.
+ */
+export async function generateMetadata({ params, searchParams }: { params: Params; searchParams: Search }) {
   const { slug } = await params;
+  const sp = await searchParams;
   const inst = await getInstrument(slug);
-  return { title: inst ? inst.title : "Text" };
+  if (!inst) return { title: "Text" };
+
+  const canonicalBase = `/browse/${slug}/text`;
+
+  if (!sp.p) {
+    return {
+      title: inst.title,
+      description: summarise(
+        `The text of the ${inst.title} as ${inst.regulator_code} publishes it, with every notification and ` +
+          `circular filed against the provision it affects.`,
+      ),
+      alternates: { canonical: canonicalBase },
+    };
+  }
+
+  const prov = await getProvision(inst.id, sp.p).catch(() => null);
+  const unit = unitFor(inst.kind);
+  const label = `${unit.charAt(0).toUpperCase()}${unit.slice(1)} ${sp.p}`;
+  const heading = prov?.heading ? ` \u2014 ${prov.heading.replace(/[.\-\s]+$/, "")}` : "";
+
+  return {
+    // "Section 80C — Deduction in respect of... · Income-tax Act, 1961". The number first, because that is
+    // what somebody searching has typed, and the template appends the site name.
+    title: `${label}${heading} \u00b7 ${inst.title}`,
+    description:
+      summarise(prov?.text) ||
+      `${label} of the ${inst.title}, in ${inst.regulator_code}'s own words, with the notifications that have amended it.`,
+    // Deliberately without asOn or view: those are the same provision seen differently.
+    alternates: { canonical: `${canonicalBase}?p=${encodeURIComponent(sp.p)}` },
+  };
 }
 
 // The reading view: the contents of one instrument on the left, the regulator's text on the right.

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Prose, Section } from "@/components/Prose";
 
 export const metadata = {
+  alternates: { canonical: "/cookies" },
   title: "Cookies",
   description:
     "This site sets no cookies — not even for the account, which is kept in your browser's own local storage and never attached to a request. Three values are stored on your device and this page lists all of them.",

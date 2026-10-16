@@ -11,6 +11,7 @@ import { abs } from "@/lib/site";
 export const revalidate = 86400;
 
 type Row = { loc: string; changed: string | null };
+type ProvisionRow = { slug: string; number: string; changed: string | null };
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // The fixed pages. `/status` and `/quality` are absent deliberately -- robots.ts disallows them, and a
@@ -31,8 +32,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   // `instrumentIndex` carries counts and joins that would be computed and thrown away.
   let instruments: Row[] = [];
   let documents: Row[] = [];
+  let provisions: ProvisionRow[] = [];
   try {
-    [instruments, documents] = await Promise.all([
+    [instruments, documents, provisions] = await Promise.all([
       query<Row>(
         `SELECT i.slug AS loc,
                 to_char(GREATEST(
@@ -56,6 +58,34 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         [],
         86400,
       ),
+      /* Every provision that holds real text.
+       *
+       * These are the pages people actually search for -- "section 80C income tax act" is a query, and
+       * "Income-tax Act, 1961" is not. Until this was added the Act had exactly one URL in the sitemap and
+       * its five hundred sections had none, so the most valuable thing the site holds was the one thing a
+       * search engine could not reach.
+       *
+       * The length filter is deliberate rather than tidy. A provision carrying a heading and two lines --
+       * an omitted section, a definition stub, a bare cross-reference -- is a page with nothing on it, and
+       * submitting thousands of those is how a site teaches Google that its sitemap is not worth reading.
+       * 200 characters is roughly a paragraph.
+       *
+       * PDF-only instruments are excluded: their provision rows are deleted at seed time, so there is no
+       * text to land on.
+       */
+      query<ProvisionRow>(
+        `SELECT i.slug, p.number,
+                to_char(MAX(v.created_at)::date, 'YYYY-MM-DD') AS changed
+           FROM provision p
+           JOIN instrument i ON i.id = p.instrument_id AND NOT i.pdf_only
+           JOIN provision_version v ON v.provision_id = p.id AND v.effective_to IS NULL
+          WHERE v.text IS NOT NULL AND length(v.text) > 200
+          GROUP BY i.slug, p.number, p.sort_key
+          ORDER BY i.slug, p.sort_key
+          LIMIT 30000`,
+        [],
+        86400,
+      ),
     ]);
   } catch {
     // A sitemap listing the fixed pages is worth serving; a 500 teaches the crawler to stop asking.
@@ -71,6 +101,20 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       { url: abs(`/browse/${i.loc}`), lastModified: lm(i.changed), changeFrequency: "weekly" as const, priority: 0.8 },
       { url: abs(`/browse/${i.loc}/text`), lastModified: lm(i.changed), changeFrequency: "weekly" as const, priority: 0.8 },
     ]),
+    /* The provision pages, as the query-string URL the site actually serves.
+     *
+     * A crawler is perfectly happy with a query string; what it cannot do is guess one. Each of these
+     * declares itself canonical in generateMetadata, so the ?asOn= and ?view=full variants of the same
+     * provision fold into this entry rather than competing with it.
+     */
+    ...provisions.map((v) => ({
+      url: abs(`/browse/${v.slug}/text?p=${encodeURIComponent(v.number)}`),
+      lastModified: lm(v.changed),
+      changeFrequency: "monthly" as const,
+      // Above a notification and below an instrument's landing page: a section is what somebody came for,
+      // but the Act it belongs to is the better entry point when they have not named one.
+      priority: 0.7,
+    })),
     ...documents.map((d) => ({
       url: abs(`/documents/${d.loc}`),
       lastModified: lm(d.changed),

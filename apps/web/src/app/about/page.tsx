@@ -6,6 +6,7 @@ import { Credit, PublisherName } from "@/components/Credit";
 import { homeStats } from "@/lib/queries";
 
 export const metadata = {
+  alternates: { canonical: "/about" },
   title: "About",
   description:
     "What this site is, where its text comes from, why amendments are shown as references and never applied, and how current any of it is.",

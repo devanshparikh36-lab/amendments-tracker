@@ -4,6 +4,7 @@ import { PublisherName } from "@/components/Credit";
 import { CONTACT_EMAIL, JURISDICTION, PROCESSORS } from "@/lib/legal";
 
 export const metadata = {
+  alternates: { canonical: "/privacy" },
   title: "Privacy",
   description:
     "What this site records. Reading it needs no account and sets no cookie. If you enter an email address to keep follows, bookmarks and notes, this is exactly what is held, where, and how to get a copy or delete it.",
