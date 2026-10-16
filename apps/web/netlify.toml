@@ -40,46 +40,18 @@
 #   R2_PUBLIC_BASE_URL  public base URL of the R2 bucket, so file links go straight to R2
 # SITE_PASSCODE is no longer read: the passcode gate was removed on 14 Sept. It can be deleted there.
 
-# Let the CDN answer for the reading view, instead of a function answering every time.
+# The CDN cache headers for /browse/* used to live here and did not work.
 #
-# Why this is here at all: these pages are `force-dynamic`, because the reading view reads its query
-# string, and Next marks a dynamic route `no-store`. Measured on production, two consecutive requests for
-# the same provision both missed -- "Netlify Durable: fwd=bypass, Netlify Edge: fwd=miss" -- so every hit
-# ran a function and queried Postgres. That was tolerable while the only visitors were people. It stopped
-# being tolerable the day 4,464 provision URLs went into the sitemap and Google was invited to crawl them,
-# each crawl and every recrawl paying full price.
+# They were added as a [[headers]] block and the response came back unchanged -- still
+# "Netlify Durable: fwd=bypass" on a repeat request, and still carrying the Next runtime's own
+# Netlify-Vary rather than the one set here. netlify.toml adds headers to a response; it does not override
+# headers the function already emits, and the Next function emits both Cache-Control and Netlify-Vary.
 #
-# Netlify-CDN-Cache-Control rather than Cache-Control, deliberately. It instructs Netlify's CDN only and
-# does not fight the `no-store` Next sends to the browser, so there is no question of which header wins:
-# readers still get a fresh page, and the CDN stops asking the function for one it already has.
+# The security headers below work for exactly the reason that one did not: Next sets nothing of those
+# names, so there is nothing to override.
 #
-# An hour, with a day of stale-while-revalidate. Collection runs once each morning, so statutory text
-# cannot change more often than that, and a provision an hour behind the database is a provision the
-# regulator published weeks ago. The staleness window means a crawl spike is served from cache while one
-# request refreshes it.
-#
-# Safe to cache publicly because nothing in the server render is reader-specific: follows, bookmarks,
-# notes and the greeting are all client components that fetch their own state after load. Verified -- the
-# page component reads no reader identity and no cookies.
-#
-# EVERY PARAMETER THAT CHANGES THE PAGE MUST BE IN Netlify-Vary.
-#
-# Netlify keys its cache on the parameters this header names and no others. Omitting one does not mean
-# "ignore it", it means "treat two different pages as the same page" -- which on /api/definitions/suggest
-# served one prefix's answers to every reader for an hour, and here would serve one section's text under
-# another section's URL. The five below are the complete set the reading view reads:
-#
-#   p      which provision          asOn   the point-in-time view
-#   view   full text vs single      page   which page of a PDF-only instrument
-#   pq     the in-PDF search term
-#
-# Add a parameter to that page and add it here in the same change.
-[[headers]]
-  for = "/browse/*"
-
-  [headers.values]
-    Netlify-CDN-Cache-Control = "public, s-maxage=3600, stale-while-revalidate=86400"
-    Netlify-Vary = "query=p|asOn|view|page|pq"
+# It now lives in src/middleware.ts, which runs as part of the response rather than as a rule applied
+# beside it. Recorded here so the next person does not try the same thing twice.
 
 # Response headers for the whole site.
 #

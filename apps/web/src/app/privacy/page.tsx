@@ -157,6 +157,24 @@ export default function PrivacyPage() {
           follows, bookmarks and notes stay exactly as they are, and switching it back on later needs no second
           verification, because the address was already proved once.
         </p>
+        <p>
+          <strong className="font-medium text-[var(--ink)]">
+            There is one way an address joins the list without any of that.
+          </strong>{" "}
+          The publisher can add an address directly, and one added that way starts receiving the digest without a
+          verification step &mdash; because nobody typed it into this site, so there is nothing to verify. If a
+          digest arrives that you never asked for, that is how, and it is worth saying rather than leaving you to
+          wonder.
+        </p>
+        <p>
+          Two things are true of those addresses and are the reason this is written down. The unsubscribe works
+          identically &mdash; one press, no sign-in, immediate, and it is in every message. And the record keeps
+          the difference: an address added this way is marked as such, and the{" "}
+          <Link href="#rights" className="text-[var(--link)] hover:underline">
+            copy of your data
+          </Link>{" "}
+          you can export says plainly that the site owner added it rather than claiming you signed up.
+        </p>
       </Section>
 
       <Section id="not-a-password" heading="An email address is not a password">
@@ -189,6 +207,12 @@ export default function PrivacyPage() {
           address into a form whose only purpose is this, and the purpose is limited to what that form offers: to
           show you your own follows, bookmarks, notes and saved searches when you come back, and to send the alerts
           if you ever switch them on.
+        </p>
+        <p>
+          An address the publisher added directly did not come with that consent, and this notice does not pretend
+          otherwise. It is held and mailed on the publisher&rsquo;s own decision, the record says so, and the way
+          out is the unsubscribe in every message or a line to the address at the bottom of this page &mdash;
+          either of which is honoured immediately and without being asked why.
         </p>
         <p>
           It is not used for anything else. It is not profiled, not scored, not used to decide anything about you,

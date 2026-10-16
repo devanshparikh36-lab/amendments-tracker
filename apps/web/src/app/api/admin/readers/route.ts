@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getPool } from "@/db";
 import { MAX_EMAIL, authorised, validEmail } from "@/lib/admin";
@@ -58,18 +59,34 @@ export async function POST(req: Request) {
        *
        * source = 'admin' marks the row as carrying no evidence of consent from its owner. See 0017.
        */
+      /* An address added here is live immediately: no confirmation mail, no waiting for a click.
+       *
+       * alerts_ok_at is set at insert, which is the gate the digest reads, and unsub_token is minted in
+       * the same statement so the very first message carries a working way out. Both are required --
+       * confirmed_readers() in the pipeline checks all three, and an address missing either would be
+       * silently skipped, which is the worst outcome: it looks added and never arrives.
+       *
+       * This is the owner's decision and it is worth recording what it costs rather than burying it. The
+       * self-signup path exists to prove an address belongs to whoever typed it; adding one here skips
+       * that, so the only evidence of consent is the owner's own say-so. source = 'admin' preserves that
+       * distinction in the row, the export shows it to the reader, and /privacy describes it. What makes
+       * it defensible in practice is the unsubscribe: one press in any client, no sign-in, immediate.
+       */
+      const unsub = randomBytes(24).toString("base64url");
       const r = await pool.query<{ id: number }>(
-        `INSERT INTO reader (email, alerts_on, alert_freq, source)
-         VALUES ($1, TRUE, 'daily', 'admin')
+        `INSERT INTO reader (email, alerts_on, alert_freq, source, alerts_ok_at, unsub_token)
+         VALUES ($1, TRUE, 'daily', 'admin', now(), $2)
          ON CONFLICT (email) DO NOTHING
          RETURNING id`,
-        [email],
+        [email, unsub],
       );
       if (r.rows[0]) return NextResponse.json({ ok: true, created: true, email });
 
       // Already there. Say what state it is actually in rather than implying the add did something.
-      const existing = await pool.query<{ alerts_on: boolean; source: string }>(
-        "SELECT alerts_on, source FROM reader WHERE lower(email) = $1",
+      const existing = await pool.query<{ alerts_on: boolean; source: string; sendable: boolean }>(
+        `SELECT alerts_on, source,
+                (alerts_on AND alerts_ok_at IS NOT NULL AND unsub_token IS NOT NULL) AS sendable
+           FROM reader WHERE lower(email) = $1`,
         [email],
       );
       return NextResponse.json({
@@ -77,6 +94,9 @@ export async function POST(req: Request) {
         created: false,
         email,
         alertsOn: existing.rows[0]?.alerts_on ?? false,
+        // Whether the digest would actually reach it. alerts_on alone does not answer that: a reader who
+        // signed up and never confirmed has alerts on and receives nothing.
+        sendable: existing.rows[0]?.sendable ?? false,
         source: existing.rows[0]?.source ?? "self",
       });
     }

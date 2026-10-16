@@ -422,6 +422,16 @@ export function Account() {
                         <p className="mt-1.5 text-[12px] leading-snug text-[var(--ink-2)]">
                           Sent to <strong className="font-medium">{reader?.email}</strong>. Open the link in
                           it and the digest starts. The link lasts 48 hours.
+                          {/* Said here because it is true and predictable, not as a disclaimer. This mail
+                              goes from a Gmail account with no sending reputation, and Gmail files it under
+                              Promotions often enough that a reader who only checks the inbox concludes it
+                              never arrived and gives up. Naming the two places it actually lands costs one
+                              line and saves that. */}
+                          <span className="mt-1 block text-[var(--ink-3)]">
+                            Not there within a minute? Check spam, and on Gmail the{" "}
+                            <strong className="font-medium text-[var(--ink-2)]">Promotions</strong> tab
+                            &mdash; new senders usually land in one or the other.
+                          </span>
                         </p>
                       )}
                       {verify === "quiet" && (

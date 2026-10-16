@@ -103,6 +103,17 @@ export async function GET(request: Request) {
 
   const body = [
     '<?xml version="1.0" encoding="utf-8"?>',
+    /* A stylesheet, so a browser renders this as something a person can read.
+     *
+     * The footer carries a "Feed" link, and following it in a browser produced a wall of markup that reads
+     * as a broken page -- reported twice as a bug, which it was not: Atom is XML and that is what XML looks
+     * like unstyled. This is the standard answer. Browsers apply it; feed readers skip the instruction
+     * entirely, so the Atom stays byte-for-byte valid and nothing downstream notices.
+     *
+     * Must sit immediately after the XML declaration and before the root element, which is why it is here
+     * rather than anywhere more convenient. /feed.xsl is a static file, so it costs a CDN hit and no
+     * function. */
+    '<?xml-stylesheet type="text/xsl" href="/feed.xsl"?>',
     '<feed xmlns="http://www.w3.org/2005/Atom">',
     `  <title>${esc(title)}</title>`,
     `  <subtitle>Notifications and circulars as the regulators issue them, with the amendment trail beside them.</subtitle>`,
