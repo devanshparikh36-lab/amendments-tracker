@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/PageHeader";
+import { authorised } from "@/lib/admin";
 import { qualityFlags } from "@/lib/queries";
 
 /* Provisions whose stored text does not look like a provision.
@@ -19,14 +20,55 @@ import { qualityFlags } from "@/lib/queries";
  * public site.
  */
 
+/* Behind the admin key, like /status, and for the same reason.
+ *
+ * This lists provisions whose stored text does not read like a clean extraction -- truncations, OCR
+ * damage, a heading with no body. That is a worklist for whoever maintains the corpus, not a report for
+ * a reader, and published openly it is a map of exactly where this library is weakest. A reader is better
+ * served by the link to the regulator's own document that every provision already carries.
+ *
+ * Gated a day after /status, which was gated alone because that was what was asked for. Leaving its
+ * sibling open was never a decision, only an omission.
+ */
 export const dynamic = "force-dynamic";
 
-type Search = Promise<{ flag?: string; instrument?: string }>;
+type Search = Promise<{ flag?: string; instrument?: string; key?: string }>;
 
-export const metadata = { title: "Text that needs a look" };
+export const metadata = { title: "Text that needs a look", robots: { index: false, follow: false } };
 
 export default async function QualityPage({ searchParams }: { searchParams: Search }) {
   const sp = await searchParams;
+  if (!authorised(sp.key)) {
+    return (
+      <div className="mx-auto max-w-lg py-10">
+        <div className="panel panel-body">
+          <p className="eyebrow">Text that needs a look</p>
+          <h1 className="serif mt-1 text-[20px] font-semibold text-[var(--ink)]">Not available</h1>
+          <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--ink-2)]">
+            This page is part of the admin console. If you are the owner, append{" "}
+            <code className="num">?key=</code> and the value of <code className="num">ADMIN_KEY</code>.
+          </p>
+          <p className="mt-2 text-[13.5px] leading-relaxed text-[var(--ink-2)]">
+            Every provision links to the regulator&rsquo;s own document, which is the authority if anything
+            here reads oddly.
+          </p>
+          <p className="mt-3 text-[13px]">
+            <Link href="/" className="text-[var(--link)] hover:underline">
+              Go to the site &rarr;
+            </Link>
+          </p>
+        </div>
+      </div>
+    );
+  }
+  /* Every link from this page back to itself has to carry the key.
+   *
+   * Without this the first filter press drops it and the page locks the owner out of its own filters --
+   * the sort of gate that looks like it works until somebody uses it. `mine` takes the path and whatever
+   * query it already has, and appends the key with the right separator. */
+  const mine = (href: string) =>
+    `${href}${href.includes("?") ? "&" : "?"}key=${encodeURIComponent(sp.key ?? "")}`;
+
   const { rows, byFlag, byInstrument } = await qualityFlags({ flag: sp.flag, instrument: sp.instrument });
   const total = byFlag.reduce((n, f) => n + f.n, 0);
   const chip = (href: string, label: string, on: boolean, n?: number) => (
@@ -53,8 +95,8 @@ export default async function QualityPage({ searchParams }: { searchParams: Sear
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        {chip("/quality", "All", !sp.flag && !sp.instrument)}
-        {byFlag.map((f) => chip(`/quality?flag=${f.flag}`, f.flag.replace(/_/g, " "), sp.flag === f.flag, f.n))}
+        {chip(mine("/quality"), "All", !sp.flag && !sp.instrument)}
+        {byFlag.map((f) => chip(mine(`/quality?flag=${f.flag}`), f.flag.replace(/_/g, " "), sp.flag === f.flag, f.n))}
       </div>
 
       {sp.flag && (
@@ -82,7 +124,7 @@ export default async function QualityPage({ searchParams }: { searchParams: Sear
               {rows.map((r) => (
                 <tr key={`${r.provision_id}-${r.flag}`}>
                   <td className="whitespace-nowrap text-[12.5px]">
-                    <Link href={`/quality?instrument=${r.instrument_slug}`} className="hover:underline">
+                    <Link href={mine(`/quality?instrument=${r.instrument_slug}`)} className="hover:underline">
                       {r.instrument_slug}
                     </Link>
                   </td>
@@ -138,7 +180,7 @@ export default async function QualityPage({ searchParams }: { searchParams: Sear
         </div>
         <div className="flex flex-wrap gap-1.5 px-5 py-3">
           {byInstrument.map((i) =>
-            chip(`/quality?instrument=${i.instrument_slug}`, i.instrument_slug, sp.instrument === i.instrument_slug, i.n),
+            chip(mine(`/quality?instrument=${i.instrument_slug}`), i.instrument_slug, sp.instrument === i.instrument_slug, i.n),
           )}
         </div>
       </section>

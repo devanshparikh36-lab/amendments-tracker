@@ -142,6 +142,12 @@ export default async function AdminPage({ searchParams }: { searchParams: Promis
         </Link>
         <span className="ml-2 text-[var(--ink-4)]">what last ran, what failed, what is queued</span>
       </p>
+      <p className="mt-0.5 text-[13px]">
+        <Link href={`/quality?key=${encodeURIComponent(key ?? "")}`} className="text-[var(--link)] hover:underline">
+          Text that needs a look &rarr;
+        </Link>
+        <span className="ml-2 text-[var(--ink-4)]">provisions whose stored text looks wrong</span>
+      </p>
 
       <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-y border-[var(--rule)] py-3 text-[13px]">
         <Stat n={t.readers} label="signed up" />
