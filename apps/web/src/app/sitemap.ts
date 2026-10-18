@@ -10,6 +10,24 @@ import { abs } from "@/lib/site";
  */
 export const revalidate = 86400;
 
+/* Provision URLs are out of the sitemap, and this is the switch that puts them back.
+ *
+ * They were added on 16 Oct -- 4,464 of them -- and they are the pages a practitioner actually searches
+ * for. They are also `force-dynamic` and uncached, so every crawl of one runs a function and queries
+ * Postgres. Google found them, crawled hard, and in three days put 49,000 extra requests and 72 extra
+ * compute credits through a free tier with 300 in it. The site was paused mid-month with everything down.
+ *
+ * So this is a cap, not a correction: submitting thousands of uncached dynamic pages was the mistake, and
+ * until a crawl of them is cheap they do not belong in a sitemap. `/documents/*` stays -- those carry
+ * revalidate = 3600 and are served from Next's cache, which is why 8,043 of them cost a fraction of what
+ * 4,464 of these did.
+ *
+ * TO TURN THEM BACK ON: set this to true, and only once two consecutive requests to the same provision
+ * show "Netlify Durable: hit" rather than "fwd=bypass" on the live site. The caching lives in
+ * src/middleware.ts. Flipping this before that is confirmed repeats exactly what happened.
+ */
+const INCLUDE_PROVISIONS = false;
+
 type Row = { loc: string; changed: string | null };
 type ProvisionRow = { slug: string; number: string; changed: string | null };
 
@@ -73,7 +91,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
        * PDF-only instruments are excluded: their provision rows are deleted at seed time, so there is no
        * text to land on.
        */
-      query<ProvisionRow>(
+      !INCLUDE_PROVISIONS ? Promise.resolve([] as ProvisionRow[]) : query<ProvisionRow>(
         `SELECT i.slug, p.number,
                 to_char(MAX(v.created_at)::date, 'YYYY-MM-DD') AS changed
            FROM provision p
@@ -107,7 +125,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
      * declares itself canonical in generateMetadata, so the ?asOn= and ?view=full variants of the same
      * provision fold into this entry rather than competing with it.
      */
-    ...provisions.map((v) => ({
+    ...(INCLUDE_PROVISIONS ? provisions : []).map((v) => ({
       url: abs(`/browse/${v.slug}/text?p=${encodeURIComponent(v.number)}`),
       lastModified: lm(v.changed),
       changeFrequency: "monthly" as const,

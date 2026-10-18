@@ -21,7 +21,27 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/api/", "/status", "/quality", "/search", "/find", "/you", "/admin"],
+        disallow: [
+          "/api/",
+          "/status",
+          "/quality",
+          "/search",
+          "/find",
+          "/you",
+          "/admin",
+          /* Every /browse/ URL carrying a query string, which is every provision.
+           *
+           * Taking them out of the sitemap stops Google finding more; it does not stop it recrawling the
+           * 4,464 it already has, and this does. Blunt on purpose -- those pages are uncached and a crawl
+           * of them is what paused the site -- and narrow enough to leave the pages that are cheap:
+           * /browse, /browse/:slug and /browse/:slug/text all have no query string and stay crawlable.
+           *
+           * Remove this line at the same time as flipping INCLUDE_PROVISIONS in sitemap.ts, and only once
+           * the caching in middleware.ts is confirmed working on the live site. One without the other is
+           * either a sitemap advertising pages Google may not fetch, or an invitation to repeat October.
+           */
+          "/browse/*?*",
+        ],
       },
     ],
     sitemap: abs("/sitemap.xml"),
