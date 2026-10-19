@@ -19,10 +19,10 @@ import { TruckLoader } from "@/components/TruckLoader";
  * else. Without this the reader sits on the previous page for nearly three seconds with no sign that
  * anything is happening.
  *
- * The reading view, /browse/[slug]/text, is the page that lost most here -- 1.7 seconds, and it used to
- * have a proper skeleton. Getting that back means moving the slow part into an explicit <Suspense> inside
- * the page, below the existence check, so the status is settled before any streaming begins. That is the
- * right shape for it; it is simply more than a loading.tsx.
+ * The reading view, /browse/[slug]/text, is the page that lost most here, and it has since got its
+ * skeleton back -- not as a loading.tsx but as an explicit <Suspense> inside the page, below the
+ * existence check, so the status is settled before any streaming begins. Read that file if this route
+ * ever needs the same treatment; the pattern is written out at the top of it.
  */
 export default function Loading() {
   return (
