@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { Breadcrumbs } from "@/components/PageHeader";
 import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
@@ -14,6 +15,7 @@ import { InstrumentTabs } from "@/components/InstrumentTabs";
 import type { RefContext } from "@/lib/crossref";
 import { OfficialNumber } from "@/components/OfficialNumber";
 import { SectionFilter } from "@/components/SectionFilter";
+import { SkeletonLine, SkeletonParagraph, SkeletonScreen } from "@/components/Skeleton";
 import { unitFor } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
 import { fmtDate, slugifyNumber } from "@/lib/format";
@@ -110,38 +112,154 @@ export async function generateMetadata({ params, searchParams }: { params: Param
   };
 }
 
-// The reading view: the contents of one instrument on the left, the regulator's text on the right.
+/* The reading view: the contents of one instrument on the left, the regulator's text on the right.
+ *
+ * Split into a shell that renders at once and a body that streams in behind it. The split is load-bearing
+ * twice over, and the two reasons pull in opposite directions, so both are written down here.
+ *
+ * SPEED. Breadcrumbs, title, tabs and the as-on form need nothing but getInstrument() -- one indexed row.
+ * The provision index, the provision's own text, its documents and its dated versions are what make this
+ * the slowest page on the site that is also able to 404. Those live in <ReadingBody> behind an explicit
+ * <Suspense>, so the reader gets the page's furniture and an outline of the text immediately and the text
+ * lands into that outline. Measured on a production build against a warm database: a section went from
+ * 0.38s to first byte to 0.10s, the contents list from 0.64s to 0.10s, and the whole-Act view from 6.2s
+ * to 0.10s. Time to first byte is now flat at the cost of the shell, whatever the body is doing.
+ *
+ * STATUS. This is not a loading.tsx and must never be turned into one. A Suspense boundary starts the
+ * response streaming, and Next commits the HTTP status with the first flush -- so any notFound() or
+ * redirect() reached afterwards renders the right page under a 200. That is the soft 404 that cost the
+ * site every loading.tsx it had; the reasoning is written out in app/definitions/loading.tsx and is worth
+ * reading before touching this file. An explicit boundary is safe only because everything that can 404 is
+ * settled above it: getInstrument() and its notFound() run before any JSX is returned, so a bad slug
+ * throws before a byte is sent. Two rules follow, and neither is optional. Nothing inside <ReadingBody>
+ * may call notFound() or redirect(). And no loading.tsx may be added to this route or to any route above
+ * it -- app/loading.tsx and app/browse/loading.tsx would each cover it and would each put the boundary
+ * back above the check.
+ */
 export default async function InstrumentTextPage({ params, searchParams }: { params: Params; searchParams: Search }) {
   const { slug } = await params;
   const sp = await searchParams;
   const inst = await getInstrument(slug);
-
-  // Everything needed to resolve a citation that names its instrument ("of the Income-tax Act, 1961").
-  // instrumentIndex() is the same cached read the browse page makes, so this costs a cache hit.
-  const refs: RefContext | undefined = inst
-    ? {
-        current: { slug: inst.slug, kind: inst.kind, short_code: inst.short_code, title: inst.title },
-        all: (await instrumentIndex()).map((i) => ({
-          slug: i.slug,
-          kind: i.kind,
-          short_code: i.short_code,
-          title: i.title,
-          pdf_only: i.pdf_only,
-        })),
-      }
-    : undefined;
   if (!inst) notFound();
   if (inst.pdf_only) return <PdfReader inst={inst} slug={slug} sp={sp} />;
 
   const unit = unitFor(inst.kind);
-  const suffix = sp.asOn ? `&asOn=${sp.asOn}` : "";
   const fullText = sp.view === "full" && !sp.p;
+  // The header's link to the official document only appears when no provision is selected -- and with no
+  // provision selected there is nothing provision-specific to point at, so this needs no query of its own.
+  // The body works out its own source, from the provision, once it has one.
+  const instSource = officialSource(inst, null, unit);
 
-  const [index, selected, fullRows] = await Promise.all([
+  return (
+    <div className="space-y-3">
+      <div className="no-print">
+        <Breadcrumbs
+          trail={[
+            { label: "Acts & Rules", href: "/browse" },
+            { label: inst.short_code, href: `/browse/${slug}` },
+            { label: "Text" },
+          ]}
+        />
+        <div className="mt-1">
+          <h1 className="page-title">
+            <Link href={`/browse/${slug}`} className="hover:underline">
+              {inst.title}
+            </Link>
+          </h1>
+        </div>
+        <InstrumentTabs slug={slug} current={fullText ? "full" : "text"} documentCount={inst.doc_count} />
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Link
+            href={`/browse/${slug}/text${fullText ? "" : "?view=full"}${
+              sp.asOn ? `${fullText ? "?" : "&"}asOn=${sp.asOn}` : ""
+            }`}
+            className="btn"
+          >
+            {fullText ? "Contents" : "Read full text"}
+          </Link>
+          {!sp.p && instSource && (
+            <a href={instSource.href} target="_blank" rel="noreferrer" className="btn">
+              {instSource.label}
+            </a>
+          )}
+          <form className="ml-auto flex items-center gap-2">
+            {sp.p && <input type="hidden" name="p" value={sp.p} />}
+            {fullText && <input type="hidden" name="view" value="full" />}
+            <label htmlFor="asOn" className="text-[12px] text-[var(--ink-3)]">
+              Text as on
+            </label>
+            <input id="asOn" type="date" name="asOn" defaultValue={sp.asOn ?? ""} className="field py-1 text-[12.5px]" />
+            <button className="btn">Apply</button>
+            {sp.asOn && (
+              <Link
+                href={`/browse/${slug}/text${sp.p ? `?p=${encodeURIComponent(sp.p)}` : ""}`}
+                className="text-[12px] text-[var(--ink-3)] hover:underline"
+              >
+                today
+              </Link>
+            )}
+          </form>
+        </div>
+      </div>
+
+      {/* Keyed on what was asked for, so moving from one section to the next remounts the boundary and the
+          skeleton comes back. Without the key React treats the next section as an update to this one and
+          holds the old section's text on screen for the whole of the new query -- which on a page people
+          read straight through is exactly the unsignalled wait the skeleton exists to remove. */}
+      <Suspense
+        key={`${sp.p ?? ""}|${sp.asOn ?? ""}|${sp.view ?? ""}`}
+        fallback={<ReadingFallback kind={sp.p ? "provision" : fullText ? "full" : "contents"} />}
+      >
+        <ReadingBody inst={inst} slug={slug} sp={sp} unit={unit} fullText={fullText} />
+      </Suspense>
+    </div>
+  );
+}
+
+/* Everything the page has to wait for.
+ *
+ * This runs below the Suspense boundary, which is the whole reason it may not reach notFound() or
+ * redirect(): by the time it runs, the 200 has already gone out. A provision number that does not exist
+ * is therefore answered by the page, not by the router -- `selected` comes back null and the contents
+ * list is shown instead, which is what it did before this split as well.
+ */
+async function ReadingBody({
+  inst,
+  slug,
+  sp,
+  unit,
+  fullText,
+}: {
+  inst: InstrumentRow;
+  slug: string;
+  sp: { p?: string; asOn?: string; view?: string };
+  unit: string;
+  fullText: boolean;
+}) {
+  const suffix = sp.asOn ? `&asOn=${sp.asOn}` : "";
+
+  // Four reads issued together rather than in sequence. instrumentIndex() is the same cached read the
+  // browse page makes, so it usually costs nothing -- but awaiting it on its own, as this did, still put a
+  // round trip in front of the three that matter.
+  const [allInstruments, index, selected, fullRows] = await Promise.all([
+    instrumentIndex(),
     listProvisionIndex(inst.id),
     sp.p ? getProvision(inst.id, sp.p, sp.asOn) : Promise.resolve(null),
     fullText ? listProvisions(inst.id, sp.asOn) : Promise.resolve([]),
   ]);
+
+  // Everything needed to resolve a citation that names its instrument ("of the Income-tax Act, 1961").
+  const refs: RefContext = {
+    current: { slug: inst.slug, kind: inst.kind, short_code: inst.short_code, title: inst.title },
+    all: allInstruments.map((i) => ({
+      slug: i.slug,
+      kind: i.kind,
+      short_code: i.short_code,
+      title: i.title,
+      pdf_only: i.pdf_only,
+    })),
+  };
+
   const [selectedDocs, heldVersions] = selected
     ? await Promise.all([provisionDocuments(selected.id), provisionVersionDates(selected.id)])
     : [[], []];
@@ -171,116 +289,158 @@ export default async function InstrumentTextPage({ params, searchParams }: { par
   }));
 
   return (
-    <div className="space-y-3">
-      <div className="no-print">
-        <Breadcrumbs
-          trail={[
-            { label: "Acts & Rules", href: "/browse" },
-            { label: inst.short_code, href: `/browse/${slug}` },
-            { label: "Text" },
-          ]}
-        />
-        <div className="mt-1">
-          <h1 className="page-title">
-            <Link href={`/browse/${slug}`} className="hover:underline">
-              {inst.title}
-            </Link>
-          </h1>
-        </div>
-        <InstrumentTabs slug={slug} current={fullText ? "full" : "text"} documentCount={inst.doc_count} />
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Link
-            href={`/browse/${slug}/text${fullText ? "" : "?view=full"}${
-              sp.asOn ? `${fullText ? "?" : "&"}asOn=${sp.asOn}` : ""
-            }`}
-            className="btn"
-          >
-            {fullText ? "Contents" : "Read full text"}
-          </Link>
-          {!sp.p && source && (
-            <a href={source.href} target="_blank" rel="noreferrer" className="btn">
-              {source.label}
-            </a>
-          )}
-          <form className="ml-auto flex items-center gap-2">
-            {sp.p && <input type="hidden" name="p" value={sp.p} />}
-            {fullText && <input type="hidden" name="view" value="full" />}
-            <label htmlFor="asOn" className="text-[12px] text-[var(--ink-3)]">
-              Text as on
-            </label>
-            <input id="asOn" type="date" name="asOn" defaultValue={sp.asOn ?? ""} className="field py-1 text-[12.5px]" />
-            <button className="btn">Apply</button>
-            {sp.asOn && (
-              <Link
-                href={`/browse/${slug}/text${sp.p ? `?p=${encodeURIComponent(sp.p)}` : ""}`}
-                className="text-[12px] text-[var(--ink-3)] hover:underline"
-              >
-                today
-              </Link>
-            )}
-          </form>
-        </div>
-      </div>
+    /* On a phone this collapses to one column, so the order matters: the provision you asked for comes
+       first and the contents list follows it. Sticky full-height is a desktop idea -- applied on a narrow
+       screen it puts a full viewport of table-of-contents above the text, and the reader has to scroll
+       past the whole Act to reach the section they clicked.
+       ReadingFallback repeats these grid classes. Change them here and change them there, or the page
+       will jump as the text lands. */
+    <div className="grid gap-4 lg:grid-cols-[288px_minmax(0,1fr)]">
+      <aside className="panel no-print order-2 max-h-[60vh] overflow-y-auto lg:order-1 lg:sticky lg:top-3 lg:max-h-none lg:h-[calc(100vh-5.5rem)] lg:overflow-hidden">
+        <SectionFilter items={navItems} total={sections.length} slug={slug} selected={sp.p} suffix={suffix} unit={unit} />
+      </aside>
 
-      {/* On a phone this collapses to one column, so the order matters: the provision you asked for comes
-          first and the contents list follows it. Sticky full-height is a desktop idea -- applied on a narrow
-          screen it puts a full viewport of table-of-contents above the text, and the reader has to scroll
-          past the whole Act to reach the section they clicked. */}
-      <div className="grid gap-4 lg:grid-cols-[288px_minmax(0,1fr)]">
-        <aside className="panel no-print order-2 max-h-[60vh] overflow-y-auto lg:order-1 lg:sticky lg:top-3 lg:max-h-none lg:h-[calc(100vh-5.5rem)] lg:overflow-hidden">
-          <SectionFilter items={navItems} total={sections.length} slug={slug} selected={sp.p} suffix={suffix} unit={unit} />
-        </aside>
-
-        <div className="print-full order-1 min-w-0 space-y-4 lg:order-2">
-          {selected ? (
-            <ProvisionView
-              inst={inst}
-              p={selected}
-              slug={slug}
-              unit={unit}
-              source={source}
-              docs={selectedDocs}
-              held={heldVersions}
-              asOn={sp.asOn}
-              prev={prevSection}
-              next={nextSection}
-              suffix={suffix}
-              refs={refs}
-            />
-          ) : fullText ? (
-            <article className="space-y-3">
-              <p className="provenance no-print">
-                <strong>{inst.regulator_code}&rsquo;s own text</strong>, {sections.length.toLocaleString("en-IN")}{" "}
-                {unit}s in the order the regulator prints them
-                {inst.official_updated_as_on ? `, as on ${fmtDate(inst.official_updated_as_on)}` : ""}.
-              </p>
-              {fullRows.map((p) => (
-                <section key={p.id} id={slugifyNumber(p.number)} className="panel px-5 py-4">
-                  <div className="mb-2 flex flex-wrap items-baseline gap-2 border-b border-[var(--rule)] pb-1.5">
-                    <Link
-                      href={`/browse/${slug}/text?p=${encodeURIComponent(p.number)}`}
-                      className="serif text-[15.5px] font-semibold hover:underline"
-                    >
-                      {p.level === "chapter" ? p.heading : `${unit} ${p.number}`}
-                    </Link>
-                    {p.level !== "chapter" && p.heading && (
-                      <span className="serif text-[15px] text-[var(--ink-2)]">{p.heading.replace(/[.\-\s]+$/, "")}</span>
-                    )}
-                    {p.source_kind === "machine_merged" && <Badge kind="machine_merged" />}
-                  </div>
-                  <ProvisionBody p={p} refs={refs} />
-                </section>
-              ))}
-              {fullRows.length === 0 && <NotSeeded />}
-            </article>
-          ) : index.length === 0 ? (
-            <NotSeeded />
-          ) : (
-            <Contents index={index} slug={slug} suffix={suffix} unit={unit} source={source} />
-          )}
-        </div>
+      <div className="print-full order-1 min-w-0 space-y-4 lg:order-2">
+        {selected ? (
+          <ProvisionView
+            inst={inst}
+            p={selected}
+            slug={slug}
+            unit={unit}
+            source={source}
+            docs={selectedDocs}
+            held={heldVersions}
+            asOn={sp.asOn}
+            prev={prevSection}
+            next={nextSection}
+            suffix={suffix}
+            refs={refs}
+          />
+        ) : fullText ? (
+          <article className="space-y-3">
+            <p className="provenance no-print">
+              <strong>{inst.regulator_code}&rsquo;s own text</strong>, {sections.length.toLocaleString("en-IN")}{" "}
+              {unit}s in the order the regulator prints them
+              {inst.official_updated_as_on ? `, as on ${fmtDate(inst.official_updated_as_on)}` : ""}.
+            </p>
+            {fullRows.map((p) => (
+              <section key={p.id} id={slugifyNumber(p.number)} className="panel px-5 py-4">
+                <div className="mb-2 flex flex-wrap items-baseline gap-2 border-b border-[var(--rule)] pb-1.5">
+                  <Link
+                    href={`/browse/${slug}/text?p=${encodeURIComponent(p.number)}`}
+                    className="serif text-[15.5px] font-semibold hover:underline"
+                  >
+                    {p.level === "chapter" ? p.heading : `${unit} ${p.number}`}
+                  </Link>
+                  {p.level !== "chapter" && p.heading && (
+                    <span className="serif text-[15px] text-[var(--ink-2)]">{p.heading.replace(/[.\-\s]+$/, "")}</span>
+                  )}
+                  {p.source_kind === "machine_merged" && <Badge kind="machine_merged" />}
+                </div>
+                <ProvisionBody p={p} refs={refs} />
+              </section>
+            ))}
+            {fullRows.length === 0 && <NotSeeded />}
+          </article>
+        ) : index.length === 0 ? (
+          <NotSeeded />
+        ) : (
+          <Contents index={index} slug={slug} suffix={suffix} unit={unit} source={source} />
+        )}
       </div>
     </div>
+  );
+}
+
+/* The reading view, before the text arrives.
+ *
+ * Recovered from the loading.tsx that commit a662aa6 had to delete, trimmed to the part that actually
+ * streams. The breadcrumbs, title and tabs are real HTML by the time this is on screen, so grey boxes for
+ * them would be a second copy of something the reader can already see.
+ *
+ * The outline repeats ReadingBody's grid classes rather than approximating them -- same columns, same gap,
+ * same order swap on a phone, same sticky sidebar -- because a fallback of a different shape is a layout
+ * jump with extra steps. Which outline depends on what was asked for: a single provision, the contents
+ * list, or the whole Act, because those are three different shapes and a skeleton of the wrong one would
+ * be the jump it is meant to prevent.
+ */
+function ReadingFallback({ kind }: { kind: "provision" | "contents" | "full" }) {
+  return (
+    <SkeletonScreen label="Loading the text">
+      <div className="grid gap-4 lg:grid-cols-[288px_minmax(0,1fr)]">
+        <aside className="panel no-print order-2 max-h-[60vh] overflow-y-auto lg:order-1 lg:sticky lg:top-3 lg:max-h-none lg:h-[calc(100vh-5.5rem)] lg:overflow-hidden">
+          {/* What SectionFilter draws: the filter box and its count above a scrolling list. */}
+          <div className="flex h-full flex-col">
+            <div className="border-b border-[var(--rule)] p-2">
+              <SkeletonLine h="h-8" />
+              <div className="mt-1.5">
+                <SkeletonLine w="w-28" h="h-2.5" />
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 space-y-2.5 overflow-hidden p-2">
+              {Array.from({ length: 16 }, (_, i) => (
+                <SkeletonLine key={i} w={i % 3 === 0 ? "w-10/12" : "w-full"} h="h-3.5" />
+              ))}
+            </div>
+          </div>
+        </aside>
+
+        <div className="no-print order-1 min-w-0 space-y-4 lg:order-2">
+          {kind === "provision" ? (
+            <div className="panel">
+              <div className="border-b border-[var(--rule)] px-5 py-3">
+                <SkeletonLine w="w-2/3" h="h-6" />
+                <div className="mt-2">
+                  <SkeletonLine w="w-1/3" h="h-3" />
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <SkeletonLine w="w-36" h="h-7" />
+                  <SkeletonLine w="w-40" h="h-7" />
+                  <SkeletonLine w="w-24" h="h-7" />
+                </div>
+              </div>
+              <div className="px-5 py-4">
+                <SkeletonParagraph lines={9} />
+              </div>
+            </div>
+          ) : kind === "full" ? (
+            <div className="space-y-3">
+              <SkeletonLine w="w-3/4" h="h-3" />
+              {Array.from({ length: 3 }, (_, i) => (
+                <div key={i} className="panel px-5 py-4">
+                  <div className="mb-2 border-b border-[var(--rule)] pb-1.5">
+                    <SkeletonLine w="w-1/2" h="h-5" />
+                  </div>
+                  <SkeletonParagraph lines={6} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="panel panel-body">
+                <SkeletonLine w="w-11/12" h="h-3.5" />
+                <div className="mt-2">
+                  <SkeletonLine w="w-2/3" h="h-3.5" />
+                </div>
+                <div className="mt-3">
+                  <SkeletonLine w="w-36" h="h-7" />
+                </div>
+              </div>
+              <div className="panel px-5 py-4">
+                <SkeletonLine w="w-40" h="h-3" />
+                <div className="mt-2.5 columns-1 gap-x-10 sm:columns-2 xl:columns-3">
+                  {Array.from({ length: 24 }, (_, i) => (
+                    <div key={i} className="break-inside-avoid py-1.5">
+                      <SkeletonLine w={i % 4 === 0 ? "w-9/12" : i % 3 === 0 ? "w-11/12" : "w-full"} h="h-3.5" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </SkeletonScreen>
   );
 }
 
