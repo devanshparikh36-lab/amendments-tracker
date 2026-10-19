@@ -773,6 +773,9 @@ def _tag_document_by_rules(doc: dict, text: str, instruments: list[dict]) -> Non
             "regulator_code": doc.get("regulator_code"),
             "source_adapter": doc.get("source_adapter", ""),
             "source_url": doc.get("source_url", ""),
+            # The CBDT rules need this: before 1 April 2026 only the 1961 Act was in force, which is what
+            # tells a circular naming no year apart from one about the 2025 Act. See rules._ita_act_for.
+            "date_issued": doc.get("date_issued"),
         },
         text,
         [dict(i) for i in instruments],
@@ -836,6 +839,33 @@ def _tag_document_by_rules(doc: dict, text: str, instruments: list[dict]) -> Non
                    VALUES (%s, %s, %s, 'amends', 1.0) ON CONFLICT DO NOTHING""",
                 (doc_id, inst["id"], prov["id"]),
             )
+        # Provisions a document merely discusses. Resolved against provisions that already exist and
+        # dropped when there is no such row -- deliberately not _create_provision, which the effects
+        # path above uses. An amending notification naming "rule 12AB" is good evidence the rule exists;
+        # a circular naming "section 139" is not, and the extractor reads OCR that runs numbers together,
+        # so inventing a provision from one would put a section into a statute that has no such section.
+        for pr in result.provision_refs:
+            inst = by_slug.get(pr.instrument_slug)
+            if not inst:
+                continue
+            # The hyphen-insensitive arm matters: the Act numbers a provision "80-IA" while circulars
+            # write "80IA", so matching exactly would drop every deduction-chapter reference.
+            prov = db.fetch_one(
+                conn,
+                """SELECT id FROM provision WHERE instrument_id = %s
+                     AND (number = %s OR number LIKE %s OR replace(number, '-', '') = %s)
+                   ORDER BY sort_key LIMIT 1""",
+                (inst["id"], pr.provision_number, f"{pr.provision_number} (%", pr.provision_number.replace("-", "")),
+            )
+            if not prov:
+                continue
+            db.execute(
+                conn,
+                """INSERT INTO document_tag (document_id, instrument_id, provision_id, relation, confidence)
+                   VALUES (%s, %s, %s, %s, 1.0) ON CONFLICT DO NOTHING""",
+                (doc_id, inst["id"], prov["id"], pr.relation),
+            )
+
         db.execute(
             conn,
             "UPDATE document SET is_amending = %s, tag_status = 'tagged' WHERE id = %s",
