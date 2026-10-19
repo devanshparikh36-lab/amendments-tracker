@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import date
 
 FEM_NAME = r"Foreign\s+Exchange\s+Management\s*\((?P<subject>[^)]{2,140})\)"
 _TITLE = re.compile(
@@ -67,11 +68,26 @@ class Effect:
 
 
 @dataclass
+class ProvisionRef:
+    """A provision a document talks about without changing it -- what a circular's "section 139" is.
+
+    Deliberately not an Effect. An Effect is written to amendment_effect and tagged 'amends', and the
+    pipeline creates the provision row if it is missing; both are wrong for a circular, which amends
+    nothing and whose mention of a section is no evidence that the section exists. The pipeline resolves
+    these against provisions that are already there and silently drops the ones that are not.
+    """
+    instrument_slug: str
+    provision_number: str
+    relation: str             # clarifies | references
+
+
+@dataclass
 class RuleResult:
     is_amending: bool = False
     tags: list[tuple[str, str]] = field(default_factory=list)          # (instrument slug, relation)
     new_instruments: list[NewInstrument] = field(default_factory=list)
     effects: list[Effect] = field(default_factory=list)
+    provision_refs: list[ProvisionRef] = field(default_factory=list)
 
 
 def _change_type(text: str) -> str:
@@ -224,16 +240,62 @@ def tag_circular(doc: dict, text: str, instruments: list[dict]) -> RuleResult:
 
 # ---------------------------------------------------------------- Income Tax (CBDT)
 
-_ITR_AMEND = re.compile(
-    r"further to amend the Income-?tax Rules,?\s*(?P<year>19\d{2}|20\d{2})", re.I
-)
+# CBDT publishes circulars as scans and the OCR is rough. The live corpus spells the Act's name
+# "Income-tax Act", "Income Tax Act", "Income tax Act", "Income-tax. Act", "lncome-tax Act" (lowercase L
+# for the capital I) and even "lncome-iax Act". The old pattern demanded the exact hyphenated spelling,
+# so of the 84 CBDT circulars that came out of tagging with nothing attached it matched precisely none --
+# nine of them say "Income Tax Act, 1961" and were lost on the missing hyphen alone. Match the name
+# loosely; the year, where one is given, is what actually decides which Act is meant.
+_ITA_NAME = r"[il1]ncome[-\s.]{0,2}[ti]ax\s*\.?\s*Act"
+_ITA_ACT_YEAR = re.compile(rf"{_ITA_NAME},?\.?\s*(?P<year>1961|2025)", re.I)
+_ITA_ACT_ANY = re.compile(_ITA_NAME, re.I)
+
+# Same looseness for the Rules, for the same reason -- "Income Tax Rules, 1962" is as common in these
+# scans as the hyphenated form, and the amending path below keys off this name.
+_ITR_NAME = r"[il1]ncome[-\s.]{0,2}[ti]ax"
+_ITR_AMEND = re.compile(rf"further to amend the {_ITR_NAME}\s*Rules,?\s*(?P<year>19\d{{2}}|20\d{{2}})", re.I)
+_ITR_AMENDMENT_RULES = re.compile(rf"{_ITR_NAME}\s*\((?:[A-Za-z\- ]*?Amendment)\)\s*Rules,?\s*(20\d{{2}})", re.I)
 _ITR_RULE_REF = re.compile(r"\b(?:in the principal rules,?\s*)?in rule\s+(?P<num>\d{1,3}[A-Z]{0,3})\b", re.I)
 _ITR_NEW_RULE = re.compile(r"\bafter rule\s+(?P<num>\d{1,3}[A-Z]{0,3}),?\s*the following rule", re.I)
 _FORM_REF = re.compile(r"\bin Form No\.?\s*(?P<num>[0-9A-Z\-]+)", re.I)
-_ITA_SECTION_REF = re.compile(
-    r"\b(?:under |of )?section[s]?\s+(?P<num>\d{1,3}[A-Z]{0,3})(?:\s*\(\d+\))?\s*(?:of the Income-?tax Act)?", re.I
+
+# A section citation, and separately whatever qualifies it. Splitting the two matters: the number on its
+# own is near worthless as evidence, because CBDT circulars cite other statutes by section constantly.
+# Circular 12/2024 (Vivad se Vishwas guidance) names sections 89, 96 and 97 of the *Scheme* alongside
+# sections 144C, 264 and 132 of the Income-tax Act, and "section 90" in it is the Scheme's section 90,
+# not the Act's DTAA provision. Reading the qualifier is the only thing that separates them.
+# No whitespace is allowed between the number and its letter suffix. That costs nothing -- the Act and
+# the circulars both write "144C", "12AB" and "80-IA" closed up -- and it avoids the trap a tolerated
+# space sets: "section 119 of the Act" then parses as section "119 OF" and "section 139 r/w 143" as
+# "139 R", neither of which looks wrong, because O and R are both real suffixes (80-O, 80R).
+_SECTION_AT = re.compile(r"\bsections?\s+(?P<num>\d{1,3}(?:-?[A-Z]{1,4})?)(?![A-Za-z0-9])", re.I)
+# What follows a citation: any sub-section brackets, then optionally "of the <name>". re.I is not
+# optional here -- these scans carry whole lines in capitals, and without it "SECTION 119 OF THE
+# INCOME-TAX ACT" leaves "OF THE ..." sitting in front of the name and the citation is thrown away.
+_SECTION_QUALIFIER = re.compile(r"\A(?:\s*\(\s*[0-9A-Za-z]{1,4}\s*\))*\s*(?:of\s+)?(?:the\s+)?(?P<name>.{0,48})", re.S | re.I)
+# "section 90 or section 90A of the Act" -- the first citation's qualifier is the second citation, so it
+# inherits whatever that one turns out to refer to.
+_SECTION_CHAIN = re.compile(r"\A(?:\s*\(\s*[0-9A-Za-z]{1,4}\s*\))*\s*(?:,|/|and|or|&)\s*(?:sections?\s+)?\d", re.I)
+# The circular's own defined short form. These documents write "section 144C of the Income-tax Act, 1961
+# ('the Act')" once and then "of the Act" everywhere after, so the short form carries most of the citations.
+_SECTION_SAID_ACT = re.compile(r"\A(?:said\s+|principal\s+)?Act\b", re.I)
+# Statutes CBDT also administers that are NOT the Income-tax Act. If one of these is named anywhere in
+# the document, the bare short form "the Act" can no longer be assumed to mean the Income-tax Act and
+# only citations that name the Act outright are counted.
+_COMPETING_ACT = re.compile(
+    r"\b(?:Wealth[-\s.]{0,2}tax|Gift[-\s.]{0,2}tax|Expenditure[-\s.]{0,2}tax|Interest[-\s.]{0,2}tax|Finance|Companies"
+    r"|Benami|Black\s+Money|Prohibition\s+of\s+Benami)\s+(?:\([^)]{0,40}\)\s*)?Act\b",
+    re.I,
 )
-_ITA_ACT_YEAR = re.compile(r"Income-?tax Act,?\s*(?P<year>1961|2025)", re.I)
+
+# The Income-tax Act, 2025 commences on 1 April 2026. Before that date the 1961 Act is the only income-tax
+# Act in operation, so a circular issued earlier that names no year cannot be discussing the 2025 Act's
+# sections -- that is a fact about the calendar, not a guess. From 1 April 2026 both Acts are live (see the
+# SUPERSEDED_BY note in apps/web/src/lib/catalogue.ts: neither replaces the other, they govern different
+# years), and because the two renumber everything relative to each other a bare "section 10" is then
+# genuinely ambiguous. In that case this tags nothing rather than pick one: a section tag pointing at the
+# wrong Act puts the wrong law on the provision page and mails it to everyone following that section.
+_ITA_2025_COMMENCEMENT = date(2026, 4, 1)
 
 
 def _cbdt_instruments(instruments: list[dict]) -> dict[str, dict]:
@@ -252,7 +314,7 @@ def tag_cbdt(doc: dict, text: str, instruments: list[dict]) -> RuleResult:
     m = _ITR_AMEND.search(blob)
     if m:
         rules_year = m.group("year")
-    elif re.search(r"Income-?tax \((?:[A-Za-z\- ]*?Amendment)\) Rules,?\s*(20\d{2})", blob, re.I):
+    elif _ITR_AMENDMENT_RULES.search(blob):
         rules_year = "2026" if re.search(r"Rules,?\s*2026", blob, re.I) else "1962"
 
     if rules_year:
@@ -277,24 +339,92 @@ def tag_cbdt(doc: dict, text: str, instruments: list[dict]) -> RuleResult:
             for mm in list(_FORM_REF.finditer(head))[:3]:
                 res.effects.append(Effect(slug, f"Form {mm.group('num')}", "substitute", _excerpt([head], 0)[:1200]))
 
-    # Which Act does it operate under / refer to?
+    # Which Act does it operate under / refer to? An explicit year settles it; failing that the issue
+    # date does, against the 2025 Act's commencement (see _ITA_2025_COMMENCEMENT). Nothing else does --
+    # being a CBDT document is not evidence, because CBDT also issues circulars on the Wealth-tax Act and
+    # on schemes with their own sections, and Circular 20/2024 is about the Vivad se Vishwas Scheme from
+    # end to end without touching the Income-tax Act at all.
     acts = {m.group("year") for m in _ITA_ACT_YEAR.finditer(blob)}
+    named_act = bool(_ITA_ACT_ANY.search(blob))
     for year in acts:
         slug = "ita-2025" if year == "2025" else "ita-1961"
         if slug in known and not any(s == slug for s, _ in res.tags):
             relation = "clarifies" if doc.get("doc_type") == "circular" else "references"
             res.tags.append((slug, relation))
-    if doc.get("doc_type") == "circular":
-        # circulars explain sections: record the sections they discuss
-        target = "ita-1961" if "ita-1961" in known else next(iter(known), None)
-        if target:
-            seen_secs: set[str] = set()
-            for mm in list(_ITA_SECTION_REF.finditer(head))[:8]:
-                num = mm.group("num")
-                if num in seen_secs or len(num) > 6:
-                    continue
-                seen_secs.add(num)
+
+    act_slug = _ita_act_for(acts, named_act, doc.get("date_issued"))
+    if act_slug and act_slug in known and not any(s == act_slug for s, _ in res.tags):
+        # Names the Act but gives no year, and the date settles which one.
+        res.tags.append((act_slug, "clarifies" if doc.get("doc_type") == "circular" else "references"))
+
+    if doc.get("doc_type") == "circular" and act_slug and act_slug in known:
+        # Circulars explain sections: record the sections they discuss, as references rather than
+        # effects. A circular changes no text -- these feed the "Affects" line, the provision history
+        # and readers' follow notifications, nothing else.
+        relation = "clarifies"
+        bound = named_act and not _COMPETING_ACT.search(blob)
+        seen_secs: set[str] = set()
+        for slug, num in _ita_section_refs(blob, act_slug, bound):
+            if num in seen_secs or len(num) > 6:
+                continue
+            seen_secs.add(num)
+            if slug in known:
+                res.provision_refs.append(ProvisionRef(slug, num, relation))
+            # A cap, because OCR invents numbers: "section 1321132A" is really 132 and 132A run together,
+            # and one bad page should not be able to attach thirty sections to a two-page circular.
+            if len(seen_secs) >= 12:
+                break
     return res
+
+
+def _ita_act_for(years: set[str], named_act: bool, issued: date | None) -> str | None:
+    """Which Income-tax Act a document is about, or None when that cannot be told honestly."""
+    if years == {"1961"}:
+        return "ita-1961"
+    if years == {"2025"}:
+        return "ita-2025"
+    if years:
+        return None                      # names both; let the explicit per-year tags above stand alone
+    if not named_act:
+        return None                      # never names the Act -- nothing to go on
+    if issued is not None and issued < _ITA_2025_COMMENCEMENT:
+        return "ita-1961"                # the 2025 Act was not in force, so it cannot be that one
+    return None                          # both live, no year given: ambiguous, so say nothing
+
+
+def _ita_section_refs(blob: str, act_slug: str, bound: bool) -> list[tuple[str, str]]:
+    """Section citations in a CBDT document, paired with the Act each one belongs to.
+
+    A citation counts only when the text says which Act it is under, either outright ("section 139 of
+    the Income-tax Act, 1961") or through the short form the document defined for itself ("of the Act").
+    A number with no qualifier at all is dropped: in Circular 12/2024 that rule is the whole difference
+    between the Act's sections 144C and 264 and the Scheme's sections 89, 96 and 97, which the number
+    alone cannot distinguish. `bound` says whether "the Act" can be read as the Income-tax Act -- it
+    cannot once the document also names the Finance Act or the Wealth-tax Act.
+    """
+    out: list[tuple[str, str]] = []
+    pending: list[str] = []              # citations waiting on a later one, as in "section 90 or 90A of the Act"
+    for m in _SECTION_AT.finditer(blob):
+        num = m.group("num").upper()
+        rest = blob[m.end():m.end() + 90]
+        if _SECTION_CHAIN.match(rest):
+            pending.append(num)
+            continue
+        q = _SECTION_QUALIFIER.match(rest)
+        name = (q.group("name") if q else "") or ""
+        slug: str | None = None
+        ym = _ITA_ACT_YEAR.match(name)
+        if ym:
+            slug = "ita-2025" if ym.group("year") == "2025" else "ita-1961"
+        elif _ITA_ACT_ANY.match(name):
+            slug = act_slug              # names the Act without a year; the document-level choice applies
+        elif bound and _SECTION_SAID_ACT.match(name):
+            slug = act_slug
+        if slug:
+            for n in (*pending, num):
+                out.append((slug, n))
+        pending.clear()
+    return out
 
 
 # ----------------------------------------------------------------------------- GST (CBIC)
