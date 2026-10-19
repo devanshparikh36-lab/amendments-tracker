@@ -1768,7 +1768,7 @@ def confirmed_readers() -> list[dict]:
         return db.fetch_all(
             conn,
             """
-            SELECT email, unsub_token
+            SELECT id, email, unsub_token
               FROM reader
              WHERE alerts_on
                AND alerts_ok_at IS NOT NULL
@@ -1777,6 +1777,111 @@ def confirmed_readers() -> list[dict]:
             """,
             (),
         )
+
+
+def follow_hits(since: datetime, cutoff: datetime) -> dict[int, list[dict]]:
+    """Documents from this window that landed against something a reader follows, keyed by reader.
+
+    The Follow button on every section has always written a `reader_watch` row and promised, in its own
+    tooltip, to "tell me when something lands against it". Nothing read that row. This is what reads it.
+
+    Four ways a document reaches a follower, unioned because they are genuinely different relationships
+    and a document can arrive by more than one:
+
+      a provision is followed, and the document is tagged to that provision   document_tag.provision_id
+      a provision is followed, and the document is recorded as amending it    amendment_effect.provision_id
+      an instrument is followed, and the document is tagged to it             document_tag.instrument_id
+      a provision is followed, and the document's title names that section    the regex below
+
+    That fourth path is not a nicety, it is what makes following a section work at all. Measured against
+    this database: 774 of 5,603 provisions have any structured link, and the Income-tax Act 1961 -- the
+    instrument people actually follow -- has none. Sections 80C, 68, 10, 194 and 139 each had zero tags and
+    zero effects. Built on the structured links alone, this whole feature would have sent nobody anything,
+    which is the same silence the Follow button already produced, reached more expensively.
+
+    The regex is deliberately narrow, because a text match on legal documents is otherwise a noise machine:
+
+      the document must already be tagged to the instrument the provision belongs to, so "section 4" in a
+        Companies Act circular cannot reach somebody following section 4 of the Income-tax Act
+
+      the number must be preceded by section/rule/regulation, so a date, a page count or an amount cannot
+        match
+
+      a boundary is required on each side, so following "4" does not catch "45", "40" or "44AB" -- checked
+        against the live data, where following section 4 returns nothing at all while 80C returns 3
+        documents and section 10 returns 61
+
+    It stays a weaker signal than a structured tag and is treated the same way in the mail, which is
+    honest in the one direction that matters: everything listed does name the section it is filed under.
+
+    `kind = 'follow'` is the whole point of the filter. The same table holds bookmarks, which mean "keep
+    this where I can find it" and emphatically not "mail me about it" -- mailing somebody because they
+    bookmarked a section would be the site deciding what a bookmark meant on their behalf.
+
+    Instrument follows are not expanded into their provisions and must not be. Following the CGST Rules
+    means everything filed against the Rules; resolving that to the 200-odd provisions underneath would
+    produce the same documents with a misleading label saying which rule they were "against".
+
+    Bounded by the same window as the digest itself, so a reader cannot be mailed twice about one document,
+    and returns {} rather than raising if nothing matches -- a digest must still go out when this finds
+    nothing.
+    """
+    with db.transaction() as conn:
+        rows = db.fetch_all(
+            conn,
+            r"""WITH hit AS (
+                   SELECT w.reader_id, t.document_id, w.provision_id, NULL::int AS instrument_id
+                     FROM reader_watch w
+                     JOIN document_tag t ON t.provision_id = w.provision_id
+                    WHERE w.kind = 'follow' AND w.provision_id IS NOT NULL
+                   UNION
+                   SELECT w.reader_id, e.document_id, w.provision_id, NULL::int
+                     FROM reader_watch w
+                     JOIN amendment_effect e ON e.provision_id = w.provision_id
+                    WHERE w.kind = 'follow' AND w.provision_id IS NOT NULL
+                   UNION
+                   SELECT w.reader_id, t.document_id, NULL::int, w.instrument_id
+                     FROM reader_watch w
+                     JOIN document_tag t ON t.instrument_id = w.instrument_id
+                    WHERE w.kind = 'follow' AND w.instrument_id IS NOT NULL
+                   UNION
+                   SELECT w.reader_id, d2.id, w.provision_id, NULL::int
+                     FROM reader_watch w
+                     JOIN provision p2    ON p2.id = w.provision_id
+                     JOIN document_tag t2 ON t2.instrument_id = p2.instrument_id
+                     JOIN document d2     ON d2.id = t2.document_id
+                    WHERE w.kind = 'follow' AND w.provision_id IS NOT NULL
+                      AND d2.title ~* ('(^|[^0-9a-z])(section|sections|sec|rule|rules|regulation|regulations)[[:space:]]*\.?[[:space:]]*'
+                          || regexp_replace(p2.number, '([].[^$()*+?{}|\\-])', E'\\\\\\1', 'g')
+                          || '([^0-9a-z]|$)')
+               )
+               SELECT h.reader_id,
+                      d.id AS document_id, d.title, d.number, d.date_issued,
+                      r.code AS regulator_code,
+                      af.storage_key AS pdf_key,
+                      p.number AS provision_number,
+                      coalesce(pi.short_code, wi.short_code) AS instrument_code
+                 FROM hit h
+                 JOIN document d   ON d.id = h.document_id
+                 JOIN regulator r  ON r.id = d.regulator_id
+                 LEFT JOIN provision  p  ON p.id  = h.provision_id
+                 LEFT JOIN instrument pi ON pi.id = p.instrument_id
+                 LEFT JOIN instrument wi ON wi.id = h.instrument_id
+                 LEFT JOIN LATERAL (
+                   SELECT a.storage_key FROM attachment a
+                    WHERE a.document_id = d.id AND a.storage_key IS NOT NULL
+                    ORDER BY (a.mime = 'application/pdf' OR a.filename ILIKE '%%.pdf') DESC,
+                             a.is_primary DESC, a.id
+                    LIMIT 1
+                 ) af ON true
+                WHERE d.first_seen_at >= %s AND d.first_seen_at < %s
+                ORDER BY h.reader_id, d.date_issued DESC NULLS LAST, d.id""",
+            (since, cutoff),
+        )
+    out: dict[int, list[dict]] = {}
+    for row in rows:
+        out.setdefault(int(row["reader_id"]), []).append(dict(row))
+    return out
 
 
 def _unsubscribe_url(token: str) -> str:
@@ -1932,11 +2037,34 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
         log.info("nothing found for %s; no digest sent", day.isoformat())
         return "quiet"
 
+    # Which documents landed against what each reader follows. One query for everyone, not one per reader:
+    # the fan-out below is already a message each, and a query each would make it a query each as well.
+    hits_by_reader = follow_hits(since, cutoff)
+
     subject = email_notify.digest_subject(news_docs, day, arrivals=arrivals)
+
+    # The owner's copy gets the owner's follows too.
+    #
+    # DIGEST_TO is a secret, not a reader row, so the fan-out below skips those addresses to avoid sending
+    # the same digest twice. Without this the operator -- the one person most likely to be testing whether
+    # Follow works -- would be the only reader who never saw the section, because their copy comes from a
+    # branch that knows nothing about reader rows. Matched on address, case-insensitively, because an
+    # address typed into a form and an address typed into a secret are typed by the same person on
+    # different days.
+    owner_addrs = {a.strip().lower() for a in settings.digest_to if a and a.strip()}
+    owner_follows: list[dict] = []
+    if owner_addrs and hits_by_reader:
+        for r in confirmed_readers():
+            if (r.get("email") or "").strip().lower() in owner_addrs:
+                owner_follows.extend(hits_by_reader.get(int(r["id"]), []))
+
     html_body = email_notify.build_digest_html(
-        news_docs, merges, cannot, diffs, settings.site_url, day, since=since, arrivals=arrivals
+        news_docs, merges, cannot, diffs, settings.site_url, day, since=since, arrivals=arrivals,
+        follows=owner_follows,
     )
-    text_body = email_notify.build_digest_text(news_docs, settings.site_url, day, arrivals=arrivals)
+    text_body = email_notify.build_digest_text(
+        news_docs, settings.site_url, day, arrivals=arrivals, follows=owner_follows,
+    )
     # The owner's copy, to DIGEST_TO, with no unsubscribe anything. This one is the operator's own
     # alerting and its success is what decides whether the run counts as sent.
     ok = email_notify.send_digest(subject, html_body, text_body)
@@ -1975,12 +2103,13 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
             skipped += 1
             continue
         unsub = _unsubscribe_url(token)
+        mine = hits_by_reader.get(int(r["id"]), [])
         reader_html = email_notify.build_digest_html(
             news_docs, merges, cannot, diffs, settings.site_url, day,
-            since=since, arrivals=arrivals, unsubscribe_url=unsub,
+            since=since, arrivals=arrivals, unsubscribe_url=unsub, follows=mine,
         )
         reader_text = email_notify.build_digest_text(
-            news_docs, settings.site_url, day, arrivals=arrivals, unsubscribe_url=unsub,
+            news_docs, settings.site_url, day, arrivals=arrivals, unsubscribe_url=unsub, follows=mine,
         )
         # Each reader independently. One bad address must not stop the rest of the list, and it must not
         # affect whether the run is recorded as sent -- that is the owner's copy, already decided above.
@@ -2000,7 +2129,10 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
             skipped,
         )
 
+    matched = sum(1 for v in hits_by_reader.values() if v)
     detail = f"{len(new_docs)} new docs; readers {delivered} sent"
+    if matched:
+        detail += f", {matched} with follow matches"
     if failed:
         detail += f", {failed} failed"
     if skipped:

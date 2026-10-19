@@ -251,6 +251,31 @@ def _preheader(new_docs: list[dict], arrivals: list[dict] | None = None) -> str:
     )
 
 
+def _follow_target(h: dict) -> str:
+    """What the reader actually followed, as they would recognise it.
+
+    A provision shows as "80C of ITA 1961" rather than a bare number, because "80C" alone is ambiguous
+    across forty-nine instruments and this line is the entire reason the mail was opened.
+    """
+    prov = (h.get("provision_number") or "").strip()
+    inst = (h.get("instrument_code") or "").strip()
+    if prov and inst:
+        return f"{prov} of {inst}"
+    return prov or inst or "something you follow"
+
+
+def _follow_groups(follows: list[dict]) -> dict[str, list[dict]]:
+    """Grouped by what was followed.
+
+    Grouped rather than listed flat because somebody following twelve sections wants to see which of the
+    twelve this is about, not twelve rows that each have to be read to find out.
+    """
+    out: dict[str, list[dict]] = {}
+    for h in follows:
+        out.setdefault(_follow_target(h), []).append(h)
+    return out
+
+
 def _section(title: str, body: str) -> str:
     """A headed block. Only called for sections that have something in them."""
     return (
@@ -285,6 +310,7 @@ def build_digest_html(
     since: datetime | None = None,
     arrivals: list[dict] | None = None,
     unsubscribe_url: str | None = None,
+    follows: list[dict] | None = None,
 ) -> str:
     site = site_url.rstrip("/")
     sans = "-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif"
@@ -302,6 +328,67 @@ def build_digest_html(
         f"{_esc(_window_line(since, day))}</div>"
         f"</td></tr>"
     )
+
+    # What landed against the sections this reader follows, before anything else in the mail.
+    #
+    # This is the only part of the digest that is about them rather than about the day, so it goes first --
+    # and it is the whole reason the Follow button exists. Until this was written that button recorded a row
+    # that nothing ever read, while its own tooltip promised "tell me when something lands against it".
+    #
+    # Every document here also appears in the day's list below. That is deliberate: this is a lens on the
+    # same findings rather than a separate feed, so a reader who follows nothing loses nothing. Repeating a
+    # couple of rows costs less than a reader wondering whether the section they follow was left out of the
+    # main list.
+    #
+    # The wording stays on the right side of what this site does. A document is "filed against" a provision
+    # because it cites or amends it; it does not mean the provision's text now reads differently. Amendments
+    # are shown as references here and never applied, and a mail saying "section 80C has changed" would be
+    # the one place on the site claiming otherwise.
+    if follows:
+        blocks = [
+            f"<div style='font:400 12px/1.6 {sans};color:{INK_3};padding:2px 0 4px'>"
+            f"They cite or amend it &mdash; the text itself is unchanged until the regulator "
+            f"republishes it.</div>"
+        ]
+        for target, items in _follow_groups(follows).items():
+            blocks.append(
+                f"<div style='font:600 12.5px/1.5 {sans};color:{INK};padding:14px 0 6px'>{_esc(target)} "
+                f"<span style='font-weight:400;color:{INK_3}'>&middot; {len(items)}</span></div>"
+            )
+            for d in items[:MAX_LISTED]:
+                pdf = _pdf_url(d)
+                number = _esc(d.get("number"))
+                cite = (
+                    f"<a href='{pdf}' style='color:{LINK};text-decoration:none;border-bottom:1px solid {RULE}'>"
+                    f"{number}</a> <span style='color:{INK_3}'>PDF</span>"
+                    if pdf and number
+                    else number
+                )
+                meta_bits = [b for b in [cite, _human_date(d.get("date_issued"))] if b]
+                blocks.append(
+                    f"<div style='padding:8px 0;border-top:1px solid {RULE}'>"
+                    f"<a href='{site}/documents/{d['document_id']}' style='font:500 13.5px/1.45 {sans};"
+                    f"color:{LINK};text-decoration:none'>{_esc(d.get('title'))}</a>"
+                    + (
+                        f"<div style='font:400 11.5px/1.6 {sans};color:{INK_3};padding-top:3px'>"
+                        + " &middot; ".join(meta_bits)
+                        + "</div>"
+                        if meta_bits
+                        else ""
+                    )
+                    + "</div>"
+                )
+            if len(items) > MAX_LISTED:
+                blocks.append(
+                    f"<div style='padding:8px 0;border-top:1px solid {RULE};font:400 12.5px/1.5 {sans};"
+                    f"color:{INK_3}'>and {len(items) - MAX_LISTED} more against {_esc(target)}</div>"
+                )
+        blocks.append(
+            f"<div style='padding:12px 0 0'><a href='{site}/you#following' "
+            f"style='font:500 12.5px/1.5 {sans};color:{LINK};text-decoration:none'>"
+            f"Everything you follow &rarr;</a></div>"
+        )
+        rows.append(_section("Against what you follow", "".join(blocks)))
 
     # A newly tracked regulator, announced rather than listed.
     #
@@ -478,6 +565,7 @@ def build_digest_text(
     day: date,
     arrivals: list[dict] | None = None,
     unsubscribe_url: str | None = None,
+    follows: list[dict] | None = None,
 ) -> str:
     """The same thing as plain text.
 
@@ -486,6 +574,24 @@ def build_digest_text(
     """
     site = site_url.rstrip("/")
     lines = [f"As Amended - {day.strftime('%d %b %Y')}", ""]
+    if follows:
+        lines += [
+            "AGAINST WHAT YOU FOLLOW",
+            "  They cite or amend it; the text itself is unchanged until the regulator republishes it.",
+            "",
+        ]
+        for target, items in _follow_groups(follows).items():
+            lines.append(f"  {target} ({len(items)})")
+            for d in items[:MAX_LISTED]:
+                bits = [b for b in [str(d.get("number") or ""), _human_date(d.get("date_issued"))] if b]
+                lines.append(f"    - {_trim(str(d.get('title') or ''), 110)}")
+                if bits:
+                    lines.append(f"      {' - '.join(bits)}")
+                lines.append(f"      {site}/documents/{d['document_id']}")
+            if len(items) > MAX_LISTED:
+                lines.append(f"    and {len(items) - MAX_LISTED} more")
+            lines.append("")
+        lines += [f"  Everything you follow: {site}/you#following", ""]
     for a in arrivals or []:
         n = int(a.get("n") or 0)
         lines += [

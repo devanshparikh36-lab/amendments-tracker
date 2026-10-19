@@ -29,6 +29,38 @@ export async function generateStaticParams() {
   return [];
 }
 
+/* A title of this page's own.
+ *
+ * There was no generateMetadata here at all, so all 5,882 amendment histories inherited the site-wide title
+ * and description and were indistinguishable from one another in a result list.
+ *
+ * The notFound() calls are guards, not the 404 mechanism -- that is the page body's job, and it works
+ * because there is no loading.tsx over this route. They are here because the lookups below would otherwise
+ * dereference a null instrument for a slug that does not exist. The repeated queries are free: db/index.ts
+ * wraps reads in React's cache(), so metadata and the body share one round trip per request.
+ */
+export async function generateMetadata({ params }: { params: Promise<{ slug: string; prov: string }> }) {
+  const { slug, prov } = await params;
+  const inst = await getInstrument(slug);
+  if (!inst) notFound();
+  const all = await listProvisionIndex(inst.id);
+  const match = all.find((p) => slugifyNumber(p.number) === prov);
+  if (!match) notFound();
+  const history = await provisionHistory(inst.id, match.number);
+  if (!history) notFound();
+
+  const unit = unitFor(inst.kind);
+  const label = `${unit.charAt(0).toUpperCase()}${unit.slice(1)} ${match.number}`;
+  const heading = match.heading ? ` — ${match.heading.replace(/[.\-\s]+$/, "")}` : "";
+  return {
+    title: `${label}${heading} · amendment history`,
+    description:
+      `Every version of ${label.toLowerCase()} of the ${inst.title} this site holds, with the notification ` +
+      `that produced each one and what it changed.`,
+    alternates: { canonical: `/browse/${slug}/${prov}/history` },
+  };
+}
+
 export default async function HistoryPage({ params }: { params: Promise<{ slug: string; prov: string }> }) {
   const { slug, prov } = await params;
   const inst = await getInstrument(slug);
