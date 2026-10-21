@@ -1033,12 +1033,23 @@ export async function recentEffects(limit = 50) {
 // everything on the site.
 /** The "Last checked" stamp in the header.
  *
- * Ten minutes, not the thirty seconds the status page uses, and the difference matters far more than it
- * looks. This runs in the root layout, so it is part of every page; Next takes the shortest revalidate
- * anywhere in a route's tree as the route's own. At thirty seconds it was capping every cacheable page on
- * the site at a thirty-second CDN window -- for a value that changes once a day, when collection runs.
+ * An hour, not the thirty seconds the status page uses, and the difference matters far more than it looks.
+ * This runs in the root layout, so it is part of every page; Next takes the shortest revalidate anywhere
+ * in a route's tree as the route's own. At thirty seconds it was capping every cacheable page on the site
+ * at a thirty-second CDN window -- for a value that changes once a day, when collection runs.
+ *
+ * Ten minutes had the same fault in miniature and it was invisible until provisions became cacheable.
+ * Every route that matters declares 3600 and every one of them was being handed 600, because this and the
+ * query cache's own default were both 600 and the shortest wins. Measured on the live site: provision
+ * pages came back `ttl=595`. Raising the root layout's revalidate alone changed nothing, which is the tell
+ * that the ceiling was never the layout.
+ *
+ * It decides what a crawl costs. At ten minutes a provision can re-render six times an hour under
+ * sustained crawling; at an hour, once. With 4,464 provisions in the sitemap that is the difference
+ * between a cheap crawl and most of the saving given back -- for freshness nobody asked for on a number
+ * that moves once a day.
  */
-const HEADER_STAMP_SECONDS = 600;
+const HEADER_STAMP_SECONDS = 3600;
 
 export async function lastRevised(): Promise<{ checked: string | null; added: string | null }> {
   const rows = await query<{ checked: string | null; added: string | null }>(

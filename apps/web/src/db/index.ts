@@ -41,7 +41,19 @@ export { schema };
 // nothing, while the saving is the entire round trip: opening a connection to Neon costs ~1.9s from cold
 // (the free plan suspends the compute when idle) and each query another 150-300ms on top. Every page was
 // paying that on every click, because every route was marked force-dynamic.
-const CACHE_SECONDS = Number(process.env.QUERY_CACHE_SECONDS ?? 600);
+/* The default life of a cached read, and a ceiling on every page that performs one.
+ *
+ * Not just a database saving: `unstable_cache` entries carry a revalidate, and Next takes the shortest one
+ * anywhere in a route's tree as the route's own. So this number is also the longest any page doing a query
+ * can be held by the CDN, whatever that page declares for itself. Routes here declare 3600 and were being
+ * handed 600 by this line.
+ *
+ * An hour suits what is stored. Statutory text and the documents filed against it change when collection
+ * runs, once a day at 07:00; nothing here is live data. The reads that genuinely need to be fresher pass
+ * LIVE_SECONDS explicitly -- the status page, the admin console, a reader's own saved state -- and are
+ * unaffected by this default, as are the 14 call sites that name their own.
+ */
+const CACHE_SECONDS = Number(process.env.QUERY_CACHE_SECONDS ?? 3600);
 
 async function runQuery<T>(text: string, params: unknown[]): Promise<T[]> {
   const started = Date.now();

@@ -100,7 +100,7 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-/* Ten minutes, and not force-dynamic.
+/* An hour, and not force-dynamic.
  *
  * This is the root layout, so whatever it declares applies to every route beneath it. `force-dynamic` here
  * meant all twenty routes were server-rendered on demand, and Next sent `Cache-Control: private, no-cache,
@@ -108,13 +108,22 @@ export const viewport: Viewport = {
  * twice invoked a function twice. That is what ran an account out of credits.
  *
  * The only reason it was dynamic is the "Last checked" stamp below, which reads the database on every
- * request to show a value that changes once a day, when collection runs at 07:00. Ten minutes of staleness
- * on that is invisible; a database round trip per page view is not.
+ * request to show a value that changes once a day, when collection runs at 07:00.
+ *
+ * It was ten minutes, and raising it here to an hour on its own changed nothing -- the page still came
+ * back `s-maxage=600`. Worth recording, because it is the obvious place to look and it is the wrong one.
+ * Next takes the shortest revalidate anywhere in a route's tree, and that includes the revalidate on every
+ * cached database read. Two other numbers were both 600 and both bound before this one ever did:
+ * HEADER_STAMP_SECONDS in lib/queries.ts, which the stamp below reads, and the query cache's own default
+ * in db/index.ts. Raising all three is what moved the header.
+ *
+ * So this number is a ceiling, but rarely the binding one. If a page is not being cached as long as it
+ * asks for, look at what it queries before looking here.
  *
  * Pages that genuinely need per-request rendering still get it: reading searchParams makes a route dynamic
  * on its own, which is most of them here, and that is the right reason rather than a blanket setting.
  */
-export const revalidate = 600;
+export const revalidate = 3600;
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   // Shown small, in the header: when the collection last checked the regulators' sites.
