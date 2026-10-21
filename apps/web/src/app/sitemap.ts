@@ -11,23 +11,25 @@ import { abs } from "@/lib/site";
  */
 export const revalidate = 86400;
 
-/* Provision URLs are out of the sitemap, and this is the switch that puts them back.
+/* Provision URLs are back in the sitemap, and the condition that kept them out has been met.
  *
- * They were added on 16 Oct -- 4,464 of them -- and they are the pages a practitioner actually searches
- * for. They are also `force-dynamic` and uncached, so every crawl of one runs a function and queries
- * Postgres. Google found them, crawled hard, and in three days put 49,000 extra requests and 72 extra
- * compute credits through a free tier with 300 in it. The site was paused mid-month with everything down.
+ * They went in on 16 Oct -- 4,464 of them -- and they are the pages a practitioner actually searches for:
+ * "section 80C income tax act" is a query, "Income-tax Act, 1961" is not. They were also uncached, so
+ * every crawl of one ran a function and queried Postgres. Google found them, crawled hard, and in three
+ * days put 49,000 extra requests and 72 extra compute credits through a free tier with 300 in it. The
+ * site was paused mid-month with everything down, and they came out on 18 Oct.
  *
- * So this is a cap, not a correction: submitting thousands of uncached dynamic pages was the mistake, and
- * until a crawl of them is cheap they do not belong in a sitemap. `/documents/*` stays -- those carry
- * revalidate = 3600 and are served from Next's cache, which is why 8,043 of them cost a fraction of what
- * 4,464 of these did.
+ * The rule written here then was: turn them back on only once two consecutive requests to the same
+ * provision show "Netlify Durable: hit" rather than "fwd=bypass" on the live site. That is now true, and
+ * it is true because the address changed rather than because a header did. A provision is
+ * /browse/ita-1961/text/80c, which reads no query string, so Next prerenders it and the CDN holds it.
+ * Measured on production after deploying it: `Durable: hit; ttl=587` on a repeat request, and an edge hit
+ * at 0.29s. The query form that replaced it redirects.
  *
- * TO TURN THEM BACK ON: set this to true, and only once two consecutive requests to the same provision
- * show "Netlify Durable: hit" rather than "fwd=bypass" on the live site. The caching lives in
- * src/middleware.ts. Flipping this before that is confirmed repeats exactly what happened.
+ * The same rule still applies to anything added here later. A page that is cheap to crawl belongs in a
+ * sitemap and a page that is not does not, and the only way to know which it is is to ask the live site.
  */
-const INCLUDE_PROVISIONS = false;
+const INCLUDE_PROVISIONS = true;
 
 type Row = { loc: string; changed: string | null };
 type ProvisionRow = { slug: string; number: string; changed: string | null };

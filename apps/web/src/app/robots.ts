@@ -29,18 +29,19 @@ export default function robots(): MetadataRoute.Robots {
           "/find",
           "/you",
           "/admin",
-          /* Every /browse/ URL carrying a query string, which is every provision.
+          /* The blanket block on /browse/*?* is gone, and provisions are crawlable again.
            *
-           * Taking them out of the sitemap stops Google finding more; it does not stop it recrawling the
-           * 4,464 it already has, and this does. Blunt on purpose -- those pages are uncached and a crawl
-           * of them is what paused the site -- and narrow enough to leave the pages that are cheap:
-           * /browse, /browse/:slug and /browse/:slug/text all have no query string and stay crawlable.
+           * It went in on 18 Oct to stop Google recrawling 4,464 uncached provision pages, which is what
+           * paused the site. Provisions are no longer at a query-string address: they are
+           * /browse/ita-1961/text/80c, which prerenders and is served from the CDN, confirmed on the live
+           * site at `Durable: hit`. A crawl of them is now cheap, so blocking them only hides the
+           * statutory text this site exists to publish.
            *
-           * Remove this line at the same time as flipping INCLUDE_PROVISIONS in sitemap.ts, and only once
-           * the caching in middleware.ts is confirmed working on the live site. One without the other is
-           * either a sitemap advertising pages Google may not fetch, or an invitation to repeat October.
+           * Nothing replaces it, deliberately. The query-string addresses that remain -- the point-in-time
+           * view and the PDF reader's search -- are reachable only from a form, are not linked, and are
+           * not in the sitemap, so there is nothing for a crawler to walk into. Adding a rule for them
+           * would be guarding a door nobody can find.
            */
-          "/browse/*?*",
         ],
       },
     ],
