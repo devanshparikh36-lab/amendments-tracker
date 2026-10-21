@@ -1,3 +1,4 @@
+import { provisionHref } from "@/lib/format";
 import { INSTRUMENT_ALIASES, PARENT_ACT } from "@/lib/catalogue";
 
 /* Turning citations in statutory text into links.
@@ -112,7 +113,7 @@ function href(inst: RefInstrument, unit: string, number: string): string {
   if (inst.pdf_only) {
     return `/browse/${inst.slug}/text?pq=${encodeURIComponent(`${unit} ${number}`)}`;
   }
-  return `/browse/${inst.slug}/text?p=${encodeURIComponent(normaliseNumber(number))}`;
+  return provisionHref(inst.slug, normaliseNumber(number));
 }
 
 /** Link the citations in one run of already-escaped text. Returns HTML. */

@@ -1,8 +1,8 @@
+import { provisionHref } from "@/lib/format";
 ﻿import Link from "next/link";
 import { Breadcrumbs } from "@/components/PageHeader";
 import { Badge } from "@/components/Badge";
 import { Diff } from "@/components/Diff";
-import { provisionHref } from "@/lib/lookup";
 import { mapCounts, mapEntries, provisionText } from "@/lib/queries";
 
 // Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the

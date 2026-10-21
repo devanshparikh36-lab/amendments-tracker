@@ -4,9 +4,8 @@ import { notFound } from "next/navigation";
 import { Badge } from "@/components/Badge";
 import { Diff } from "@/components/Diff";
 import { fileHref } from "@/lib/files";
-import { DOC_TYPE_LABEL, fmtBytes, fmtDate } from "@/lib/format";
+import { DOC_TYPE_LABEL, fmtBytes, fmtDate, provisionHref } from "@/lib/format";
 import { query } from "@/db";
-import { provisionHref } from "@/lib/lookup";
 import { getDocument } from "@/lib/queries";
 import { documentPageUrl } from "@/lib/source";
 

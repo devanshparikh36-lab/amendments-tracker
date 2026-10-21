@@ -5,8 +5,7 @@ import { Badge } from "@/components/Badge";
 import { Diff } from "@/components/Diff";
 import { OfficialNumber } from "@/components/OfficialNumber";
 import { unitFor } from "@/lib/catalogue";
-import { fmtDate, fmtDateTime, slugifyNumber } from "@/lib/format";
-import { provisionHref } from "@/lib/lookup";
+import { fmtDate, fmtDateTime, provisionHref, slugifyNumber } from "@/lib/format";
 import { getInstrument, listProvisionIndex, provisionHistory } from "@/lib/queries";
 
 // An amendment history only changes when a new version of the provision is recorded, which happens during

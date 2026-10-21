@@ -1,5 +1,6 @@
 "use client";
 
+import { provisionHref } from "@/lib/format";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -73,7 +74,7 @@ export function SectionFilter({
   const list = all ?? items;
   const complete = all !== null || items.length >= total;
 
-  const href = (number: string) => `/browse/${slug}/text?p=${encodeURIComponent(number)}${suffix ?? ""}`;
+  const href = (number: string) => provisionHref(slug, number, suffix ?? "");
 
   const shown = useMemo(() => {
     const needle = norm(q);

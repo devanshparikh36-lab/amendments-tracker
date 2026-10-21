@@ -1,5 +1,5 @@
+import { provisionHref } from "@/lib/format";
 import { NextRequest, NextResponse } from "next/server";
-import { provisionHref } from "@/lib/lookup";
 import { suggest } from "@/lib/queries";
 
 export const dynamic = "force-dynamic";

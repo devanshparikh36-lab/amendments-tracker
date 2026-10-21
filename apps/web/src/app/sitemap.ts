@@ -1,3 +1,4 @@
+import { provisionHref } from "@/lib/format";
 import type { MetadataRoute } from "next";
 import { query } from "@/db";
 import { abs } from "@/lib/site";
@@ -126,7 +127,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
      * provision fold into this entry rather than competing with it.
      */
     ...(INCLUDE_PROVISIONS ? provisions : []).map((v) => ({
-      url: abs(`/browse/${v.slug}/text?p=${encodeURIComponent(v.number)}`),
+      url: abs(provisionHref(v.slug, v.number)),
       lastModified: lm(v.changed),
       changeFrequency: "monthly" as const,
       // Above a notification and below an instrument's landing page: a section is what somebody came for,

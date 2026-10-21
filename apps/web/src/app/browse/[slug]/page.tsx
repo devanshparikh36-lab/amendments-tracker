@@ -16,7 +16,7 @@ import { regulatorPageUrl } from "@/lib/source";
 import { InstrumentTabs } from "@/components/InstrumentTabs";
 import { SearchBox } from "@/components/SearchBox";
 import { supersededBy } from "@/lib/catalogue";
-import { DOC_TYPE_LABEL, fmtDate, slugifyNumber } from "@/lib/format";
+import { DOC_TYPE_LABEL, fmtDate, provisionHref, slugifyNumber } from "@/lib/format";
 import {
   getInstrument,
   instrumentAmendments,
@@ -397,7 +397,7 @@ export default async function InstrumentPage({ params, searchParams }: { params:
                 {opening.map((o) => (
                   <li key={o.id}>
                     <Link
-                      href={`${readHref}?p=${encodeURIComponent(o.number)}`}
+                      href={provisionHref(slug, o.number)}
                       className="block truncate hover:underline"
                       title={o.heading ? `${o.number} — ${o.heading}` : o.number}
                     >

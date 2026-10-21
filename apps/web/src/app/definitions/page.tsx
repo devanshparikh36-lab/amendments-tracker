@@ -1,3 +1,4 @@
+import { provisionHref } from "@/lib/format";
 ﻿import Link from "next/link";
 import { Breadcrumbs } from "@/components/PageHeader";
 import { DefinitionBox } from "@/components/DefinitionBox";
@@ -61,7 +62,7 @@ function Hit({ h, term }: { h: DefinitionHit; term: string }) {
    * so the floor here is what shipped before and the ceiling is the definition itself. */
   const fragment = h.number ? `#:~:text=${encodeURIComponent(term)}` : "";
   const sectionHref = h.number
-    ? `/browse/${h.slug}/text?p=${encodeURIComponent(h.number)}${fragment}`
+    ? `${provisionHref(h.slug, h.number)}${fragment}`
     : h.pdf_page
       ? `/browse/${h.slug}/text?page=${h.pdf_page}&pq=${encodeURIComponent(term)}`
       : `/browse/${h.slug}`;

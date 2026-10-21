@@ -1,3 +1,4 @@
+import { provisionHref } from "@/lib/format";
 import Link from "next/link";
 import { Breadcrumbs } from "@/components/PageHeader";
 import { authorised } from "@/lib/admin";
@@ -131,7 +132,7 @@ export default async function QualityPage({ searchParams }: { searchParams: Sear
                   <td className="num whitespace-nowrap">
                     {/* Straight to the provision as a reader sees it, which is the only way to judge it. */}
                     <Link
-                      href={`/browse/${r.instrument_slug}/text?p=${encodeURIComponent(r.number)}`}
+                      href={provisionHref(r.instrument_slug, r.number)}
                       className="text-[var(--link)] hover:underline"
                     >
                       {r.number}

@@ -2,8 +2,7 @@
 import { Breadcrumbs } from "@/components/PageHeader";
 import { Badge } from "@/components/Badge";
 import { authorised } from "@/lib/admin";
-import { fmtDate, fmtDateTime } from "@/lib/format";
-import { provisionHref } from "@/lib/lookup";
+import { fmtDate, fmtDateTime, provisionHref } from "@/lib/format";
 import { jobStats, pageViews, recentEffects, sourceGaps, sourceRuns } from "@/lib/queries";
 
 /* Behind the admin key since 15 October 2026.

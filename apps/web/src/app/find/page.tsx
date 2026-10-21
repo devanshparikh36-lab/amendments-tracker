@@ -4,8 +4,8 @@ import { SaveSearch } from "@/components/SaveSearch";
 import { SearchBox } from "@/components/SearchBox";
 import { KIND_LABEL, unitPlural } from "@/lib/catalogue";
 import { fileHref, pdfHref } from "@/lib/files";
-import { fmtDate } from "@/lib/format";
-import { pdfPageHref, provisionHref, resolveLookup } from "@/lib/lookup";
+import { fmtDate, provisionHref } from "@/lib/format";
+import { pdfPageHref, resolveLookup } from "@/lib/lookup";
 import { getInstrument, search, searchAllPages, logSearch } from "@/lib/queries";
 
 // Dynamic because it reads searchParams, which is the honest reason -- not because a blanket setting in the
