@@ -29,19 +29,46 @@ export default function robots(): MetadataRoute.Robots {
           "/find",
           "/you",
           "/admin",
-          /* The blanket block on /browse/*?* is gone, and provisions are crawlable again.
+          /* Every /browse/ URL carrying a query string. Back, and this time for the right reason.
            *
-           * It went in on 18 Oct to stop Google recrawling 4,464 uncached provision pages, which is what
-           * paused the site. Provisions are no longer at a query-string address: they are
-           * /browse/ita-1961/text/80c, which prerenders and is served from the CDN, confirmed on the live
-           * site at `Durable: hit`. A crawl of them is now cheap, so blocking them only hides the
-           * statutory text this site exists to publish.
+           * It was removed on 21 Oct on the reasoning that the only query-string addresses left were the
+           * point-in-time view and the PDF search, "reachable only from a form, not linked, not in the
+           * sitemap". That was wrong, and expensively so. `?view=full` -- the whole-Act view -- is linked
+           * from a "Read full text" button on all 196 instrument pages, and it is the single most
+           * expensive render on the site: 22 seconds, dynamic, uncached by design because it reads the
+           * query string. Removing this line invited Google to crawl 196 of those, and to walk the 4,464
+           * old ?p= addresses still in its index, each of which burns a function just to answer a 307.
            *
-           * Nothing replaces it, deliberately. The query-string addresses that remain -- the point-in-time
-           * view and the PDF reader's search -- are reachable only from a form, are not linked, and are
-           * not in the sitemap, so there is nothing for a crawler to walk into. Adding a rule for them
-           * would be guarding a door nobody can find.
+           * Compute went from 27 credits to 105.6 in a day, out of a 300-credit cycle. The same shape as
+           * October, from the same cause: uncached dynamic pages, crawled.
+           *
+           * It does NOT block provisions. Those are /browse/ita-1961/text/80c -- no query string -- so
+           * they stay crawlable and stay in the sitemap, which is the whole point of having moved them.
+           * This line only closes the query-string doors that were never cheap to open.
+           *
+           * Before removing it again: every query-string route under /browse must be cacheable, and that
+           * has to be proved on the live site rather than reasoned about. `?view=full` would need a path
+           * of its own, the way provisions got one.
            */
+          /* And, for this billing cycle only, all of /browse.
+           *
+           * Blocking the query string alone stops the expensive renders but not the bandwidth. Google
+           * already holds the 4,464 provision URLs and will keep recrawling them, and bandwidth is
+           * charged per byte whether the CDN served it or a function did -- 15.2 credits of it in a
+           * single day. With 13 credits to cover 27 days, that is the line that decides whether the site
+           * stays up.
+           *
+           * This is a budget measure, not a correction. The provision pages are cached and correct and a
+           * crawl of them is genuinely cheap in compute; what cannot be afforded right now is the traffic
+           * itself. Human readers are unaffected -- robots.txt binds crawlers, not browsers, and nothing
+           * here changes what a person can open.
+           *
+           * REMOVE THIS ON 18 NOVEMBER, when the cycle resets to 300 credits, together with putting the
+           * provisions back in sitemap.ts. Keep the /browse/*?* line below it: that one is permanent, and
+           * the reason it exists is written there.
+           */
+          "/browse/",
+          "/browse/*?*",
         ],
       },
     ],

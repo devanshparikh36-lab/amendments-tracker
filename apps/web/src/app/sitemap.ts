@@ -29,7 +29,11 @@ export const revalidate = 86400;
  * The same rule still applies to anything added here later. A page that is cheap to crawl belongs in a
  * sitemap and a page that is not does not, and the only way to know which it is is to ask the live site.
  */
-const INCLUDE_PROVISIONS = true;
+/* Off again for this cycle, and not because the caching failed -- it works, and the live site answers
+ * `Durable: hit` on provisions. It is off because 4,464 pages being recrawled costs bandwidth that 13
+ * credits cannot cover before 18 November. Turn it back on then, with the "/browse/" line in robots.ts.
+ */
+const INCLUDE_PROVISIONS = false;
 
 type Row = { loc: string; changed: string | null };
 type ProvisionRow = { slug: string; number: string; changed: string | null };
