@@ -534,12 +534,76 @@ def is_before_cutoff(doc_type: str, title: str | None, date_issued: date | None)
     return True
 
 
+# A title reduced to its letters and digits, so two spellings of one title compare equal.
+#
+# Commas are why this exists. SEBI published the same consolidated regulation twice on 15 October 2026,
+# as "Regulations, 2012 [Last amended on October 15, 2026]" and "Regulations 2012 [Last amended on
+# October 15, 2026]" -- one comma apart, same amendment date -- and the digest reported both.
+#
+# Dropping every non-alphanumeric character also folds away the curly apostrophe in “Employees’
+# Service”, which the collectors normalise inconsistently. No translate() is needed for that: the
+# character class removes it along with everything else that is not a letter or a digit.
+#
+# {} takes the expression to normalise, so the same definition serves both sides of the comparison --
+# the stored column and the incoming parameter -- and the two can never drift apart.
+_TITLE_KEY = "regexp_replace(lower({}), '[^a-z0-9]+', '', 'g')"
+
+
+def _same_document_at_another_url(conn: psycopg.Connection, reg_id: int, d: DiscoveredDocument):
+    """A document already held, re-advertised at a URL we have never seen.
+
+    `source_url` is the dedupe key and is the right one: it is what a regulator's listing gives, it is
+    stable for almost everyone, and it is what makes a detail page unique. SEBI breaks it. The same
+    circular appeared on 6 September at
+
+        .../revision-of-application-form-for-mutual-fund-registration_103721.html
+
+    and again on 23 October at the same path ending _105352.html -- identical title, identical issue date
+    of 17 August, nothing about it changed. The collector had never seen that URL, so it created a second
+    document, and the digest mailed every confirmed reader about a circular they were told about seven
+    weeks earlier. Nine of ten entries in the 23 October digest were already-known documents.
+
+    So when the URL misses, ask whether this is the same document wearing a different address:
+
+        the same regulator, the same title ignoring punctuation and case, the same issue date, and the
+        same document number
+
+    All four, which is what keeps it honest. Title and date alone merge documents that genuinely differ --
+    checked against the corpus, several pairs share a title and a date while carrying different notification
+    numbers, and collapsing those would lose a real document. With the number included, 18 rows out of
+    8,061 merge, in 16 groups, every one of them the same document at two or three URLs.
+
+    What this deliberately does NOT do is collapse a consolidated regulation into the amendment that
+    produced it. "(Alternative Investment Funds) (Third Amendment) Regulations, 2026" and "(Alternative
+    Investment Funds) Regulations, 2012 [Last amended on October 15, 2026]" are two different documents --
+    the amending instrument and the text as amended -- and a reader wants both. Their titles differ, so
+    they stay apart, which is the behaviour this key was chosen to preserve rather than a happy accident.
+
+    Matching returns the earlier row and the caller treats this as a sighting of it: last_seen_at moves,
+    nothing is inserted, nothing is mailed. The new URL is not recorded. That is deliberate -- the stored
+    source_url is the address the document was first published at, and overwriting it would rewrite a
+    reader's citation every time a regulator reshuffled its site.
+    """
+    return db.fetch_one(
+        conn,
+        f"""SELECT id, title FROM document
+             WHERE regulator_id = %s
+               AND date_issued IS NOT DISTINCT FROM %s
+               AND coalesce(number, '') = coalesce(%s, '')
+               AND {_TITLE_KEY.format("title")} = {_TITLE_KEY.format("%s")}
+             ORDER BY id LIMIT 1""",
+        (reg_id, d.date_issued, d.number, d.title),
+    )
+
+
 def _upsert_discovered(conn: psycopg.Connection, reg_id: int, adapter: str, d: DiscoveredDocument) -> bool:
     if is_before_cutoff(d.doc_type, d.title, d.date_issued):
         return False
     if d.doc_type in MASTER_DIRECTION_TYPES or d.extra.get("instrument_slug"):
         _ensure_md_instrument(conn, reg_id, d)
     existing = db.fetch_one(conn, "SELECT id, title FROM document WHERE source_url = %s", (d.source_url,))
+    if not existing:
+        existing = _same_document_at_another_url(conn, reg_id, d)
     if existing:
         # `reader_url` is refreshed on every sighting, not only at insert. It is a slug of the title, so the
         # regulator can change it by re-titling a notification -- and it is the whole point of the column
