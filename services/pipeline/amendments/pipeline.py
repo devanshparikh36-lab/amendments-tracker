@@ -1953,6 +1953,7 @@ def follow_hits(since: datetime, cutoff: datetime) -> dict[int, list[dict]]:
                       d.id AS document_id, d.title, d.number, d.date_issued,
                       r.code AS regulator_code,
                       af.storage_key AS pdf_key,
+                      coalesce(d.reader_url, d.source_url) AS official_url,
                       p.number AS provision_number,
                       coalesce(pi.short_code, wi.short_code) AS instrument_code
                  FROM hit h
@@ -2044,6 +2045,10 @@ def send_daily_digest(day: date | None = None, force: bool = False, since: datet
             # corrigendum often enough to matter.
             """SELECT d.id, d.title, d.number, d.date_issued, r.code AS regulator_code,
                       af.storage_key AS pdf_key,
+                      -- Where a reader should go when nothing was stored. reader_url first: for the
+                      -- regulators that have one it is the page a person should see, where source_url can
+                      -- be the endpoint the seeder read. See adapters/base.py.
+                      coalesce(d.reader_url, d.source_url) AS official_url,
                       (SELECT string_agg(DISTINCT i.short_code, ', ' ORDER BY i.short_code)
                          FROM document_tag t JOIN instrument i ON i.id = t.instrument_id
                         WHERE t.document_id = d.id) AS affects

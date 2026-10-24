@@ -92,6 +92,28 @@ def _pdf_url(doc: dict) -> str | None:
         return None
 
 
+def _source_link(doc: dict) -> tuple[str | None, str]:
+    """Where the number should point, and what to call it.
+
+    The stored PDF when there is one, because that is the regulator's own file and it will still open in
+    five years whether or not the regulator reorganises its site.
+
+    Otherwise the regulator's page, which is the part that was missing. 781 of 8,045 documents have no
+    file at all -- 475 RBI A.P. (DIR Series) circulars and 274 CBDT notifications, published as web pages
+    rather than PDFs -- and for those the digest printed the notification number as plain text with nothing
+    behind it. A reader who wanted the source had to open our page first and find the link there, for about
+    one entry in ten.
+
+    The label is not decoration. "PDF" and "page" tell a reader what they are about to open, and the
+    difference matters on a phone, where one downloads and the other does not.
+    """
+    pdf = _pdf_url(doc)
+    if pdf:
+        return pdf, "PDF"
+    official = (doc.get("official_url") or "").strip()
+    return (official or None), "page"
+
+
 def _by_regulator(new_docs: list[dict]) -> dict[str, list[dict]]:
     grouped: dict[str, list[dict]] = {}
     for d in new_docs:
@@ -356,12 +378,12 @@ def build_digest_html(
                 f"<span style='font-weight:400;color:{INK_3}'>&middot; {len(items)}</span></div>"
             )
             for d in items[:MAX_LISTED]:
-                pdf = _pdf_url(d)
+                href, kind = _source_link(d)
                 number = _esc(d.get("number"))
                 cite = (
-                    f"<a href='{pdf}' style='color:{LINK};text-decoration:none;border-bottom:1px solid {RULE}'>"
-                    f"{number}</a> <span style='color:{INK_3}'>PDF</span>"
-                    if pdf and number
+                    f"<a href='{href}' style='color:{LINK};text-decoration:none;border-bottom:1px solid {RULE}'>"
+                    f"{number}</a> <span style='color:{INK_3}'>{kind}</span>"
+                    if href and number
                     else number
                 )
                 meta_bits = [b for b in [cite, _human_date(d.get("date_issued"))] if b]
@@ -445,15 +467,15 @@ def build_digest_html(
                     f"<a href='{site}/documents?regulator={_esc(code)}' style='color:{LINK}'>see them all</a></div>"
                 )
             for d in shown:
-                pdf = _pdf_url(d)
+                href, kind = _source_link(d)
                 number = _esc(d.get("number"))
-                # The number opens the regulator's own file and the title opens our page about it, which is
+                # The number opens the regulator's own source and the title opens our page about it, which is
                 # the same division the website makes. Practitioners cite the number, so the number is what
-                # reaches the source.
+                # reaches the source -- the stored PDF where there is one, the regulator's page otherwise.
                 cite = (
-                    f"<a href='{pdf}' style='color:{LINK};text-decoration:none;border-bottom:1px solid {RULE}'>"
-                    f"{number}</a> <span style='color:{INK_3}'>PDF</span>"
-                    if pdf and number
+                    f"<a href='{href}' style='color:{LINK};text-decoration:none;border-bottom:1px solid {RULE}'>"
+                    f"{number}</a> <span style='color:{INK_3}'>{kind}</span>"
+                    if href and number
                     else number
                 )
                 meta_bits = [b for b in [cite, _human_date(d.get("date_issued"))] if b]
@@ -620,9 +642,9 @@ def build_digest_text(
                 if d.get("affects"):
                     lines.append(f"    Affects: {d['affects']}")
                 lines.append(f"    {site}/documents/{d['id']}")
-                pdf = _pdf_url(d)
-                if pdf:
-                    lines.append(f"    Official PDF: {pdf}")
+                href, kind = _source_link(d)
+                if href:
+                    lines.append(f"    Official {kind}: {href}")
     lines += ["", site, "", "Amendments are shown as references and are never applied to the statutory text.",
               "A research aid, not legal advice."]
     if unsubscribe_url:
