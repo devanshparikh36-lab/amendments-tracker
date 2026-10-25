@@ -175,6 +175,18 @@ jobs:
           # env wins over GITHUB_ENV and would undo the hostname fallback.
         run: npx --yes "netlify-cli@${NETLIFY_CLI_VERSION}" build
 
+      # Nothing uncached may be left open to a crawler. See apps/web/scripts/check-crawlable.mjs.
+      #
+      # Placed between Build and Deploy deliberately: it reads the manifests `netlify build` just wrote, so
+      # it knows what Next actually decided to prerender rather than what the source looks like, and it
+      # fails before anything reaches the live site. Twice now a page that costs a function per request has
+      # been left crawlable, and both times the account was emptied before anyone noticed -- 105 credits in
+      # a day in October, 107 in three days after the migration. A reviewer checks the page they changed;
+      # this checks every page there is.
+      - name: No uncached page is open to crawlers
+        working-directory: apps/web
+        run: node scripts/check-crawlable.mjs
+
       # `--no-build` is what stops the CLI building again here; the previous step already did that. The flag
       # used to be called `--prebuilt` and that name is gone in v27 -- the CLI answers an unknown flag by
       # printing its help text and exiting 2, which reads like a broken build rather than a renamed option.

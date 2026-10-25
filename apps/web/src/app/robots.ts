@@ -67,8 +67,44 @@ export default function robots(): MetadataRoute.Robots {
            * provisions back in sitemap.ts. Keep the /browse/*?* line below it: that one is permanent, and
            * the reason it exists is written there.
            */
-          "/browse/",
+          /* "/browse", not "/browse/". A Disallow is a prefix match, so the trailing slash blocked
+           * /browse/ita-1961 and left /browse itself open -- the instrument list, uncached, one of the
+           * four scripts/check-crawlable.mjs caught the moment it was written. */
+          "/browse",
           "/browse/*?*",
+          /* Every other uncached page that takes a query string.
+           *
+           * Blocking /browse alone was not enough and the reason is the same one twice over. A page that
+           * reads the query string is dynamic, so Netlify answers `fwd=bypass` and runs a function for
+           * every request -- and these pages link to each other combinatorially. One instrument page
+           * offers /documents?instrument=ita-1961, &page=2, ?subject=income-tax, ?regulator=CBDT, and each
+           * of those offers more. A crawler walks the product of all of them, and every step is a render.
+           *
+           * Measured on the new account over three days: 29,601 requests and 10.7 GB-hours of function
+           * time, about 1.3 seconds of compute per request, which is not what a cached site looks like.
+           * /documents/<id> is cached and stays crawlable; it is /documents? that was open.
+           *
+           * Prefix matches, deliberately. "/documents?" cannot match "/documents/9077", so the 8,044
+           * document pages in the sitemap are untouched -- only the filtered list is closed.
+           *
+           * The rule to apply when adding a page: if it reads searchParams and is not behind a key, its
+           * query strings belong here until the page itself is cacheable.
+           */
+          "/documents?",
+          "/definitions?",
+          "/compare/income-tax?",
+          "/feed.xml?",
+          /* The homepage with a query string, which is not the homepage.
+           *
+           * "/?*" closes /?utm_source=… and anything else a parameter invents, while leaving "/" itself
+           * crawlable -- it is one URL and one render, and it is the front door. The page reads
+           * searchParams, so without this the front door is an unbounded space.
+           */
+          "/?*",
+          /* Token pages. A confirmation or unsubscribe link is addressed to one reader and means nothing
+           * to anyone else; a crawler following one would render it and, worse, could act on it. */
+          "/confirm",
+          "/unsubscribe",
         ],
       },
     ],
