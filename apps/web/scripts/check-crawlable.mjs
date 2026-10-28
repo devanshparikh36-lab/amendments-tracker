@@ -89,10 +89,22 @@ for (let i = open + 1; i < lines.length; i += 1) {
   if (m) disallows.push(m[1]);
 }
 
-/* Every rule must be a path, and a bare "/" is rejected by name because it is the one value that would
- * silently disable this whole file. Both parser bugs above produced rules that fail this, so it is the
- * assertion that turns a silent misread into a loud one. */
-const bad = disallows.filter((d) => d === "/" || !d.startsWith("/") || /\s/.test(d));
+/* Every rule must be a path. Prose is not, and both parser bugs above produced rules that fail this, so
+ * this is the assertion that turns a silent misread into a loud one. */
+const bad = disallows.filter((d) => !d.startsWith("/") || /\s/.test(d));
+
+/* A bare "/" blocks the whole site, which is a real and sometimes correct answer -- it is what is in force
+ * now, while credits are short. But it is also the single value that would make this check pass vacuously
+ * if the parser ever went wrong again, because as a prefix it matches every route.
+ *
+ * Telling the two apart: a deliberate "/" is the ONLY rule, because nothing else is needed once everything
+ * is blocked. A "/" harvested by mistake would appear alongside the real rules. So "/" with company is
+ * refused and "/" alone is accepted. */
+if (disallows.includes("/") && disallows.length > 1) {
+  console.error('check-crawlable: robots.ts has a bare "/" alongside other rules, which is how a misread looks.');
+  console.error("  rules read: " + disallows.map((d) => JSON.stringify(d)).join(" "));
+  process.exit(1);
+}
 if (bad.length) {
   console.error("check-crawlable: robots.ts produced rules that are not paths, so the rules were misread:");
   for (const b of bad) console.error(`  ${JSON.stringify(b)}`);
